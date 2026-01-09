@@ -192,4 +192,4 @@ The orchestrator (main Claude instance) coordinates these agents but does not do
 
 ## License
 
-[Your license here]
+MIT License - see [LICENSE](LICENSE) for details.
