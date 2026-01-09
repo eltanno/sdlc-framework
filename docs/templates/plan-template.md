@@ -1,0 +1,183 @@
+# Implementation Plan: {Feature}
+
+**Date:** YYYY-MM-DD
+**Status:** DRAFT
+**Discovery:** [Link to discovery doc if applicable]
+**Author:** {name}
+
+---
+
+## Summary
+
+*One paragraph describing what we're building and why.*
+
+## Goals
+
+### Primary Goals
+
+- Goal 1
+- Goal 2
+
+### Secondary Goals
+
+- Goal 1
+
+## Non-Goals
+
+*What this plan explicitly does NOT cover.*
+
+- Non-goal 1
+- Non-goal 2
+
+## Technical Approach
+
+### Architecture Overview
+
+*High-level description of the approach.*
+
+```
+[Optional: ASCII diagram or description of components]
+```
+
+### Components
+
+| Component | Description | New/Modified |
+|-----------|-------------|--------------|
+| Component 1 | What it does | New |
+| Component 2 | What it does | Modified |
+
+### Key Technical Decisions
+
+#### Decision 1: {What}
+
+**Choice:** What we're doing
+
+**Rationale:** Why we chose this
+
+**Alternatives Considered:** What else we looked at
+
+#### Decision 2: {What}
+
+**Choice:** What we're doing
+
+**Rationale:** Why we chose this
+
+## Implementation Phases
+
+### Phase 1: {Name} (Foundation)
+
+**Goal:** What this phase achieves
+
+**Steps:**
+1. Step with clear deliverable
+2. Step with clear deliverable
+3. Step with clear deliverable
+
+**Exit Criteria:**
+- [ ] Criterion 1
+- [ ] Criterion 2
+
+### Phase 2: {Name} (Core Feature)
+
+**Goal:** What this phase achieves
+
+**Steps:**
+1. Step with clear deliverable
+2. Step with clear deliverable
+
+**Exit Criteria:**
+- [ ] Criterion 1
+- [ ] Criterion 2
+
+### Phase 3: {Name} (Polish)
+
+**Goal:** What this phase achieves
+
+**Steps:**
+1. Step with clear deliverable
+2. Step with clear deliverable
+
+**Exit Criteria:**
+- [ ] Criterion 1
+- [ ] Criterion 2
+
+## Test Strategy
+
+### Unit Tests
+
+- [ ] Test area 1
+- [ ] Test area 2
+
+### Integration Tests
+
+- [ ] Test area 1
+- [ ] Test area 2
+
+### End-to-End Tests
+
+- [ ] Critical user flow 1
+- [ ] Critical user flow 2
+
+### Manual Testing
+
+- [ ] Scenario requiring manual verification
+
+## Tickets
+
+*These will be created in Asana after plan approval:*
+
+| # | Title | Description | Priority | Estimate | Phase |
+|---|-------|-------------|----------|----------|-------|
+| 1 | {Title} | Brief description | P1 | S/M/L | 1 |
+| 2 | {Title} | Brief description | P1 | S/M/L | 1 |
+| 3 | {Title} | Brief description | P2 | S/M/L | 2 |
+| 4 | {Title} | Brief description | P2 | S/M/L | 2 |
+| 5 | {Title} | Brief description | P3 | S/M/L | 3 |
+
+**Estimate Key:** S = Small (< 2 hours), M = Medium (2-8 hours), L = Large (1-3 days)
+
+## Risks and Mitigations
+
+| Risk | Probability | Impact | Mitigation |
+|------|-------------|--------|------------|
+| Risk 1 | High/Med/Low | High/Med/Low | Mitigation strategy |
+| Risk 2 | High/Med/Low | High/Med/Low | Mitigation strategy |
+
+## Dependencies
+
+### External Dependencies
+
+- Dependency 1
+- Dependency 2
+
+### Internal Dependencies
+
+- Dependency 1
+
+### Blocking Items
+
+- [ ] Item that must be resolved before starting
+
+## Open Questions
+
+*Questions that need answers (ideally before implementation):*
+
+- [ ] Question 1
+- [ ] Question 2
+
+## Success Criteria
+
+*How do we know we're done?*
+
+- [ ] Criterion 1
+- [ ] Criterion 2
+- [ ] All tests pass
+- [ ] Documentation updated
+
+---
+
+## Approval
+
+- [ ] **Approved by:** {name} on YYYY-MM-DD
+
+*Change status to APPROVED when reviewed and accepted.*
