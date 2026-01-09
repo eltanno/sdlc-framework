@@ -38,6 +38,15 @@ See [WORKFLOW.md](WORKFLOW.md) for detailed workflow documentation.
 | `git` | Version control | [git-scm.com](https://git-scm.com) | `git --version` |
 | `gh` | GitHub CLI for PRs | [cli.github.com](https://cli.github.com) | `gh --version` |
 | Node.js | Runtime | [nodejs.org](https://nodejs.org) | `node --version` |
+| `jq` | JSON parsing (statusline) | `apt install jq` / `brew install jq` | `jq --version` |
+
+### Optional Tools
+
+| Tool | Purpose | Install | Verify |
+|------|---------|---------|--------|
+| `ccusage` | Token/cost display in statusline | `bun add -g ccusage` | `bunx ccusage --help` |
+| `timeout` | Cache timeout (Linux, usually pre-installed) | - | `timeout --version` |
+| `gtimeout` | Cache timeout (macOS) | `brew install coreutils` | `gtimeout --version` |
 
 ### Asana MCP (Required)
 
@@ -86,6 +95,9 @@ export ASANA_WORKSPACE_ID="your-workspace-id"
 │   │   ├── status.md             # /status - Workflow status
 │   │   ├── research.md           # /research - Technical research
 │   │   └── hotfix.md             # /hotfix - Emergency fixes
+│   ├── scripts/                   # Utility scripts
+│   │   └── statusline.sh         # Custom statusline display
+│   ├── settings.json             # Claude Code settings
 │   └── config.yaml               # Project configuration
 ├── docs/
 │   ├── discovery.md              # Living requirements doc
