@@ -112,6 +112,11 @@ if ! install_if_missing claude "Claude Code"; then
     echo -e "${GREEN}✓${NC} Claude Code installed"
 fi
 
+# MCP Servers
+echo -e "${BLUE}→${NC} Installing MCP servers..."
+npm install -g @anthropic/mcp-asana @playwright/mcp
+echo -e "${GREEN}✓${NC} MCP servers installed (Asana, Playwright)"
+
 # ccusage (for token/cost display)
 if ! install_if_missing ccusage "ccusage"; then
     bun add -g ccusage
