@@ -2,18 +2,22 @@
 
 **You are the orchestrator. Delegate this to the `architect` agent.**
 
+**Agent definition**: See `.claude/agents/architect.md` for architect responsibilities.
+
+**IMPORTANT**: PRD comes BEFORE plan. The PRD defines WHAT to build, the plan defines HOW to build it.
+
 ## Prerequisites Check
 
 Before delegating, verify:
-1. Plan document exists and is APPROVED
+1. Discovery document exists and is APPROVED (or user explicitly skips discovery)
 
 ```bash
-# Check for approved plan
-grep -l "Status: APPROVED" docs/plans/*.md 2>/dev/null
+# Check for approved discovery
+grep -l "Status: APPROVED" docs/discovery/*.md 2>/dev/null
 ```
 
-If no approved plan exists:
-- "No approved plan found. Please run `/plan` first and get it approved."
+If no approved discovery exists, ask user:
+- "No approved discovery found. Should I run `/discover` first, or skip discovery for this task?"
 
 ## Delegation
 
@@ -39,7 +43,7 @@ Feature: $ARGUMENTS
 Project location: /home/jim/workspace/test-sdlc-project
 Template location: docs/templates/prd-template.md
 
-Plan document: [include path to approved plan]
+Discovery document (if exists): [include path or note if skipped]
 
 ## Objective
 
@@ -47,10 +51,10 @@ Create a formal Product Requirements Document with testable acceptance criteria 
 
 ## Your PRD Tasks
 
-1. **Review Plan**
-   - Read the approved plan document
-   - Understand technical approach and phases
-   - Note the proposed tickets
+1. **Review Discovery**
+   - Read the discovery document if it exists
+   - Understand user needs and business context
+   - Identify key features and requirements
 
 2. **Define Requirements**
    - Convert plan items to formal requirements (FR-1, FR-2, etc.)
@@ -125,7 +129,7 @@ Tickets Ready for Creation:
 
 Acceptance Criteria: [N] testable criteria defined
 
-Next: User should review and approve, then run /ticket
+Next: User should review and approve, then run /plan
 ```
 
 ---
@@ -136,7 +140,7 @@ Next: User should review and approve, then run /ticket
 2. **Verify** acceptance criteria are testable (Given/When/Then)
 3. **Summarize** for user
 4. **Prompt** user to review and approve
-5. **Next step:** Once approved, user can run `/ticket`
+5. **Next step:** Once approved, user can run `/plan`
 
 ## Feature for PRD
 

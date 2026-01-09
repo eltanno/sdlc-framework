@@ -23,8 +23,8 @@ Your job is NOT to:
 | Do Yourself | Delegate |
 |-------------|----------|
 | **Discovery sessions** (interactive) | Technical research (→ researcher) |
-| Read existing artifacts | Architecture/Planning (→ architect) |
-| Check workflow status | PRD creation (→ architect) |
+| Read existing artifacts | PRD creation (→ architect) |
+| Check workflow status | Planning (→ architect) |
 | Simple git commands | Implementation (→ engineer) |
 | Coordinate handoffs | Validation (→ engineer) |
 
@@ -33,15 +33,17 @@ Your job is NOT to:
 ## Workflow Overview
 
 ```
-/discover → /plan → /prd → /ticket → /implement → /pr → /validate
-    │          │       │        │          │        │        │
-    ▼          ▼       ▼        ▼          ▼        ▼        ▼
- (self)    architect architect  haiku   engineer  haiku  engineer
+/discover → /prd → /plan → /ticket → /implement → /pr → /validate
+    │         │       │        │          │        │        │
+    ▼         ▼       ▼        ▼          ▼        ▼        ▼
+ (self)  architect architect haiku   engineer  haiku  engineer
 interactive
 ```
 
 **Discovery is interactive** - you conduct it yourself as a conversation with the user.
 **All other phases delegate** to specialist agents.
+
+**Agent definitions**: See `.claude/agents/` for detailed agent responsibilities and standards.
 
 Optional: `/research` can be used anytime for autonomous technical investigation.
 
@@ -86,9 +88,9 @@ Workflow state persists in files, not context:
 |-------|-------------------|--------------|
 | Discovery | `docs/discovery.md` (living doc) | NOT STARTED → IN PROGRESS → READY FOR PLANNING |
 | Research | `docs/research/YYYY-MM-DD-{topic}.md` | (point-in-time) |
-| Plan | `docs/plans/YYYY-MM-DD-{feature}.md` | DRAFT → APPROVED |
 | PRD | `docs/prds/YYYY-MM-DD-{feature}.md` | DRAFT → APPROVED |
-| Tickets | Updated in PRD (ticket IDs added) | IDs populated |
+| Plan | `docs/plans/YYYY-MM-DD-{feature}.md` | DRAFT → APPROVED |
+| Tickets | Updated in plan (ticket IDs added) | IDs populated |
 
 **Reading artifacts gives you state. Writing artifacts persists state.**
 
@@ -102,10 +104,10 @@ Workflow state persists in files, not context:
 |-------|----------|
 | `/discover` | None - can start anytime |
 | `/research` | None - can run anytime |
-| `/plan` | Discovery status = READY FOR PLANNING (or explicit skip) |
-| `/prd` | Approved plan |
-| `/ticket` | Approved PRD |
-| `/implement` | PRD with ticket IDs |
+| `/prd` | Discovery status = READY FOR PLANNING (or explicit skip) |
+| `/plan` | Approved PRD |
+| `/ticket` | Approved plan |
+| `/implement` | Plan with ticket IDs |
 | `/pr` | Passing tests, committed code |
 | `/validate` | Open PR |
 
@@ -119,9 +121,9 @@ Workflow state persists in files, not context:
 |---------|--------------|---------|
 | `/discover` | **(self - interactive)** | Requirements gathering conversation |
 | `/research` | researcher | Autonomous technical research |
-| `/plan` | architect | Create implementation plan |
 | `/prd` | architect | Generate PRD with acceptance criteria |
-| `/ticket` | (haiku) | Create Asana tasks from PRD |
+| `/plan` | architect | Create implementation plan |
+| `/ticket` | (haiku) | Create Asana tasks from plan |
 | `/implement` | engineer | TDD implementation |
 | `/pr` | (haiku) | Create GitHub pull request |
 | `/validate` | engineer | Pre-merge validation |

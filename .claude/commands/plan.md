@@ -2,19 +2,22 @@
 
 **You are the orchestrator. Delegate this to the `architect` agent.**
 
+**Agent definition**: See `.claude/agents/architect.md` for architect responsibilities.
+
+**IMPORTANT**: Plan requires an APPROVED PRD. The PRD defines WHAT to build (requirements), the plan defines HOW to build it (technical approach).
+
 ## Prerequisites Check
 
 Before delegating, verify:
-1. Discovery document exists and is APPROVED, OR
-2. User explicitly skips discovery for small tasks
+1. PRD document exists and is APPROVED
 
 ```bash
-# Check for approved discovery
-grep -l "Status: APPROVED" docs/discovery/*.md 2>/dev/null
+# Check for approved PRD
+grep -l "Status: APPROVED" docs/prds/*.md 2>/dev/null
 ```
 
-If no approved discovery exists, ask user:
-- "No approved discovery found. Should I run `/discover` first, or skip discovery for this task?"
+If no approved PRD exists:
+- "No approved PRD found. Please run `/prd` first and get it approved."
 
 ## Delegation
 
@@ -40,7 +43,7 @@ Feature to plan: $ARGUMENTS
 Project location: /home/jim/workspace/test-sdlc-project
 Template location: docs/templates/plan-template.md
 
-Discovery document (if exists): [include path or note if skipped]
+PRD document: [include path to approved PRD]
 
 ## Objective
 
@@ -49,7 +52,7 @@ Create a detailed implementation plan with clear phases, technical approach, and
 ## Your Planning Tasks
 
 1. **Review Context**
-   - Read discovery document if it exists
+   - Read approved PRD to understand requirements
    - Explore codebase to understand current architecture
    - Identify integration points
 
@@ -112,7 +115,7 @@ Key Decisions:
 - Decision 1
 - Decision 2
 
-Next: User should review and approve, then run /prd
+Next: User should review and approve, then run /ticket
 ```
 
 ---
@@ -122,7 +125,7 @@ Next: User should review and approve, then run /prd
 1. **Verify** the plan document was created
 2. **Summarize** approach for user
 3. **Prompt** user to review and approve (change status to APPROVED)
-4. **Next step:** Once approved, user can run `/prd`
+4. **Next step:** Once approved, user can run `/ticket`
 
 ## Feature for Planning
 

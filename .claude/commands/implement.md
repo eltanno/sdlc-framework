@@ -2,6 +2,8 @@
 
 **You are the orchestrator. Delegate this to the `engineer` agent.**
 
+**Agent definition**: See `.claude/agents/engineer.md` for engineer responsibilities and coding standards.
+
 ## Prerequisites Check
 
 Before delegating, verify:
