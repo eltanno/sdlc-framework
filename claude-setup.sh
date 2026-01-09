@@ -244,13 +244,14 @@ if [ "$ALL_GOOD" = true ]; then
     echo "==================================${NC}"
     echo ""
     echo "Next steps:"
-    echo "  1. Edit .env with your API keys"
+    echo "  1. Edit .env with your API keys (ASANA_ACCESS_TOKEN, etc.)"
     if [ "$REPO_TYPE" = "github" ]; then
         echo "  2. Run 'gh auth login' to authenticate GitHub CLI"
     else
         echo "  2. Run 'glab auth login' to authenticate GitLab CLI"
     fi
-    echo "  3. Configure Asana MCP in Claude Code settings"
+    echo ""
+    echo "Asana MCP is pre-configured in .mcp.json - it will use ASANA_ACCESS_TOKEN from .env"
     echo ""
     echo "See README.md for detailed configuration instructions."
 else

@@ -58,22 +58,26 @@ The setup script will install `gh` (GitHub) or `glab` (GitLab) based on your sel
 
 ### Asana MCP (Required)
 
-Configure Asana MCP in your Claude Code settings:
-
-**Using Claude Code Desktop App:**
-1. Open Settings → MCP Servers
-2. Add new server:
-   - Name: `asana`
-   - Command: `npx`
-   - Args: `["-y", "@anthropic/mcp-asana"]`
-   - Environment:
-     ```json
-     {
-       "ASANA_ACCESS_TOKEN": "your-token-here"
-     }
-     ```
+Asana MCP is pre-configured in `.mcp.json`. It automatically uses the `ASANA_ACCESS_TOKEN` from your `.env` file.
 
 **Get your Asana token:** [Asana Developer Console](https://app.asana.com/0/developer-console)
+
+**Configuration file:** `.mcp.json`
+```json
+{
+  "mcpServers": {
+    "asana": {
+      "command": "npx",
+      "args": ["-y", "@anthropic/mcp-asana"],
+      "env": {
+        "ASANA_ACCESS_TOKEN": "${ASANA_ACCESS_TOKEN}"
+      }
+    }
+  }
+}
+```
+
+Claude Code will automatically load this configuration and use the token from your environment.
 
 ### Environment Variables
 
@@ -133,6 +137,7 @@ See `.env.example` for all available configuration options.
 │       ├── prd-template.md
 │       └── plan-template.md
 ├── .env.example                  # Environment variables template
+├── .mcp.json                     # MCP server configuration (Asana)
 ├── claude-setup.sh               # Dependency installation script
 ├── CLAUDE.md                     # Orchestrator instructions
 ├── WORKFLOW.md                   # Detailed workflow reference
