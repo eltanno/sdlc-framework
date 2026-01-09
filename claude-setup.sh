@@ -106,6 +106,12 @@ if ! install_if_missing bun "Bun"; then
     echo -e "${GREEN}✓${NC} Bun installed"
 fi
 
+# Claude Code
+if ! install_if_missing claude "Claude Code"; then
+    npm install -g @anthropic-ai/claude-code
+    echo -e "${GREEN}✓${NC} Claude Code installed"
+fi
+
 # ccusage (for token/cost display)
 if ! install_if_missing ccusage "ccusage"; then
     bun add -g ccusage
@@ -147,7 +153,7 @@ echo ""
 
 ALL_GOOD=true
 
-for cmd in git gh glab node bun jq ccusage; do
+for cmd in git gh glab node bun jq claude ccusage; do
     if command -v "$cmd" &> /dev/null; then
         VERSION=$($cmd --version 2>/dev/null | head -n1)
         echo -e "${GREEN}✓${NC} $cmd: $VERSION"
