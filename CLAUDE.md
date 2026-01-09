@@ -22,11 +22,11 @@ Your job is NOT to:
 
 | Do Yourself | Delegate |
 |-------------|----------|
-| Read existing artifacts | Research (→ researcher) |
-| Check workflow status | Architecture/Planning (→ architect) |
-| Simple git commands | PRD creation (→ architect) |
-| Coordinate handoffs | Implementation (→ engineer) |
-| Summarize agent results | Validation (→ engineer) |
+| **Discovery sessions** (interactive) | Technical research (→ researcher) |
+| Read existing artifacts | Architecture/Planning (→ architect) |
+| Check workflow status | PRD creation (→ architect) |
+| Simple git commands | Implementation (→ engineer) |
+| Coordinate handoffs | Validation (→ engineer) |
 
 ---
 
@@ -36,10 +36,14 @@ Your job is NOT to:
 /discover → /plan → /prd → /ticket → /implement → /pr → /validate
     │          │       │        │          │        │        │
     ▼          ▼       ▼        ▼          ▼        ▼        ▼
-researcher  architect architect  haiku   engineer  haiku  engineer
+ (self)    architect architect  haiku   engineer  haiku  engineer
+interactive
 ```
 
-Each phase produces an artifact. Agents get focused context, return structured deliverables.
+**Discovery is interactive** - you conduct it yourself as a conversation with the user.
+**All other phases delegate** to specialist agents.
+
+Optional: `/research` can be used anytime for autonomous technical investigation.
 
 ---
 
@@ -80,12 +84,15 @@ Workflow state persists in files, not context:
 
 | Phase | Artifact Location | Status Field |
 |-------|-------------------|--------------|
-| Discovery | `docs/discovery/YYYY-MM-DD-{topic}.md` | DRAFT → APPROVED |
+| Discovery | `docs/discovery.md` (living doc) | NOT STARTED → IN PROGRESS → READY FOR PLANNING |
+| Research | `docs/research/YYYY-MM-DD-{topic}.md` | (point-in-time) |
 | Plan | `docs/plans/YYYY-MM-DD-{feature}.md` | DRAFT → APPROVED |
 | PRD | `docs/prds/YYYY-MM-DD-{feature}.md` | DRAFT → APPROVED |
 | Tickets | Updated in PRD (ticket IDs added) | IDs populated |
 
 **Reading artifacts gives you state. Writing artifacts persists state.**
+
+**Discovery is special:** It's a single living document (`docs/discovery.md`) that gets revised over time, with revision history tracked.
 
 ---
 
@@ -93,7 +100,9 @@ Workflow state persists in files, not context:
 
 | Phase | Requires |
 |-------|----------|
-| `/plan` | Approved discovery OR explicit user skip |
+| `/discover` | None - can start anytime |
+| `/research` | None - can run anytime |
+| `/plan` | Discovery status = READY FOR PLANNING (or explicit skip) |
 | `/prd` | Approved plan |
 | `/ticket` | Approved PRD |
 | `/implement` | PRD with ticket IDs |
@@ -108,7 +117,8 @@ Workflow state persists in files, not context:
 
 | Command | Delegates To | Purpose |
 |---------|--------------|---------|
-| `/discover` | researcher | Research and document understanding |
+| `/discover` | **(self - interactive)** | Requirements gathering conversation |
+| `/research` | researcher | Autonomous technical research |
 | `/plan` | architect | Create implementation plan |
 | `/prd` | architect | Generate PRD with acceptance criteria |
 | `/ticket` | (haiku) | Create Asana tasks from PRD |
@@ -117,6 +127,16 @@ Workflow state persists in files, not context:
 | `/validate` | engineer | Pre-merge validation |
 | `/status` | (self) | Check workflow status |
 | `/hotfix` | engineer | Emergency fix (abbreviated workflow) |
+
+### Discovery vs Research
+
+| `/discover` | `/research` |
+|-------------|-------------|
+| **Interactive** conversation | **Autonomous** investigation |
+| You conduct it yourself | Delegate to researcher agent |
+| User explains their vision | Agent explores topic independently |
+| Output: `docs/discovery.md` | Output: `docs/research/YYYY-MM-DD-topic.md` |
+| Living document, revisable | Point-in-time findings |
 
 ---
 
