@@ -102,15 +102,9 @@ fi
 
 # Bun
 if ! install_if_missing bun "Bun"; then
-    curl -fsSL https://bun.sh/install | bash
-    export BUN_INSTALL="$HOME/.bun"
-    export PATH="$BUN_INSTALL/bin:$PATH"
+    npm install -g bun
     echo -e "${GREEN}✓${NC} Bun installed"
 fi
-
-# Ensure bun is in PATH for ccusage install
-export BUN_INSTALL="$HOME/.bun"
-export PATH="$BUN_INSTALL/bin:$PATH"
 
 # ccusage (for token/cost display)
 if ! install_if_missing ccusage "ccusage"; then
