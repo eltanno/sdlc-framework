@@ -1,131 +1,129 @@
-# Planning Phase
+# Planning Phase - Orchestrator Instructions
 
-You are entering the Planning phase. This follows an approved Discovery document.
+**You are the orchestrator. Delegate this to the `architect` agent.**
 
-## Prerequisites
+## Prerequisites Check
 
-Before starting this phase, verify:
-- [ ] Discovery document exists and is APPROVED
-- [ ] User has explicitly approved moving to planning
+Before delegating, verify:
+1. Discovery document exists and is APPROVED, OR
+2. User explicitly skips discovery for small tasks
 
-If no discovery document exists, ask the user if they want to:
-1. Create a discovery document first (`/discover`)
-2. Skip discovery for this small task (document the skip in the plan)
-
-## Purpose
-
-Create a detailed implementation plan with clear steps, technical approach, and acceptance criteria.
-
-## Your Task
-
-Create a plan document at: `docs/plans/YYYY-MM-DD-{feature}.md`
-
-Use today's date and a kebab-case feature name.
-
-## Plan Document Structure
-
-```markdown
-# Implementation Plan: {Feature}
-
-**Date:** YYYY-MM-DD
-**Status:** DRAFT | APPROVED
-**Discovery:** [Link to discovery doc if applicable]
-
-## Summary
-
-One paragraph describing what we're building and why.
-
-## Goals
-
-- Primary goal
-- Secondary goals
-
-## Non-Goals
-
-What this plan explicitly does NOT cover.
-
-## Technical Approach
-
-### Architecture
-
-High-level approach and key decisions.
-
-### Components
-
-| Component | Description | New/Modified |
-|-----------|-------------|--------------|
-| ... | ... | ... |
-
-### Key Decisions
-
-1. **Decision:** Why we chose this approach
-2. **Decision:** Why we chose this approach
-
-## Implementation Steps
-
-### Phase 1: {Name}
-
-1. Step with clear deliverable
-2. Step with clear deliverable
-
-### Phase 2: {Name}
-
-1. Step with clear deliverable
-2. Step with clear deliverable
-
-## Test Strategy
-
-### Unit Tests
-
-- What will be unit tested
-
-### Integration Tests
-
-- What will be integration tested
-
-### Manual Testing
-
-- What requires manual verification
-
-## Tickets
-
-These will be created in Asana after plan approval:
-
-1. **{Ticket Title}** - Description (estimate: S/M/L)
-2. **{Ticket Title}** - Description (estimate: S/M/L)
-3. ...
-
-## Risks and Mitigations
-
-| Risk | Probability | Impact | Mitigation |
-|------|-------------|--------|------------|
-| ... | ... | ... | ... |
-
-## Open Questions
-
-- [ ] Question needing resolution before implementation
-- [ ] Another question
-
-## Dependencies
-
-- External dependencies
-- Internal dependencies
-- Blocking items
+```bash
+# Check for approved discovery
+grep -l "Status: APPROVED" docs/discovery/*.md 2>/dev/null
 ```
 
-## Exit Criteria
+If no approved discovery exists, ask user:
+- "No approved discovery found. Should I run `/discover` first, or skip discovery for this task?"
 
-- [ ] Plan document created at correct path
-- [ ] Technical approach is clear and justified
-- [ ] Implementation steps are actionable
-- [ ] Test strategy defined
-- [ ] Tickets outlined for PRD phase
-- [ ] User has reviewed and set status = APPROVED
+## Delegation
 
-## Important
+```
+Task({
+  subagent_type: "architect",
+  model: "sonnet",  // Use "opus" for complex architectural decisions
+  prompt: <see Agent Prompt below>
+})
+```
 
-Do NOT proceed to PRD or implementation until the user explicitly approves this plan.
+## Agent Prompt
+
+Construct this prompt for the architect agent:
 
 ---
 
-**Feature for this plan:** $ARGUMENTS
+**ARCHITECT AGENT TASK: Implementation Planning**
+
+## Context
+
+Feature to plan: $ARGUMENTS
+Project location: /home/jim/workspace/test-sdlc-project
+Template location: docs/templates/plan-template.md
+
+Discovery document (if exists): [include path or note if skipped]
+
+## Objective
+
+Create a detailed implementation plan with clear phases, technical approach, and ticket breakdown.
+
+## Your Planning Tasks
+
+1. **Review Context**
+   - Read discovery document if it exists
+   - Explore codebase to understand current architecture
+   - Identify integration points
+
+2. **Design Approach**
+   - Define technical architecture
+   - Make and document key decisions with rationale
+   - Identify what's new vs modified
+
+3. **Break Down Work**
+   - Define implementation phases
+   - Create ticket list with estimates (S/M/L)
+   - Identify dependencies between tickets
+
+4. **Plan Testing**
+   - Unit test strategy
+   - Integration test strategy
+   - Manual testing requirements
+
+5. **Assess Risks**
+   - Technical risks
+   - Mitigation strategies
+
+## Deliverable
+
+Create a plan document at: `docs/plans/{todays-date}-{feature-kebab-case}.md`
+
+Use the template at `docs/templates/plan-template.md` as your structure.
+
+**Required sections:**
+- Summary
+- Goals / Non-Goals
+- Technical Approach
+- Implementation Phases (with exit criteria)
+- Ticket Breakdown (table with estimates)
+- Test Strategy
+- Risks and Mitigations
+
+Set status to DRAFT (user will approve).
+
+## Output Format
+
+After creating the document, return:
+
+```
+PLAN COMPLETE
+
+Document: docs/plans/YYYY-MM-DD-feature.md
+Status: DRAFT (awaiting approval)
+
+Summary: [2-3 sentence summary of approach]
+
+Phases:
+1. Phase 1 name - [brief description]
+2. Phase 2 name - [brief description]
+
+Tickets Proposed: [N] tickets
+- [list ticket titles]
+
+Key Decisions:
+- Decision 1
+- Decision 2
+
+Next: User should review and approve, then run /prd
+```
+
+---
+
+## After Agent Returns
+
+1. **Verify** the plan document was created
+2. **Summarize** approach for user
+3. **Prompt** user to review and approve (change status to APPROVED)
+4. **Next step:** Once approved, user can run `/prd`
+
+## Feature for Planning
+
+$ARGUMENTS

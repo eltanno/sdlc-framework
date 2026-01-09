@@ -1,143 +1,143 @@
-# PRD Phase
+# PRD Phase - Orchestrator Instructions
 
-You are entering the PRD (Product Requirements Document) phase.
+**You are the orchestrator. Delegate this to the `architect` agent.**
 
-## Prerequisites
+## Prerequisites Check
 
-Before starting this phase, verify:
-- [ ] Plan document exists and is APPROVED
+Before delegating, verify:
+1. Plan document exists and is APPROVED
 
-If no approved plan exists, direct the user to `/plan` first.
-
-## Purpose
-
-Create a formal PRD with testable acceptance criteria that will drive ticket creation and validation.
-
-## Your Task
-
-Create a PRD at: `docs/prds/YYYY-MM-DD-{feature}.md`
-
-Use today's date and a kebab-case feature name.
-
-## PRD Document Structure
-
-```markdown
-# PRD: {Feature Name}
-
-**Date:** YYYY-MM-DD
-**Status:** DRAFT | APPROVED
-**Plan:** [Link to plan document]
-**Owner:** {name}
-
-## Overview
-
-### Problem Statement
-
-Clear description of the problem we're solving.
-
-### Solution Summary
-
-One paragraph describing the solution.
-
-### Success Metrics
-
-How will we know this is successful?
-
-- Metric 1
-- Metric 2
-
-## Requirements
-
-### Functional Requirements
-
-#### FR-1: {Requirement Name}
-
-**Description:** What the system must do.
-
-**Acceptance Criteria:**
-- [ ] Given X, when Y, then Z
-- [ ] Given A, when B, then C
-
-#### FR-2: {Requirement Name}
-
-**Description:** What the system must do.
-
-**Acceptance Criteria:**
-- [ ] Given X, when Y, then Z
-
-### Non-Functional Requirements
-
-#### NFR-1: Performance
-
-- Requirement with measurable threshold
-
-#### NFR-2: Security
-
-- Security requirements
-
-## User Stories
-
-### US-1: {As a user...}
-
-**Story:** As a {role}, I want to {action} so that {benefit}.
-
-**Acceptance Criteria:**
-- [ ] Criterion 1
-- [ ] Criterion 2
-
-## Technical Specifications
-
-### API Changes
-
-Describe any API changes.
-
-### Data Model Changes
-
-Describe any data model changes.
-
-### Dependencies
-
-External dependencies required.
-
-## Tickets
-
-| ID | Title | Description | Priority | Estimate |
-|----|-------|-------------|----------|----------|
-| TBD | Ticket 1 | Description | P1 | M |
-| TBD | Ticket 2 | Description | P2 | S |
-
-*Note: IDs will be filled in after Asana ticket creation.*
-
-## Testing Requirements
-
-### Test Cases
-
-| ID | Description | Steps | Expected Result |
-|----|-------------|-------|-----------------|
-| TC-1 | ... | ... | ... |
-| TC-2 | ... | ... | ... |
-
-## Rollout Plan
-
-How will this be deployed/released?
-
-## Rollback Plan
-
-How do we rollback if something goes wrong?
+```bash
+# Check for approved plan
+grep -l "Status: APPROVED" docs/plans/*.md 2>/dev/null
 ```
 
-## Exit Criteria
+If no approved plan exists:
+- "No approved plan found. Please run `/plan` first and get it approved."
 
-- [ ] PRD created at correct path
-- [ ] All functional requirements have acceptance criteria
-- [ ] Acceptance criteria are testable (Given/When/Then format preferred)
-- [ ] Ticket placeholders ready for Asana creation
-- [ ] User has reviewed and set status = APPROVED
+## Delegation
 
-## Important
+```
+Task({
+  subagent_type: "architect",
+  model: "sonnet",
+  prompt: <see Agent Prompt below>
+})
+```
 
-Do NOT create Asana tickets until the PRD is approved.
+## Agent Prompt
+
+Construct this prompt for the architect agent:
 
 ---
 
-**Feature for this PRD:** $ARGUMENTS
+**ARCHITECT AGENT TASK: PRD Creation**
+
+## Context
+
+Feature: $ARGUMENTS
+Project location: /home/jim/workspace/test-sdlc-project
+Template location: docs/templates/prd-template.md
+
+Plan document: [include path to approved plan]
+
+## Objective
+
+Create a formal Product Requirements Document with testable acceptance criteria that will drive ticket creation and validation.
+
+## Your PRD Tasks
+
+1. **Review Plan**
+   - Read the approved plan document
+   - Understand technical approach and phases
+   - Note the proposed tickets
+
+2. **Define Requirements**
+   - Convert plan items to formal requirements (FR-1, FR-2, etc.)
+   - Write acceptance criteria in Given/When/Then format
+   - Define non-functional requirements (performance, security)
+
+3. **Create User Stories**
+   - Write user stories for key functionality
+   - Each story needs acceptance criteria
+
+4. **Specify Technical Details**
+   - API changes (if any)
+   - Data model changes (if any)
+   - Dependencies
+
+5. **Define Tickets**
+   - Create ticket table from plan
+   - Each ticket needs: title, description, priority, estimate
+   - Leave ID column as "TBD" (filled after Asana creation)
+
+6. **Plan Rollout**
+   - Deployment strategy
+   - Rollback plan
+
+## Deliverable
+
+Create a PRD at: `docs/prds/{todays-date}-{feature-kebab-case}.md`
+
+Use the template at `docs/templates/prd-template.md` as your structure.
+
+**Required sections:**
+- Executive Summary (problem, solution, success metrics)
+- Functional Requirements with acceptance criteria
+- Non-Functional Requirements
+- User Stories
+- Technical Specifications
+- Tickets table (ID = TBD)
+- Testing Requirements
+- Rollout/Rollback Plan
+
+Set status to DRAFT (user will approve).
+
+## Critical: Acceptance Criteria Format
+
+Every requirement MUST have testable acceptance criteria:
+
+```
+- [ ] Given [context], when [action], then [expected result]
+```
+
+These will be used for validation in `/validate` phase.
+
+## Output Format
+
+After creating the document, return:
+
+```
+PRD COMPLETE
+
+Document: docs/prds/YYYY-MM-DD-feature.md
+Status: DRAFT (awaiting approval)
+
+Summary: [2-3 sentence summary]
+
+Requirements: [N] functional, [N] non-functional
+User Stories: [N] stories
+
+Tickets Ready for Creation:
+| # | Title | Priority | Estimate |
+|---|-------|----------|----------|
+| 1 | ... | P1 | M |
+
+Acceptance Criteria: [N] testable criteria defined
+
+Next: User should review and approve, then run /ticket
+```
+
+---
+
+## After Agent Returns
+
+1. **Verify** the PRD was created with all required sections
+2. **Verify** acceptance criteria are testable (Given/When/Then)
+3. **Summarize** for user
+4. **Prompt** user to review and approve
+5. **Next step:** Once approved, user can run `/ticket`
+
+## Feature for PRD
+
+$ARGUMENTS

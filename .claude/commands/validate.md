@@ -1,56 +1,51 @@
-# Validation Phase
+# Validation Phase - Orchestrator Instructions
 
-You are entering the Validation phase - final checks before merge.
+**You are the orchestrator. Delegate validation checks to the `engineer` agent.**
 
-## Prerequisites
+## Prerequisites Check
 
-Before starting this phase, verify:
-- [ ] PR exists and is approved
-- [ ] All CI checks have passed
+Before delegating, verify:
+1. PR exists and has been reviewed/approved
 
-## Purpose
+```bash
+# Check PR status
+gh pr status
+```
 
-Perform final validation to ensure the PR is ready to merge.
+If no PR exists: "No open PR found. Please run `/pr` first."
+
+## Delegation
+
+```
+Task({
+  subagent_type: "engineer",
+  model: "haiku",  // Validation is verification, haiku is sufficient
+  prompt: <see Agent Prompt below>
+})
+```
+
+## Agent Prompt
+
+Construct this prompt for the engineer agent:
+
+---
+
+**ENGINEER AGENT TASK: Pre-Merge Validation**
+
+## Context
+
+PR: $ARGUMENTS (PR number or "current")
+Project: /home/jim/workspace/test-sdlc-project
+
+## Objective
+
+Perform comprehensive validation before merge. Verify all checks pass and acceptance criteria are met.
 
 ## Validation Checklist
 
-### Code Quality
-
-- [ ] All tests pass (run locally to confirm)
-- [ ] No linting errors
-- [ ] No TypeScript errors (if applicable)
-- [ ] No console.log/print statements in production code
-- [ ] No commented-out code
-- [ ] No TODO comments without ticket references
-
-### PR Status
-
-- [ ] PR has required approvals
-- [ ] All CI checks pass
-- [ ] No merge conflicts
-- [ ] Branch is up to date with main
-
-### Documentation
-
-- [ ] README updated (if public API changed)
-- [ ] Inline documentation for complex logic
-- [ ] PRD reflects final implementation (update if scope changed)
-
-### Asana Ticket
-
-- [ ] Ticket has PR link
-- [ ] Ticket status is correct
-- [ ] Acceptance criteria can be verified
-
-### Testing Verification
-
-Run these commands to verify:
+### 1. Code Quality Checks
 
 ```bash
-# Pull latest main and rebase
-git fetch origin main
-git rebase origin/main
-
 # Run full test suite
 npm test
 
@@ -59,47 +54,106 @@ npm run lint
 
 # Build (if applicable)
 npm run build
+
+# Check for console.logs
+grep -r "console.log" src/ --include="*.ts" --include="*.js" | grep -v test
+
+# Check for TODOs without tickets
+grep -r "TODO" src/ --include="*.ts" --include="*.js" | grep -v "TODO(TASK-"
 ```
 
-## Acceptance Criteria Verification
-
-For each acceptance criterion in the ticket/PRD:
-
-| Criterion | Status | Verified By |
-|-----------|--------|-------------|
-| Given X, when Y, then Z | ✅ Pass | Test: test_name |
-| Given A, when B, then C | ✅ Pass | Manual check |
-
-## Final Steps
-
-### If All Checks Pass
-
-1. Merge the PR
-2. Delete the feature branch
-3. Update Asana ticket status to "Done"
-4. Notify stakeholders if needed
+### 2. PR Status Checks
 
 ```bash
-# Merge via GitHub CLI
-gh pr merge --squash --delete-branch
+# CI status
+gh pr checks
 
-# Or merge via GitHub UI
+# Review status
+gh pr view --json reviews
+
+# Merge conflicts
+gh pr view --json mergeable
 ```
 
-### If Any Check Fails
+### 3. Branch Status
 
-1. Document what failed
-2. Create fix commits
-3. Re-run validation
-4. Do NOT merge until all checks pass
+```bash
+# Is branch up to date with main?
+git fetch origin main
+git log HEAD..origin/main --oneline
+```
 
-## Exit Criteria
+### 4. Acceptance Criteria Verification
 
-- [ ] All validation checks pass
-- [ ] PR merged to main
-- [ ] Feature branch deleted
-- [ ] Asana ticket marked complete
+Find the PRD and verify each acceptance criterion:
+
+| Criterion | Status | Verification |
+|-----------|--------|--------------|
+| Given X, when Y, then Z | PASS/FAIL | How verified |
+
+### 5. Documentation Check
+
+- [ ] README updated (if public API changed)
+- [ ] PRD reflects final implementation
+- [ ] Inline docs for complex logic
+
+## Deliverable
+
+Return:
+
+```
+VALIDATION REPORT
+
+PR: #[number]
+Branch: feature/TASK-XXX → main
+
+## Code Quality
+- Tests: PASS/FAIL ([N] tests)
+- Lint: PASS/FAIL
+- Build: PASS/FAIL
+
+## PR Status
+- CI Checks: PASS/FAIL
+- Reviews: [N] approved
+- Mergeable: Yes/No
+
+## Acceptance Criteria
+- [x] Criterion 1 - verified by test_xxx
+- [x] Criterion 2 - verified manually
+- [ ] Criterion 3 - FAILED: reason
+
+## Issues Found
+- Issue 1 (if any)
+- Issue 2 (if any)
+
+## Recommendation
+[READY TO MERGE / NEEDS FIXES]
+
+Next Steps:
+- If ready: Merge PR, update ticket to Done
+- If issues: Fix and re-validate
+```
 
 ---
 
-**PR to validate:** $ARGUMENTS
+## After Agent Returns
+
+### If READY TO MERGE
+
+1. Confirm with user
+2. Merge the PR:
+   ```bash
+   gh pr merge --squash --delete-branch
+   ```
+3. Update Asana ticket to "Done"
+4. Celebrate!
+
+### If NEEDS FIXES
+
+1. Report issues to user
+2. Guide back to `/implement` to fix
+3. Re-run `/validate` after fixes
+
+## PR to Validate
+
+$ARGUMENTS

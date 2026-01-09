@@ -1,90 +1,95 @@
-# Ticket Creation Phase
+# Ticket Creation Phase - Orchestrator Instructions
 
-You are entering the Ticket Creation phase.
+**You are the orchestrator. This is a simple coordination task - delegate to haiku or do directly.**
 
-## Prerequisites
+## Prerequisites Check
 
-Before starting this phase, verify:
-- [ ] PRD document exists and is APPROVED
-- [ ] PRD contains ticket placeholders in the Tickets table
+Before proceeding, verify:
+1. PRD document exists and is APPROVED
 
-If no approved PRD exists, direct the user to `/prd` first.
-
-## Purpose
-
-Create Asana tasks from the PRD and update the PRD with task IDs for traceability.
-
-## Your Task
-
-1. Read the approved PRD
-2. Create Asana tasks for each ticket in the PRD
-3. Update the PRD with the Asana task IDs
-
-## Ticket Creation Checklist
-
-For each ticket in the PRD:
-
-### 1. Create Asana Task
-
-Use the Trello/Asana MCP tools (or direct API) to create tasks with:
-
-- **Title:** Clear, actionable title from PRD
-- **Description:**
-  ```
-  ## Context
-  Link to PRD: [docs/prds/YYYY-MM-DD-feature.md]
-
-  ## Description
-  {Description from PRD}
-
-  ## Acceptance Criteria
-  - [ ] Criterion 1
-  - [ ] Criterion 2
-
-  ## Technical Notes
-  Any relevant technical context
-  ```
-- **Priority:** From PRD ticket table
-- **Labels:** Feature area, type (feature/bug/chore)
-
-### 2. Update PRD
-
-After creating each task, update the PRD's ticket table:
-
-```markdown
-| ID | Title | Description | Priority | Estimate |
-|----|-------|-------------|----------|----------|
-| TASK-123 | Ticket 1 | Description | P1 | M |
-| TASK-456 | Ticket 2 | Description | P2 | S |
+```bash
+# Check for approved PRD
+grep -l "Status: APPROVED" docs/prds/*.md 2>/dev/null
 ```
 
-### 3. Create Parent Task (if multiple tickets)
+If no approved PRD exists:
+- "No approved PRD found. Please run `/prd` first and get it approved."
 
-If there are 3+ tickets, create a parent/epic task that links to all child tasks.
+## Task: Create Asana Tickets
 
-## Exit Criteria
-
-- [ ] All tickets from PRD created in Asana
-- [ ] Each ticket has acceptance criteria from PRD
-- [ ] PRD updated with actual task IDs
-- [ ] Parent task created if applicable
-- [ ] Summary provided to user with task links
-
-## Output Format
-
-After completion, report:
+This phase is simple enough for haiku or direct execution:
 
 ```
-## Tickets Created
+Task({
+  subagent_type: "general-purpose",
+  model: "haiku",
+  prompt: <see Agent Prompt below>
+})
+```
 
-| PRD Ticket | Asana ID | Link |
-|------------|----------|------|
-| Ticket 1 | TASK-123 | [link] |
-| Ticket 2 | TASK-456 | [link] |
+## Agent Prompt
 
-PRD updated with task IDs: docs/prds/YYYY-MM-DD-feature.md
+---
+
+**TASK: Create Asana Tickets from PRD**
+
+## Context
+
+PRD location: $ARGUMENTS (or find most recent approved PRD)
+Project: /home/jim/workspace/test-sdlc-project
+
+## Objective
+
+Create Asana tasks for each ticket defined in the PRD's ticket table, then update the PRD with the actual ticket IDs.
+
+## Steps
+
+1. **Read the PRD** - Find the Tickets table
+
+2. **For each ticket, create Asana task:**
+
+   Use the Trello MCP tool (or Asana API):
+   ```
+   mcp__trello__add_card_to_list({
+     listId: "<appropriate-list-id>",
+     name: "[TASK] Ticket title from PRD",
+     description: "## Context\nPRD: docs/prds/YYYY-MM-DD-feature.md\n\n## Description\n{description from PRD}\n\n## Acceptance Criteria\n{criteria from PRD}"
+   })
+   ```
+
+3. **Record the ticket ID** returned from each creation
+
+4. **Update the PRD** - Replace "TBD" with actual ticket IDs in the table
+
+## Deliverable
+
+Return:
+
+```
+TICKETS CREATED
+
+PRD Updated: docs/prds/YYYY-MM-DD-feature.md
+
+Tickets:
+| PRD # | Asana ID | Title |
+|-------|----------|-------|
+| 1 | TASK-123 | Title |
+| 2 | TASK-124 | Title |
+
+Total: [N] tickets created
+
+Next: Ready for /implement TASK-XXX
 ```
 
 ---
 
-**PRD to process:** $ARGUMENTS
+## After Agent Returns
+
+1. **Verify** tickets were created
+2. **Verify** PRD was updated with ticket IDs
+3. **Summarize** for user with ticket links
+4. **Next step:** User can now run `/implement TASK-XXX` for any ticket
+
+## PRD to Process
+
+$ARGUMENTS

@@ -1,145 +1,156 @@
 # Project Development Workflow
 
-This project follows a structured SDLC workflow to ensure quality, traceability, and team alignment.
+## You Are The Orchestrator
+
+**CRITICAL: You are a coordinator, not an executor.**
+
+Your job is to:
+- Route tasks to specialist agents
+- Provide agents with focused context
+- Manage workflow state via artifact files
+- Coordinate handoffs between phases
+
+Your job is NOT to:
+- Write code yourself
+- Do deep research yourself
+- Make architectural decisions yourself
+- Accumulate massive context by doing everything
+
+### The 95% Rule
+
+**Delegate 95% of substantial work. Only do coordination yourself.**
+
+| Do Yourself | Delegate |
+|-------------|----------|
+| Read existing artifacts | Research (→ researcher) |
+| Check workflow status | Architecture/Planning (→ architect) |
+| Simple git commands | PRD creation (→ architect) |
+| Coordinate handoffs | Implementation (→ engineer) |
+| Summarize agent results | Validation (→ engineer) |
+
+---
 
 ## Workflow Overview
 
 ```
-Discovery → Plan → PRD → Tickets → Branch → TDD → PR → Validate
+/discover → /plan → /prd → /ticket → /implement → /pr → /validate
+    │          │       │        │          │        │        │
+    ▼          ▼       ▼        ▼          ▼        ▼        ▼
+researcher  architect architect  haiku   engineer  haiku  engineer
 ```
 
-Every feature, enhancement, or significant bug fix follows this workflow. Small fixes (typos, config tweaks) may use an abbreviated path.
+Each phase produces an artifact. Agents get focused context, return structured deliverables.
 
 ---
 
-## Phase Requirements
+## Agent Delegation Reference
 
-### 1. Discovery Phase (`/discover`)
+### How to Delegate
 
-**Purpose:** Research and document understanding before planning.
+```
+Task({
+  subagent_type: "engineer",
+  prompt: "Context and instructions here",
+  model: "sonnet"  // or haiku, opus
+})
+```
 
-**When Required:** New features, significant changes, unfamiliar areas of codebase.
+### Agent Roster
 
-**Output:** `docs/discovery/YYYY-MM-DD-{topic}.md`
+| Agent | Use For | Model |
+|-------|---------|-------|
+| `researcher` | Discovery, web research, codebase exploration | sonnet |
+| `architect` | Planning, PRDs, system design, technical decisions | sonnet/opus |
+| `engineer` | Implementation, TDD, debugging, validation | sonnet |
+| `Explore` | Quick codebase searches | haiku |
 
-**Exit Criteria:** User explicitly approves the discovery document.
+### Model Selection
 
----
-
-### 2. Planning Phase (`/plan`)
-
-**Purpose:** Create detailed implementation plan with user approval.
-
-**Prerequisites:**
-- Approved discovery document (or user explicitly waives for small tasks)
-
-**Output:** `docs/plans/YYYY-MM-DD-{feature}.md` with status APPROVED
-
-**Exit Criteria:** User marks plan as APPROVED in the document.
-
----
-
-### 3. PRD Phase (`/prd`)
-
-**Purpose:** Create Product Requirements Document with acceptance criteria.
-
-**Prerequisites:**
-- Approved plan document
-
-**Output:** `docs/prds/YYYY-MM-DD-{feature}.md`
-
-**Exit Criteria:** PRD contains:
-- Clear acceptance criteria (testable)
-- Asana ticket placeholders ready to fill
-- User approval
+| Complexity | Model | Use When |
+|------------|-------|----------|
+| Simple/grunt work | `haiku` | Ticket creation, simple validation, formatting |
+| Standard work | `sonnet` | Implementation, research, most tasks |
+| Complex decisions | `opus` | Architecture, difficult debugging, critical design |
 
 ---
 
-### 4. Tickets Phase (`/ticket`)
+## Artifact Locations (State Persistence)
 
-**Purpose:** Create Asana tasks from PRD.
+Workflow state persists in files, not context:
 
-**Prerequisites:**
-- Completed PRD document
+| Phase | Artifact Location | Status Field |
+|-------|-------------------|--------------|
+| Discovery | `docs/discovery/YYYY-MM-DD-{topic}.md` | DRAFT → APPROVED |
+| Plan | `docs/plans/YYYY-MM-DD-{feature}.md` | DRAFT → APPROVED |
+| PRD | `docs/prds/YYYY-MM-DD-{feature}.md` | DRAFT → APPROVED |
+| Tickets | Updated in PRD (ticket IDs added) | IDs populated |
 
-**Output:**
-- Asana tasks created
-- PRD updated with task IDs
-
-**Exit Criteria:** All tasks exist in Asana with IDs recorded in PRD.
-
----
-
-### 5. Implementation Phase (`/implement`)
-
-**Purpose:** TDD implementation of the feature.
-
-**Prerequisites:**
-- PRD with Asana ticket IDs
-- Feature branch created
-
-**Process:**
-1. Create feature branch: `feature/TASK-{id}-{description}`
-2. Write failing tests first
-3. Implement until tests pass
-4. Refactor if needed
-
-**Exit Criteria:** All tests pass, code complete.
+**Reading artifacts gives you state. Writing artifacts persists state.**
 
 ---
 
-### 6. Pull Request Phase (`/pr`)
+## Phase Prerequisites (Enforced)
 
-**Purpose:** Create GitHub PR for review.
+| Phase | Requires |
+|-------|----------|
+| `/plan` | Approved discovery OR explicit user skip |
+| `/prd` | Approved plan |
+| `/ticket` | Approved PRD |
+| `/implement` | PRD with ticket IDs |
+| `/pr` | Passing tests, committed code |
+| `/validate` | Open PR |
 
-**Prerequisites:**
-- All tests passing
-- Code committed with proper messages
-- Feature branch pushed
-
-**Output:** GitHub PR with:
-- Link to Asana ticket
-- Link to PRD
-- Summary of changes
-- Test verification
+**Check prerequisites before delegating. If missing, guide user to correct phase.**
 
 ---
 
-### 7. Validation Phase (`/validate`)
+## Slash Commands
 
-**Purpose:** Final checks before merge.
-
-**Checks:**
-- [ ] All tests pass
-- [ ] No linting errors
-- [ ] PR has required approvals
-- [ ] Asana ticket updated
-- [ ] Documentation updated if needed
+| Command | Delegates To | Purpose |
+|---------|--------------|---------|
+| `/discover` | researcher | Research and document understanding |
+| `/plan` | architect | Create implementation plan |
+| `/prd` | architect | Generate PRD with acceptance criteria |
+| `/ticket` | (haiku) | Create Asana tasks from PRD |
+| `/implement` | engineer | TDD implementation |
+| `/pr` | (haiku) | Create GitHub pull request |
+| `/validate` | engineer | Pre-merge validation |
+| `/status` | (self) | Check workflow status |
+| `/hotfix` | engineer | Emergency fix (abbreviated workflow) |
 
 ---
 
-## Enforcement Rules
+## Context Passing Pattern
 
-### NEVER Do These Without Prerequisites:
-- Write implementation code without an approved plan
-- Create a PR without passing tests
-- Commit without a ticket reference (except docs/config)
-- Merge without validation passing
+When delegating, provide agents with **focused context**:
 
-### ALWAYS Do These:
-- Check for existing artifacts before starting a phase
-- Use exact naming conventions for all artifacts
-- Update artifact status when a phase completes
-- Link related artifacts together (discovery → plan → PRD → tickets)
+```markdown
+## Context
+[Only what the agent needs - not your entire conversation]
 
-### Abbreviated Workflow (Small Tasks < 2 hours)
+## Objective
+[Clear, single goal]
 
-For small fixes, the workflow can be abbreviated:
-1. Create ticket directly (skip discovery/plan/PRD)
-2. Branch, implement with TDD, PR
-3. Must still have ticket reference in commits
+## Constraints
+[Boundaries and requirements]
 
-Document the abbreviated workflow in the PR description.
+## Deliverable
+[Exact format expected back]
+```
+
+**Anti-pattern:** Passing your entire context to agents
+**Good pattern:** Extracting relevant subset for the specific task
+
+---
+
+## Handling Agent Results
+
+When an agent returns:
+
+1. **Verify deliverable** - Did they produce what was asked?
+2. **Persist to artifact** - Write to appropriate docs/ location
+3. **Summarize for user** - Brief summary, link to artifact
+4. **Identify next step** - What phase comes next?
 
 ---
 
@@ -150,7 +161,6 @@ Document the abbreviated workflow in the PR description.
 feature/TASK-{id}-{short-description}
 bugfix/TASK-{id}-{short-description}
 hotfix/TASK-{id}-{short-description}
-docs/TASK-{id}-{short-description}
 ```
 
 ### Commit Messages
@@ -158,90 +168,26 @@ docs/TASK-{id}-{short-description}
 [TASK-XXX] Brief description (50 chars max)
 
 - Detail about what changed
-- Another detail if needed
 
 Co-Authored-By: Claude <noreply@anthropic.com>
 ```
-
-### PR Title Format
-```
-[TASK-XXX] Brief description of the change
-```
-
----
-
-## Slash Commands
-
-| Command | Purpose | Phase |
-|---------|---------|-------|
-| `/discover` | Research and document understanding | Discovery |
-| `/plan` | Create implementation plan | Planning |
-| `/prd` | Generate PRD document | PRD |
-| `/ticket` | Create Asana tasks | Tickets |
-| `/implement` | TDD implementation | Implementation |
-| `/pr` | Create pull request | PR |
-| `/validate` | Pre-merge validation | Validation |
-| `/status` | Show current workflow status | Any |
-| `/hotfix` | Emergency fix (abbreviated workflow) | Emergency |
-
----
-
-## File Naming Conventions
-
-| Artifact | Pattern | Example |
-|----------|---------|---------|
-| Discovery | `docs/discovery/YYYY-MM-DD-{topic}.md` | `docs/discovery/2026-01-08-auth-system.md` |
-| Plan | `docs/plans/YYYY-MM-DD-{feature}.md` | `docs/plans/2026-01-08-oauth-login.md` |
-| PRD | `docs/prds/YYYY-MM-DD-{feature}.md` | `docs/prds/2026-01-08-oauth-login.md` |
-| Decision | `docs/decisions/YYYY-MM-DD-{topic}.md` | `docs/decisions/2026-01-08-db-choice.md` |
-
----
-
-## Quality Standards
-
-### Code
-- All code must have tests
-- Tests must pass before PR
-- Follow existing code style
-- No commented-out code
-- No console.log/print statements in production code
-
-### Documentation
-- Update README if public API changes
-- Update inline docs for complex logic
-- Keep PRD updated with any scope changes
-
-### Testing
-- Unit tests for business logic
-- Integration tests for API endpoints
-- E2E tests for critical user flows
 
 ---
 
 ## Emergency Procedures
 
-### Hotfix Process (`/hotfix`)
-
-For production emergencies only:
-1. Create `hotfix/TASK-{id}-{description}` branch from main
-2. Fix the issue with tests
-3. Create PR with `[HOTFIX]` prefix
-4. Get expedited review
-5. Merge and deploy
-6. Create follow-up ticket for proper fix if needed
-
-**Must still have:**
-- Ticket reference
-- Tests
-- PR review (can be post-merge for critical issues)
+For production emergencies, `/hotfix` uses abbreviated workflow:
+- Skip discovery/plan/PRD
+- Still requires: ticket, tests, PR
+- Delegate to engineer with urgency flag
 
 ---
 
 ## Templates
 
-Templates are available in `docs/templates/`:
-- `prd-template.md` - Product Requirements Document
-- `plan-template.md` - Implementation Plan
-- `discovery-template.md` - Discovery Document
+Templates available in `docs/templates/`:
+- `discovery-template.md`
+- `plan-template.md`
+- `prd-template.md`
 
-Use these as starting points for all artifacts.
+Agents should use these as starting points.

@@ -1,122 +1,142 @@
-# Workflow Status
+# Workflow Status - Orchestrator Direct Task
 
-Show the current status of the SDLC workflow for this project.
+**You are the orchestrator. This is a coordination task - do it yourself.**
 
-## Your Task
-
-Analyze the project and report on workflow status.
+Status checking is lightweight - just read files and report. No delegation needed.
 
 ## Status Check Process
 
-### 1. Check for Artifacts
-
-Search for existing workflow artifacts:
+### 1. Check Artifact Directories
 
 ```bash
 # Discovery documents
-ls -la docs/discovery/*.md 2>/dev/null
+echo "=== Discovery ==="
+ls -la docs/discovery/*.md 2>/dev/null || echo "No discovery docs"
 
 # Plans
-ls -la docs/plans/*.md 2>/dev/null
+echo "=== Plans ==="
+ls -la docs/plans/*.md 2>/dev/null || echo "No plans"
 
 # PRDs
-ls -la docs/prds/*.md 2>/dev/null
-
-# Active branches
-git branch -a 2>/dev/null
+echo "=== PRDs ==="
+ls -la docs/prds/*.md 2>/dev/null || echo "No PRDs"
 ```
 
-### 2. Analyze Document Status
+### 2. Check Document Statuses
 
-For each document found, check:
-- Status field (DRAFT vs APPROVED)
-- Completion of sections
-- Links to related documents
+```bash
+# Find DRAFT documents (need attention)
+echo "=== DRAFT (pending approval) ==="
+grep -l "Status: DRAFT" docs/**/*.md 2>/dev/null || echo "None"
+
+# Find APPROVED documents
+echo "=== APPROVED ==="
+grep -l "Status: APPROVED" docs/**/*.md 2>/dev/null || echo "None"
+```
 
 ### 3. Check Git Status
 
 ```bash
 # Current branch
+echo "=== Git Status ==="
 git branch --show-current
 
 # Uncommitted changes
 git status --short
 
 # Recent commits
-git log --oneline -5
+git log --oneline -5 2>/dev/null || echo "No commits yet"
+
+# Open PRs
+gh pr list 2>/dev/null || echo "No GitHub remote"
 ```
 
-### 4. Generate Status Report
+### 4. Check for Active Work
+
+Look for:
+- Feature branches (indicates in-progress implementation)
+- DRAFT documents (need approval)
+- Open PRs (need review/merge)
 
 ## Output Format
+
+Generate this status report:
 
 ```markdown
 # SDLC Workflow Status
 
 **Generated:** YYYY-MM-DD HH:MM
-**Current Branch:** {branch}
+**Project:** test-sdlc-project
 
-## Active Work
+## Current State
 
-### In Progress
-- [ ] {Phase}: {Description} - {Status}
+**Active Phase:** [Discovery / Planning / PRD / Implementation / PR / Validation / None]
+**Current Branch:** [branch name]
 
-### Pending Review
-- [ ] {Document/PR}: Awaiting approval
+## Documents
 
-## Artifacts
-
-### Discovery Documents
+### Discovery
 | Document | Status | Date |
 |----------|--------|------|
-| ... | DRAFT/APPROVED | ... |
+| topic.md | DRAFT/APPROVED | YYYY-MM-DD |
 
 ### Plans
 | Document | Status | Date |
 |----------|--------|------|
-| ... | DRAFT/APPROVED | ... |
+| feature.md | DRAFT/APPROVED | YYYY-MM-DD |
 
 ### PRDs
-| Document | Status | Date | Tickets |
-|----------|--------|------|---------|
-| ... | DRAFT/APPROVED | ... | TASK-XXX |
+| Document | Status | Tickets |
+|----------|--------|---------|
+| feature.md | DRAFT/APPROVED | TASK-XXX, TASK-YYY |
 
-## Git Status
+## Git
 
-- **Branch:** {current branch}
-- **Uncommitted Changes:** {yes/no}
-- **Ahead/Behind Main:** {status}
+- **Branch:** main / feature/TASK-XXX-desc
+- **Uncommitted Changes:** Yes/No
+- **Open PRs:** [list or none]
+
+## Workflow Progress
+
+```
+[x] Discovery  → document.md (APPROVED)
+[x] Plan       → plan.md (APPROVED)
+[x] PRD        → prd.md (APPROVED)
+[x] Tickets    → TASK-123, TASK-124
+[ ] Implement  → in progress on feature branch
+[ ] PR         → not started
+[ ] Validate   → not started
+```
 
 ## Recommendations
 
-1. Next recommended action
+1. Next action based on current state
 2. Any blockers or issues
+3. Suggested command to run
 
 ## Quick Commands
 
-- Start discovery: `/discover {topic}`
-- Create plan: `/plan {feature}`
-- Create PRD: `/prd {feature}`
-- Check tickets: `/ticket {prd-path}`
-- Implement: `/implement TASK-XXX`
-- Create PR: `/pr TASK-XXX`
-- Validate: `/validate {pr-number}`
+| Action | Command |
+|--------|---------|
+| Start discovery | `/discover {topic}` |
+| Create plan | `/plan {feature}` |
+| Create PRD | `/prd {feature}` |
+| Create tickets | `/ticket` |
+| Implement | `/implement TASK-XXX` |
+| Create PR | `/pr TASK-XXX` |
+| Validate | `/validate` |
 ```
 
-## What to Look For
+## What to Watch For
 
 ### Red Flags
-- PRDs without ticket IDs (tickets not created)
-- Branches without associated tickets
 - DRAFT documents older than a week
-- Multiple features in progress simultaneously
+- Feature branches without PRs
+- PRDs without ticket IDs
+- Multiple features in progress
 
 ### Good Signs
-- Clear progression through phases
-- All documents have APPROVED status
+- Clear linear progression through phases
+- All documents approved before moving on
 - Tickets linked in PRDs
 - Commits reference ticket IDs
-
----
-
-Report the current workflow status for this project.

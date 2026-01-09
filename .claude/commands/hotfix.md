@@ -1,132 +1,197 @@
-# Hotfix Phase
+# Hotfix Phase - Orchestrator Instructions
 
-You are entering the Hotfix phase - for production emergencies ONLY.
+**You are the orchestrator. Delegate to `engineer` agent with URGENCY flag.**
 
 ## When to Use
 
-Use this ONLY for:
+**PRODUCTION EMERGENCIES ONLY:**
 - Production is down
-- Security vulnerability discovered
+- Security vulnerability
 - Critical bug affecting all users
 - Data corruption risk
 
-For non-emergencies, use the standard workflow (`/discover` → `/plan` → etc.)
+For non-emergencies, use standard workflow: `/discover` → `/plan` → etc.
 
 ## Abbreviated Workflow
 
-Hotfixes skip Discovery, Plan, and PRD phases but MUST still have:
-- Ticket reference
-- Tests
-- PR review (can be post-merge for critical issues)
-
-## Hotfix Process
-
-### 1. Create Ticket
-
-Even in emergencies, create an Asana ticket first:
+Hotfix skips Discovery, Plan, PRD but MUST still have:
+- Ticket (for tracking)
+- Tests (prevent regression)
+- PR (code review)
 
 ```
-Title: [HOTFIX] Brief description of the issue
-Priority: P0 - Critical
-Description:
-- What is broken
-- Impact on users
-- Root cause (if known)
+/hotfix → ticket → engineer (urgent) → PR → merge
 ```
 
-### 2. Create Hotfix Branch
+## Orchestrator Steps
+
+### 1. Create Emergency Ticket
+
+Do this directly (speed matters):
 
 ```bash
-# Branch from main (or current production)
+# Create ticket via Trello MCP
+mcp__trello__add_card_to_list({
+  listId: "<urgent-list-id>",
+  name: "[HOTFIX] $ARGUMENTS",
+  description: "## Emergency\n\nDescription of issue and impact.\n\n## Created\n$(date)"
+})
+```
+
+### 2. Delegate to Engineer
+
+```
+Task({
+  subagent_type: "engineer",
+  model: "sonnet",
+  prompt: <see Agent Prompt below>
+})
+```
+
+## Agent Prompt
+
+---
+
+**ENGINEER AGENT TASK: URGENT HOTFIX**
+
+## ⚠️ URGENCY: This is a production emergency
+
+## Context
+
+Issue: $ARGUMENTS
+Project: /home/jim/workspace/test-sdlc-project
+Ticket: [TASK-XXX created above]
+
+## Objective
+
+Fix the production issue as quickly as possible while maintaining minimum quality standards.
+
+## Your Tasks
+
+### 1. Create Hotfix Branch (from main)
+
+```bash
 git checkout main
 git pull origin main
 git checkout -b hotfix/TASK-{id}-{description}
 ```
 
-### 3. Fix with Tests
+### 2. Reproduce and Fix
 
-Even hotfixes need tests:
+- Identify root cause
+- Write a test that reproduces the bug
+- Fix the bug
+- Verify test passes
+
+### 3. Minimal Testing
 
 ```bash
-# Write a test that reproduces the bug
-# Then fix the bug
-# Verify test passes
+# Run tests (at minimum, the new test + related tests)
 npm test
+
+# Quick lint check
+npm run lint
 ```
 
-### 4. Create PR with [HOTFIX] Prefix
+### 4. Commit with [HOTFIX] Tag
+
+```
+[HOTFIX][TASK-XXX] Fix critical issue
+
+- Root cause: X
+- Fix: Y
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+```
+
+### 5. Create PR Immediately
 
 ```bash
+git push -u origin $(git branch --show-current)
+
 gh pr create \
-  --title "[HOTFIX][TASK-XXX] Fix critical issue" \
-  --body "$(cat <<'EOF'
-## HOTFIX - Production Emergency
+  --title "[HOTFIX][TASK-XXX] Fix: description" \
+  --body "## HOTFIX - Production Emergency
 
 ### Issue
-What was broken and the impact.
+What was broken.
 
 ### Root Cause
 Why it happened.
 
 ### Fix
-What this PR does to fix it.
+What this PR does.
 
 ### Testing
-- [ ] Test added to prevent regression
-- [ ] Manually verified fix
+- [x] Regression test added
+- [x] Tests pass
 
-### Rollback Plan
-How to rollback if this makes things worse.
+### Rollback
+How to rollback if needed.
 
-### Asana Ticket
-[TASK-XXX](link)
-EOF
-)"
+Ticket: TASK-XXX"
 ```
 
-### 5. Get Expedited Review
+## Deliverable
 
-For critical issues:
-- Tag reviewers directly
-- Use Slack/communication channel
-- Can merge with single approval in true emergencies
+Return:
 
-### 6. Merge and Deploy
+```
+HOTFIX COMPLETE
 
-```bash
-# Merge immediately after approval
-gh pr merge --squash
+Ticket: TASK-XXX
+Branch: hotfix/TASK-XXX-description
+PR: #[number] - [HOTFIX] title
 
-# Deploy to production
-# (your deployment process)
+Root Cause: [brief explanation]
+Fix: [what was changed]
+
+Tests: PASS
+PR URL: https://github.com/...
+
+READY FOR EXPEDITED REVIEW
+
+Post-merge:
+- [ ] Deploy to production
+- [ ] Monitor for issues
+- [ ] Create follow-up ticket if proper fix needed
 ```
 
-### 7. Post-Incident Tasks
+## Critical Rules
 
-After the fire is out:
-
-1. **Update Ticket:** Document what happened and the fix
-2. **Create Follow-up:** If the hotfix is a band-aid, create a ticket for proper fix
-3. **Post-mortem:** For major incidents, write a post-mortem document
-
-## Exit Criteria
-
-- [ ] Ticket exists with [HOTFIX] label
-- [ ] Hotfix branch created from main
-- [ ] Tests added for the fix
-- [ ] PR created with [HOTFIX] prefix
-- [ ] At least one review (can be post-merge for P0)
-- [ ] Merged and deployed
-- [ ] Ticket updated with resolution
-- [ ] Follow-up ticket created if needed
-
-## Post-Merge Review
-
-Even if merged without full review:
-- Get a full review within 24 hours
-- Document any technical debt introduced
-- Schedule time to do it "right" if needed
+1. **Speed matters** but don't skip tests
+2. **One test minimum** - reproduce the bug
+3. **Small fix** - don't refactor, just fix
+4. **Document** - future you needs to understand
 
 ---
 
-**Issue to hotfix:** $ARGUMENTS
+## After Agent Returns
+
+### Expedited Review Process
+
+1. **Tag reviewers directly** - Don't wait for normal review cycle
+2. **Get single approval** - One approval is enough for hotfix
+3. **Merge immediately** after approval
+
+```bash
+gh pr merge --squash
+```
+
+### Post-Merge
+
+1. **Deploy** to production
+2. **Monitor** for 15-30 minutes
+3. **Update ticket** with resolution
+4. **Create follow-up** if hotfix is a band-aid
+
+### If True P0 (Production Down)
+
+Can merge with post-hoc review:
+1. Merge immediately
+2. Get review within 24 hours
+3. Document in incident report
+
+## Issue to Hotfix
+
+$ARGUMENTS

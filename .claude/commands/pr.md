@@ -1,139 +1,145 @@
-# Pull Request Phase
+# Pull Request Phase - Orchestrator Instructions
 
-You are entering the PR (Pull Request) phase.
+**You are the orchestrator. This is coordination - delegate to haiku or do directly.**
 
-## Prerequisites
+## Prerequisites Check
 
-Before starting this phase, verify:
-- [ ] Feature branch exists with commits
-- [ ] All tests pass
-- [ ] Linting passes
-- [ ] Branch is pushed to remote
-
-If tests aren't passing, go back to `/implement` first.
-
-## Purpose
-
-Create a GitHub PR with proper documentation linking back to tickets and PRD.
-
-## Your Task
-
-1. Push branch to remote (if not already)
-2. Create PR with proper format
-3. Link to Asana ticket and PRD
-
-## Pre-PR Checklist
-
-Run these checks before creating the PR:
+Before proceeding, verify:
+1. Feature branch exists with commits
+2. All tests pass
+3. Branch is pushed to remote
 
 ```bash
-# Ensure tests pass
+# Check current branch
+git branch --show-current
+
+# Check test status
 npm test
 
-# Ensure linting passes
-npm run lint
-
-# Check for uncommitted changes
+# Check if pushed
 git status
-
-# Push to remote
-git push -u origin $(git branch --show-current)
 ```
 
-## PR Format
+If tests fail: "Tests are failing. Please fix before creating PR."
+If not pushed: Push first with `git push -u origin $(git branch --show-current)`
 
-### Title
+## Task: Create GitHub PR
+
+This is simple enough for haiku or direct execution:
 
 ```
-[TASK-XXX] Brief description of the change
+Task({
+  subagent_type: "general-purpose",
+  model: "haiku",
+  prompt: <see Agent Prompt below>
+})
 ```
 
-### Body
+## Agent Prompt
 
-```markdown
+---
+
+**TASK: Create GitHub Pull Request**
+
+## Context
+
+Ticket: $ARGUMENTS
+Project: /home/jim/workspace/test-sdlc-project
+
+## Objective
+
+Create a GitHub PR with proper documentation linking to the ticket and PRD.
+
+## Steps
+
+### 1. Gather Information
+
+```bash
+# Current branch
+BRANCH=$(git branch --show-current)
+
+# Extract ticket ID from branch name
+TICKET_ID=$(echo $BRANCH | grep -oP 'TASK-\d+')
+
+# Get commit log for this branch
+git log main..$BRANCH --oneline
+
+# Find PRD with this ticket
+grep -l "$TICKET_ID" docs/prds/*.md
+```
+
+### 2. Create PR
+
+```bash
+gh pr create \
+  --title "[$TICKET_ID] Description from ticket" \
+  --body "$(cat <<'EOF'
 ## Summary
 
 Brief description of what this PR does.
 
-- Bullet point of key change
-- Another key change
-
 ## Related
 
-- **Asana Ticket:** [TASK-XXX](link-to-asana-task)
-- **PRD:** [docs/prds/YYYY-MM-DD-feature.md](link)
+- **Ticket:** [TASK-XXX](asana-link)
+- **PRD:** docs/prds/YYYY-MM-DD-feature.md
 
 ## Changes
 
 ### Added
-- New feature or file
+- New feature/file
 
 ### Changed
 - Modified behavior
 
-### Fixed
-- Bug that was fixed
-
 ## Testing
 
-- [ ] Unit tests added/updated
-- [ ] Integration tests added/updated
+- [x] Unit tests added
+- [x] All tests pass
 - [ ] Manual testing completed
-
-### Test Commands
-
-```bash
-npm test
-```
-
-## Screenshots (if applicable)
-
-Add screenshots for UI changes.
 
 ## Checklist
 
-- [ ] Tests pass
-- [ ] Linting passes
-- [ ] Documentation updated (if needed)
-- [ ] Asana ticket linked
-- [ ] Ready for review
-```
-
-## Creating the PR
-
-Use GitHub CLI:
-
-```bash
-gh pr create \
-  --title "[TASK-XXX] Description" \
-  --body "$(cat <<'EOF'
-## Summary
-...
-
-## Related
-- **Asana Ticket:** [TASK-XXX](link)
-- **PRD:** docs/prds/YYYY-MM-DD-feature.md
-
-...
+- [x] Tests pass
+- [x] Lint passes
+- [x] Ticket linked
+- [x] Ready for review
 EOF
 )"
 ```
 
-## Exit Criteria
+### 3. Update Asana Ticket
 
-- [ ] PR created with proper title format
-- [ ] PR body includes Asana ticket link
-- [ ] PR body includes PRD link
-- [ ] All CI checks pass
-- [ ] Ready for review
+Add PR link to the Asana ticket.
 
-## After PR Creation
+## Deliverable
 
-1. Copy PR link
-2. Update Asana ticket with PR link
-3. Request review from appropriate team members
-4. Monitor CI status
+Return:
+
+```
+PR CREATED
+
+PR: #[number] - [title]
+URL: https://github.com/...
+
+Branch: feature/TASK-XXX-description → main
+
+Linked:
+- Ticket: TASK-XXX (updated with PR link)
+- PRD: docs/prds/YYYY-MM-DD-feature.md
+
+CI Status: [pending/running]
+
+Next: Wait for CI, get review, then /validate
+```
 
 ---
 
-**Ticket for this PR:** $ARGUMENTS
+## After Agent Returns
+
+1. **Verify** PR was created
+2. **Provide** PR link to user
+3. **Next step:** Wait for CI checks and review, then `/validate`
+
+## Ticket for PR
+
+$ARGUMENTS
