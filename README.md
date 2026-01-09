@@ -38,6 +38,7 @@ See [WORKFLOW.md](WORKFLOW.md) for detailed workflow documentation.
 | `git` | Version control | [git-scm.com](https://git-scm.com) | `git --version` |
 | `gh` | GitHub CLI for PRs | [cli.github.com](https://cli.github.com) | `gh --version` |
 | Node.js | Runtime | [nodejs.org](https://nodejs.org) | `node --version` |
+| `bun` | Hooks runtime | [bun.sh](https://bun.sh) | `bun --version` |
 | `jq` | JSON parsing (statusline) | `apt install jq` / `brew install jq` | `jq --version` |
 
 ### Optional Tools
@@ -95,6 +96,10 @@ export ASANA_WORKSPACE_ID="your-workspace-id"
 │   │   ├── status.md             # /status - Workflow status
 │   │   ├── research.md           # /research - Technical research
 │   │   └── hotfix.md             # /hotfix - Emergency fixes
+│   ├── hooks/                     # Claude Code hooks
+│   │   ├── security-validator.ts # PreToolUse security validation
+│   │   ├── capture-tool-output.ts# PostToolUse audit logging
+│   │   └── validate-docs.ts      # Documentation link validator
 │   ├── scripts/                   # Utility scripts
 │   │   └── statusline.sh         # Custom statusline display
 │   ├── settings.json             # Claude Code settings
@@ -139,6 +144,54 @@ asana:
   workspace_id: "your-workspace-id"
   project_id: "your-project-id"
 ```
+
+## Hooks
+
+The framework includes Claude Code hooks for security and auditing.
+
+### Included Hooks
+
+| Hook | Trigger | Purpose |
+|------|---------|---------|
+| `security-validator.ts` | PreToolUse (Bash) | Blocks dangerous commands (reverse shells, `rm -rf ~`, prompt injection) |
+| `capture-tool-output.ts` | PostToolUse | Logs tool executions for auditing |
+| `validate-docs.ts` | Manual | Validates markdown links before commits |
+
+### Requirements
+
+Hooks require [Bun](https://bun.sh) runtime:
+
+```bash
+# Install bun
+curl -fsSL https://bun.sh/install | bash
+
+# Verify
+bun --version
+```
+
+### Log Locations
+
+Logs are written to `.logs/` (git-ignored):
+
+- `.logs/claude-security-events.jsonl` - Blocked security events
+- `.logs/tool-outputs/YYYY-MM-DD-tool-outputs.jsonl` - Daily tool execution logs
+
+### Optional: Git Pre-Commit Validation
+
+To validate documentation links before each commit, create a git hook:
+
+```bash
+# Create the hook
+cat > .git/hooks/pre-commit << 'EOF'
+#!/bin/bash
+bun run .claude/hooks/validate-docs.ts
+EOF
+
+# Make it executable
+chmod +x .git/hooks/pre-commit
+```
+
+Note: `.git/hooks/` is local and not shared. Each developer must set this up themselves.
 
 ## Agent Definitions
 

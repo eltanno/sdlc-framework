@@ -6,6 +6,32 @@
     "type": "command",
     "command": ".claude/scripts/statusline.sh"
   },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun run .claude/hooks/security-validator.ts",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun run .claude/hooks/capture-tool-output.ts",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  },
   "permissions": {
     "deny": [
       "Bash(rm -rf /)",
