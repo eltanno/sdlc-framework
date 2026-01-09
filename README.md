@@ -127,17 +127,45 @@ The framework enforces a phase-based workflow where each phase has clear inputs,
   - Performance acceptable
   - Documentation complete
 
-## Document Flow
+## Document Hierarchy
 
-The framework creates and maintains several key documents:
+The framework uses a clear hierarchy from holistic vision down to individual tasks:
+
+### The Hierarchy Model
+
+```
+docs/discovery.md              ← The whole app vision (living document)
+  ├── docs/prds/auth.md        ← Feature PRD
+  ├── docs/prds/sync-engine.md ← Feature PRD
+  └── docs/prds/cli.md         ← Feature PRD
+```
+
+| Document | Scope | Analogy | Status |
+|----------|-------|---------|--------|
+| **Discovery** | Whole application | "The book" | Living document (revised over time) |
+| **PRD** | One feature/epic | "A chapter" | Point-in-time (one per feature) |
+| **Plan** | Technical approach for PRD | "Chapter outline" | Point-in-time (one per PRD) |
+| **Tickets** | Individual tasks | "Paragraphs" | Created from plan |
+
+### Key Principles
+
+1. **One Discovery per application** - This is your holistic vision document that evolves over time
+2. **Multiple PRDs per application** - Each PRD focuses on a single feature or epic
+3. **PRDs reference Discovery** - Each PRD connects back to the overall vision
+4. **Plans implement PRDs** - Each plan defines how to build what a PRD specified
+
+### Document Flow
 
 ```
 docs/
-├── discovery.md                    # Living requirements document
+├── discovery.md                    # Living application vision (THE BOOK)
 ├── prds/
-│   └── YYYY-MM-DD-feature.md      # What to build
+│   ├── YYYY-MM-DD-feature-1.md    # Feature PRD (CHAPTER 1)
+│   ├── YYYY-MM-DD-feature-2.md    # Feature PRD (CHAPTER 2)
+│   └── YYYY-MM-DD-feature-3.md    # Feature PRD (CHAPTER 3)
 ├── plans/
-│   ├── YYYY-MM-DD-feature.md      # How to build it
+│   ├── YYYY-MM-DD-feature-1.md    # How to build feature 1
+│   ├── YYYY-MM-DD-feature-2.md    # How to build feature 2
 │   └── PROGRESS.md                 # Implementation tracking
 ├── research/
 │   └── YYYY-MM-DD-topic.md        # Technical research
@@ -150,14 +178,14 @@ docs/
 ### Document Relationships
 
 ```
-Discovery
+Discovery (whole app)
     ↓
-   PRD (WHAT to build)
-    ├── Features
-    ├── Acceptance Criteria
-    └── Ticket Definitions
-         ↓
-        Plan (HOW to build)
+   PRD 1 (Feature A - WHAT to build)      PRD 2 (Feature B)      PRD 3 (Feature C)
+    ├── Features                              ├── Features              ├── Features
+    ├── Acceptance Criteria                   ├── Acceptance Criteria   ├── Acceptance Criteria
+    └── Ticket Definitions                    └── Ticket Definitions    └── Ticket Definitions
+         ↓                                         ↓                         ↓
+        Plan 1 (HOW to build Feature A)         Plan 2                    Plan 3
          ├── Technical Architecture
          ├── Implementation Phases
          └── Ticket Breakdown (with Asana IDs)

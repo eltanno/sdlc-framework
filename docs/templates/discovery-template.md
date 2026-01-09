@@ -114,13 +114,26 @@ Questions that need answers before we can plan:
 
 *Based on the research, what approach do you recommend and why?*
 
+## Related PRDs
+
+**This section tracks feature-specific PRDs created from this discovery:**
+
+| PRD | Feature | Status | Created |
+|-----|---------|--------|---------|
+| _None yet_ | - | - | - |
+
+_When creating a new PRD with `/prd`, add it to this table to maintain traceability._
+
 ## Next Steps
 
 After this discovery is approved:
 
 1. Next step 1
 2. Next step 2
-3. Create implementation plan (`/plan`)
+3. Create feature-specific PRDs for each major feature (`/prd {feature-name}`)
+4. Create implementation plans for each PRD (`/plan`)
+
+**Note:** Discovery documents the whole application vision. PRDs are created per-feature/epic.
 
 ---
 

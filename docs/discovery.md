@@ -93,6 +93,18 @@ _Things we're assuming to be true:_
 
 ---
 
+## Related PRDs
+
+**This section tracks feature-specific PRDs created from this discovery:**
+
+| PRD | Feature | Status | Created |
+|-----|---------|--------|---------|
+| _None yet_ | - | - | - |
+
+_When creating a new PRD with `/prd`, add it to this table to maintain traceability._
+
+---
+
 ## Revision History
 
 | Rev | Date | Changes |

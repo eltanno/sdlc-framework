@@ -66,8 +66,8 @@ Task({
 | Agent | Use For | Model |
 |-------|---------|-------|
 | `researcher` | Discovery, web research, codebase exploration | sonnet |
-| `architect` | Planning, PRDs, system design, technical decisions | sonnet/opus |
-| `engineer` | Implementation, TDD, debugging, validation | sonnet |
+| `architect` | Planning, PRDs, system design, technical decisions | opus |
+| `engineer` | Implementation, TDD, debugging, validation | opus |
 | `Explore` | Quick codebase searches | haiku |
 
 ### Model Selection
@@ -84,17 +84,32 @@ Task({
 
 Workflow state persists in files, not context:
 
-| Phase | Artifact Location | Status Field |
-|-------|-------------------|--------------|
-| Discovery | `docs/discovery.md` (living doc) | NOT STARTED → IN PROGRESS → READY FOR PLANNING |
-| Research | `docs/research/YYYY-MM-DD-{topic}.md` | (point-in-time) |
-| PRD | `docs/prds/YYYY-MM-DD-{feature}.md` | DRAFT → APPROVED |
-| Plan | `docs/plans/YYYY-MM-DD-{feature}.md` | DRAFT → APPROVED |
-| Tickets | Updated in plan (ticket IDs added) | IDs populated |
+| Phase | Artifact Location | Status Field | Scope |
+|-------|-------------------|--------------|-------|
+| Discovery | `docs/discovery.md` (living doc) | NOT STARTED → IN PROGRESS → READY FOR PLANNING | **Whole application vision** |
+| Research | `docs/research/YYYY-MM-DD-{topic}.md` | (point-in-time) | Technical investigations |
+| PRD | `docs/prds/YYYY-MM-DD-{feature}.md` | DRAFT → APPROVED | **One feature/epic per PRD** |
+| Plan | `docs/plans/YYYY-MM-DD-{feature}.md` | DRAFT → APPROVED | Technical approach for one PRD |
+| Tickets | Updated in plan (ticket IDs added) | IDs populated | Individual tasks from plan |
 
 **Reading artifacts gives you state. Writing artifacts persists state.**
 
-**Discovery is special:** It's a single living document (`docs/discovery.md`) that gets revised over time, with revision history tracked.
+### Document Hierarchy
+
+**Discovery = The Whole App ("The Book")**
+- Single living document that evolves over time
+- Holistic application vision
+- Revised and updated as understanding grows
+
+**PRD = One Feature/Epic ("A Chapter")**
+- Multiple PRDs expected for real applications
+- Each PRD focuses on a single feature or epic
+- Each PRD references the discovery document
+- Point-in-time document (not revised, new PRD created for changes)
+
+**Plan = Technical Approach ("Chapter Outline")**
+- One plan per PRD
+- Defines HOW to build what the PRD specified
 
 ---
 

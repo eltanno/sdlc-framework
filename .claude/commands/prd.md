@@ -4,7 +4,28 @@
 
 **Agent definition**: See `.claude/agents/architect.md` for architect responsibilities.
 
-**IMPORTANT**: PRD comes BEFORE plan. The PRD defines WHAT to build, the plan defines HOW to build it.
+**IMPORTANT HIERARCHY CONCEPTS:**
+
+1. **PRD Scope**: PRDs are **per-feature/epic**, NOT whole-application documents
+2. **Discovery Reference**: Each PRD should reference `docs/discovery.md` (the whole app vision)
+3. **Multiple PRDs Expected**: Real applications will have multiple PRDs, one for each major feature
+4. **PRD comes BEFORE plan**: The PRD defines WHAT to build, the plan defines HOW to build it
+
+### PRD Granularity Guidance
+
+**Good PRD scope (one feature/epic):**
+- "User Authentication System"
+- "Offline Sync Engine"
+- "Command Line Interface"
+- "Real-time Collaboration"
+
+**Too broad (multiple PRDs needed):**
+- "Complete Application" → Split into feature-specific PRDs
+- "Full Platform" → Split by major feature areas
+
+**Too narrow (should be tickets, not PRDs):**
+- "Add login button" → This is a ticket within an auth PRD
+- "Fix password validation" → This is a bug fix ticket
 
 ## Prerequisites Check
 
@@ -43,11 +64,17 @@ Feature: $ARGUMENTS
 Project location: /home/jim/workspace/test-sdlc-project
 Template location: docs/templates/prd-template.md
 
-Discovery document (if exists): [include path or note if skipped]
+Discovery document: docs/discovery.md [include path or note if skipped]
+
+**CRITICAL: PRD Scope**
+- This PRD is for ONE feature/epic, NOT the whole application
+- The discovery document contains the holistic application vision
+- This PRD should focus on the specific feature: $ARGUMENTS
+- Reference the discovery document to show how this feature fits into the bigger picture
 
 ## Objective
 
-Create a formal Product Requirements Document with testable acceptance criteria that will drive ticket creation and validation.
+Create a formal Product Requirements Document with testable acceptance criteria for a SINGLE FEATURE that will drive ticket creation and validation.
 
 ## Your PRD Tasks
 
@@ -86,6 +113,7 @@ Create a PRD at: `docs/prds/{todays-date}-{feature-kebab-case}.md`
 Use the template at `docs/templates/prd-template.md` as your structure.
 
 **Required sections:**
+- **Discovery Reference** - Link to docs/discovery.md and explain how this feature fits the bigger picture
 - Executive Summary (problem, solution, success metrics)
 - Functional Requirements with acceptance criteria
 - Non-Functional Requirements
@@ -96,6 +124,8 @@ Use the template at `docs/templates/prd-template.md` as your structure.
 - Rollout/Rollback Plan
 
 Set status to DRAFT (user will approve).
+
+**Remember:** This PRD is for ONE feature, not the whole application. Keep scope focused.
 
 ## Critical: Acceptance Criteria Format
 
