@@ -15,8 +15,10 @@ For non-emergencies, use standard workflow: `/discover` → `/plan` → etc.
 ## Abbreviated Workflow
 
 ```
-/hotfix → Asana task (MCP) → engineer agent → PR (gh CLI) → merge
+/hotfix → Asana task (MCP) → engineer agent → PR/MR (gh/glab CLI) → merge
 ```
+
+**Note:** Commands use `gh` (GitHub) or `glab` (GitLab) based on `REPO_TYPE` in `.env`.
 
 Skips Discovery, Plan, PRD but MUST still have:
 - Asana ticket (for tracking)
@@ -115,14 +117,34 @@ git commit -m "[HOTFIX][ASANA-{gid}] Fix: {description}
 Co-Authored-By: Claude <noreply@anthropic.com>"
 ```
 
-### 5. Push and Create PR
+### 5. Push and Create PR/MR
 
 ```bash
 git push -u origin $(git branch --show-current)
 
+# Read REPO_TYPE from .env (defaults to github)
+REPO_TYPE=$(grep -E "^REPO_TYPE=" .env 2>/dev/null | cut -d= -f2 || echo "github")
+```
+
+**For GitHub (REPO_TYPE=github):**
+```bash
 gh pr create \
   --title "[HOTFIX][ASANA-{gid}] {description}" \
   --body "## 🚨 HOTFIX - Production Emergency
+..."
+```
+
+**For GitLab (REPO_TYPE=gitlab):**
+```bash
+glab mr create \
+  --title "[HOTFIX][ASANA-{gid}] {description}" \
+  --description "## 🚨 HOTFIX - Production Emergency
+..."
+```
+
+**PR/MR Body Content:**
+```
+## 🚨 HOTFIX - Production Emergency
 
 ### Issue
 {what was broken}
@@ -131,7 +153,7 @@ gh pr create \
 {why it happened}
 
 ### Fix
-{what this PR does}
+{what this PR/MR does}
 
 ### Testing
 - [x] Regression test added
@@ -139,12 +161,10 @@ gh pr create \
 - [x] Lint passes
 
 ### Rollback
-\`\`\`bash
 git revert {commit-sha}
-\`\`\`
 
 ### Ticket
-[ASANA-{gid}]({permalink_url})"
+[ASANA-{gid}]({permalink_url})
 ```
 
 ## Deliverable
@@ -187,8 +207,14 @@ mcp__asana__update_task({
 2. **Single approval sufficient** - For hotfixes
 3. **Merge immediately** after approval:
 
+**GitHub:**
 ```bash
 gh pr merge --squash --delete-branch
+```
+
+**GitLab:**
+```bash
+glab mr merge --squash --remove-source-branch
 ```
 
 ## Step 5: Post-Merge
@@ -218,7 +244,9 @@ mcp__asana__create_task({
 ## Error Handling
 
 ### If Asana MCP unavailable:
-- Create GitHub Issue as fallback: `gh issue create --title "[HOTFIX] {desc}" --body "..."`
+- Create Issue as fallback:
+  - **GitHub:** `gh issue create --title "[HOTFIX] {desc}" --body "..."`
+  - **GitLab:** `glab issue create --title "[HOTFIX] {desc}" --description "..."`
 - Document the issue number
 - Continue with fix
 

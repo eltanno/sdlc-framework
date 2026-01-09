@@ -8,6 +8,7 @@ set -e
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 echo "=================================="
@@ -17,6 +18,7 @@ echo ""
 
 # Track what needs to be installed
 MISSING_DEPS=()
+REPO_TYPE=""
 
 # -----------------------------------------------------------------------------
 # Check functions
@@ -34,6 +36,32 @@ check_command() {
 }
 
 # -----------------------------------------------------------------------------
+# Determine repo type
+# -----------------------------------------------------------------------------
+
+echo "Select your git repository provider:"
+echo "  1) GitHub (default)"
+echo "  2) GitLab"
+echo ""
+read -p "Enter choice [1/2] (press Enter for GitHub): " -r REPO_CHOICE
+echo ""
+
+case $REPO_CHOICE in
+    2)
+        REPO_TYPE="gitlab"
+        REPO_CLI="glab"
+        echo -e "${BLUE}Selected: GitLab${NC}"
+        ;;
+    *)
+        REPO_TYPE="github"
+        REPO_CLI="gh"
+        echo -e "${BLUE}Selected: GitHub${NC}"
+        ;;
+esac
+
+echo ""
+
+# -----------------------------------------------------------------------------
 # Check required dependencies
 # -----------------------------------------------------------------------------
 
@@ -41,7 +69,7 @@ echo "Checking required dependencies..."
 echo ""
 
 check_command git
-check_command gh
+check_command $REPO_CLI
 check_command node
 check_command bun
 check_command jq
@@ -98,13 +126,19 @@ if [ ${#MISSING_DEPS[@]} -gt 0 ]; then
                 ;;
             gh)
                 echo "Installing GitHub CLI..."
-                # Add GitHub CLI repository
                 type -p curl >/dev/null || sudo apt install curl -y
                 curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
                 sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
                 echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
                 sudo apt update
                 sudo apt install -y gh
+                ;;
+            glab)
+                echo "Installing GitLab CLI..."
+                type -p curl >/dev/null || sudo apt install curl -y
+                # Install glab via official script
+                curl -fsSL https://raw.githubusercontent.com/upciti/wakemeops/main/assets/install_repository | sudo bash
+                sudo apt install -y glab
                 ;;
             node)
                 echo "Installing Node.js..."
@@ -158,7 +192,10 @@ echo ""
 if [ ! -f .env ]; then
     if [ -f .env.example ]; then
         cp .env.example .env
+        # Update REPO_TYPE in .env
+        sed -i "s/^REPO_TYPE=.*/REPO_TYPE=$REPO_TYPE/" .env
         echo -e "${GREEN}✓${NC} Created .env from .env.example"
+        echo -e "${GREEN}✓${NC} Set REPO_TYPE=$REPO_TYPE"
         echo ""
         echo -e "${YELLOW}Important:${NC} Edit .env and add your API keys:"
         echo "  - ASANA_ACCESS_TOKEN"
@@ -169,6 +206,11 @@ if [ ! -f .env ]; then
     fi
 else
     echo -e "${GREEN}✓${NC} .env already exists"
+    # Update REPO_TYPE if it exists
+    if grep -q "^REPO_TYPE=" .env; then
+        sed -i "s/^REPO_TYPE=.*/REPO_TYPE=$REPO_TYPE/" .env
+        echo -e "${GREEN}✓${NC} Updated REPO_TYPE=$REPO_TYPE in .env"
+    fi
 fi
 
 echo ""
@@ -184,7 +226,7 @@ echo ""
 
 ALL_GOOD=true
 
-for cmd in git gh node bun jq; do
+for cmd in git $REPO_CLI node bun jq; do
     if command -v "$cmd" &> /dev/null; then
         VERSION=$($cmd --version 2>/dev/null | head -n1)
         echo -e "${GREEN}✓${NC} $cmd: $VERSION"
@@ -203,7 +245,11 @@ if [ "$ALL_GOOD" = true ]; then
     echo ""
     echo "Next steps:"
     echo "  1. Edit .env with your API keys"
-    echo "  2. Run 'gh auth login' to authenticate GitHub CLI"
+    if [ "$REPO_TYPE" = "github" ]; then
+        echo "  2. Run 'gh auth login' to authenticate GitHub CLI"
+    else
+        echo "  2. Run 'glab auth login' to authenticate GitLab CLI"
+    fi
     echo "  3. Configure Asana MCP in Claude Code settings"
     echo ""
     echo "See README.md for detailed configuration instructions."

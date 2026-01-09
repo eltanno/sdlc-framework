@@ -1,4 +1,4 @@
-# Pull Request Phase - Orchestrator Instructions
+# Pull Request / Merge Request Phase - Orchestrator Instructions
 
 **You are the orchestrator. This is coordination - delegate to haiku or do directly.**
 
@@ -18,12 +18,15 @@ npm test
 
 # Check if pushed
 git status
+
+# Check repo type from .env
+grep REPO_TYPE .env
 ```
 
-If tests fail: "Tests are failing. Please fix before creating PR."
+If tests fail: "Tests are failing. Please fix before creating PR/MR."
 If not pushed: Push first with `git push -u origin $(git branch --show-current)`
 
-## Task: Create GitHub PR
+## Task: Create PR/MR
 
 This is simple enough for haiku or direct execution:
 
@@ -39,7 +42,7 @@ Task({
 
 ---
 
-**TASK: Create GitHub Pull Request**
+**TASK: Create Pull Request / Merge Request**
 
 ## Context
 
@@ -48,11 +51,19 @@ Project: [current project directory]
 
 ## Objective
 
-Create a GitHub PR with proper documentation linking to the ticket and PRD.
+Create a PR (GitHub) or MR (GitLab) with proper documentation linking to the ticket and PRD.
 
 ## Steps
 
-### 1. Gather Information
+### 1. Determine Provider
+
+```bash
+# Read REPO_TYPE from .env (defaults to github)
+REPO_TYPE=$(grep -E "^REPO_TYPE=" .env 2>/dev/null | cut -d= -f2 || echo "github")
+echo "Repository type: $REPO_TYPE"
+```
+
+### 2. Gather Information
 
 ```bash
 # Current branch
@@ -65,10 +76,12 @@ TICKET_ID=$(echo $BRANCH | grep -oP 'TASK-\d+')
 git log main..$BRANCH --oneline
 
 # Find PRD with this ticket
-grep -l "$TICKET_ID" docs/prds/*.md
+grep -l "$TICKET_ID" docs/prds/*.md 2>/dev/null || echo "No PRD found"
 ```
 
-### 2. Create PR
+### 3. Create PR/MR
+
+**For GitHub (REPO_TYPE=github):**
 
 ```bash
 gh pr create \
@@ -107,24 +120,63 @@ EOF
 )"
 ```
 
-### 3. Update Asana Ticket
+**For GitLab (REPO_TYPE=gitlab):**
 
-Add PR link to the Asana ticket.
+```bash
+glab mr create \
+  --title "[$TICKET_ID] Description from ticket" \
+  --description "$(cat <<'EOF'
+## Summary
+
+Brief description of what this MR does.
+
+## Related
+
+- **Ticket:** [TASK-XXX](asana-link)
+- **PRD:** docs/prds/YYYY-MM-DD-feature.md
+
+## Changes
+
+### Added
+- New feature/file
+
+### Changed
+- Modified behavior
+
+## Testing
+
+- [x] Unit tests added
+- [x] All tests pass
+- [ ] Manual testing completed
+
+## Checklist
+
+- [x] Tests pass
+- [x] Lint passes
+- [x] Ticket linked
+- [x] Ready for review
+EOF
+)"
+```
+
+### 4. Update Asana Ticket
+
+Add PR/MR link to the Asana ticket.
 
 ## Deliverable
 
 Return:
 
 ```
-PR CREATED
+PR/MR CREATED
 
-PR: #[number] - [title]
-URL: https://github.com/...
+PR/MR: #[number] - [title]
+URL: https://github.com/... or https://gitlab.com/...
 
 Branch: feature/TASK-XXX-description → main
 
 Linked:
-- Ticket: TASK-XXX (updated with PR link)
+- Ticket: TASK-XXX (updated with PR/MR link)
 - PRD: docs/prds/YYYY-MM-DD-feature.md
 
 CI Status: [pending/running]
@@ -136,10 +188,10 @@ Next: Wait for CI, get review, then /validate
 
 ## After Agent Returns
 
-1. **Verify** PR was created
-2. **Provide** PR link to user
+1. **Verify** PR/MR was created
+2. **Provide** PR/MR link to user
 3. **Next step:** Wait for CI checks and review, then `/validate`
 
-## Ticket for PR
+## Ticket for PR/MR
 
 $ARGUMENTS

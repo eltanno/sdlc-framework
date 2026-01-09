@@ -47,8 +47,13 @@ git status --short
 # Recent commits
 git log --oneline -5 2>/dev/null || echo "No commits yet"
 
-# Open PRs
-gh pr list 2>/dev/null || echo "No GitHub remote"
+# Open PRs/MRs (check REPO_TYPE in .env)
+REPO_TYPE=$(grep -E "^REPO_TYPE=" .env 2>/dev/null | cut -d= -f2 || echo "github")
+if [ "$REPO_TYPE" = "gitlab" ]; then
+  glab mr list 2>/dev/null || echo "No GitLab remote"
+else
+  gh pr list 2>/dev/null || echo "No GitHub remote"
+fi
 ```
 
 ### 4. Check for Active Work

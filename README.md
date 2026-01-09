@@ -43,10 +43,12 @@ The setup script (`./claude-setup.sh`) will install these automatically on Linux
 | Tool | Purpose | Verify |
 |------|---------|--------|
 | `git` | Version control | `git --version` |
-| `gh` | GitHub CLI for PRs | `gh --version` |
+| `gh` or `glab` | GitHub/GitLab CLI for PRs | `gh --version` or `glab --version` |
 | `node` | Runtime | `node --version` |
 | `bun` | Hooks runtime | `bun --version` |
 | `jq` | JSON parsing (statusline) | `jq --version` |
+
+The setup script will install `gh` (GitHub) or `glab` (GitLab) based on your selection.
 
 ### Optional Tools
 

@@ -5,14 +5,21 @@
 ## Prerequisites Check
 
 Before delegating, verify:
-1. PR exists and has been reviewed/approved
+1. PR/MR exists and has been reviewed/approved
 
 ```bash
-# Check PR status
-gh pr status
+# Check REPO_TYPE from .env
+REPO_TYPE=$(grep -E "^REPO_TYPE=" .env 2>/dev/null | cut -d= -f2 || echo "github")
+
+# Check PR/MR status
+if [ "$REPO_TYPE" = "gitlab" ]; then
+  glab mr list --state=open
+else
+  gh pr status
+fi
 ```
 
-If no PR exists: "No open PR found. Please run `/pr` first."
+If no PR/MR exists: "No open PR/MR found. Please run `/pr` first."
 
 ## Delegation
 
@@ -62,17 +69,24 @@ grep -r "console.log" src/ --include="*.ts" --include="*.js" | grep -v test
 grep -r "TODO" src/ --include="*.ts" --include="*.js" | grep -v "TODO(TASK-"
 ```
 
-### 2. PR Status Checks
+### 2. PR/MR Status Checks
 
 ```bash
-# CI status
+# Read REPO_TYPE from .env (defaults to github)
+REPO_TYPE=$(grep -E "^REPO_TYPE=" .env 2>/dev/null | cut -d= -f2 || echo "github")
+```
+
+**For GitHub (REPO_TYPE=github):**
+```bash
 gh pr checks
-
-# Review status
 gh pr view --json reviews
-
-# Merge conflicts
 gh pr view --json mergeable
+```
+
+**For GitLab (REPO_TYPE=gitlab):**
+```bash
+glab mr view
+glab ci status
 ```
 
 ### 3. Branch Status
@@ -141,9 +155,16 @@ Next Steps:
 ### If READY TO MERGE
 
 1. Confirm with user
-2. Merge the PR:
+2. Merge the PR/MR:
+
+   **GitHub:**
    ```bash
    gh pr merge --squash --delete-branch
+   ```
+
+   **GitLab:**
+   ```bash
+   glab mr merge --squash --remove-source-branch
    ```
 3. Update Asana ticket to "Done"
 4. Celebrate!
