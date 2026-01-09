@@ -4,6 +4,10 @@
 
 **Agent definition**: See `.claude/agents/architect.md` for architect responsibilities.
 
+## Template
+
+Use the template at `docs/templates/prd-template.md` when creating PRD documents at `docs/prds/YYYY-MM-DD-{feature}.md`.
+
 **IMPORTANT HIERARCHY CONCEPTS:**
 
 1. **PRD Scope**: PRDs are **per-feature/epic**, NOT whole-application documents

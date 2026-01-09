@@ -30,7 +30,15 @@ Your job is NOT to:
 
 ---
 
-## Workflow Overview
+## Workflow Reference
+
+**The complete workflow is documented in `WORKFLOW.md`.**
+
+- Guide users through this process phase by phase
+- Check prerequisites before allowing each phase to proceed
+- Reference WORKFLOW.md for phase details, document locations, and requirements
+
+### Quick Workflow Overview
 
 ```
 /discover → /prd → /plan → /ticket → /implement → /pr → /validate
@@ -46,6 +54,8 @@ interactive
 **Agent definitions**: See `.claude/agents/` for detailed agent responsibilities and standards.
 
 Optional: `/research` can be used anytime for autonomous technical investigation.
+
+**For detailed phase documentation, prerequisites, and workflow principles, see [WORKFLOW.md](WORKFLOW.md).**
 
 ---
 
@@ -82,55 +92,38 @@ Task({
 
 ## Artifact Locations (State Persistence)
 
-Workflow state persists in files, not context:
+Workflow state persists in files, not context. See [WORKFLOW.md](WORKFLOW.md) for complete document hierarchy and locations.
 
-| Phase | Artifact Location | Status Field | Scope |
-|-------|-------------------|--------------|-------|
-| Discovery | `docs/discovery.md` (living doc) | NOT STARTED → IN PROGRESS → READY FOR PLANNING | **Whole application vision** |
-| Research | `docs/research/YYYY-MM-DD-{topic}.md` | (point-in-time) | Technical investigations |
-| PRD | `docs/prds/YYYY-MM-DD-{feature}.md` | DRAFT → APPROVED | **One feature/epic per PRD** |
-| Plan | `docs/plans/YYYY-MM-DD-{feature}.md` | DRAFT → APPROVED | Technical approach for one PRD |
-| Tickets | Updated in plan (ticket IDs added) | IDs populated | Individual tasks from plan |
+**Quick Reference:**
+- Discovery: `docs/discovery.md` (living doc - whole app vision)
+- PRD: `docs/prds/YYYY-MM-DD-{feature}.md` (one feature per PRD)
+- Plan: `docs/plans/YYYY-MM-DD-{feature}.md` (technical approach)
+- Research: `docs/research/YYYY-MM-DD-{topic}.md` (investigations)
 
 **Reading artifacts gives you state. Writing artifacts persists state.**
-
-### Document Hierarchy
-
-**Discovery = The Whole App ("The Book")**
-- Single living document that evolves over time
-- Holistic application vision
-- Revised and updated as understanding grows
-
-**PRD = One Feature/Epic ("A Chapter")**
-- Multiple PRDs expected for real applications
-- Each PRD focuses on a single feature or epic
-- Each PRD references the discovery document
-- Point-in-time document (not revised, new PRD created for changes)
-
-**Plan = Technical Approach ("Chapter Outline")**
-- One plan per PRD
-- Defines HOW to build what the PRD specified
 
 ---
 
 ## Phase Prerequisites (Enforced)
 
-| Phase | Requires |
-|-------|----------|
-| `/discover` | None - can start anytime |
-| `/research` | None - can run anytime |
-| `/prd` | Discovery status = READY FOR PLANNING (or explicit skip) |
-| `/plan` | Approved PRD |
-| `/ticket` | Approved plan |
-| `/implement` | Plan with ticket IDs |
-| `/pr` | Passing tests, committed code |
-| `/validate` | Open PR |
+See [WORKFLOW.md](WORKFLOW.md) for detailed prerequisites.
+
+**Quick Reference:**
+- `/discover` and `/research` - No prerequisites
+- `/prd` - Requires approved discovery (or explicit skip)
+- `/plan` - Requires approved PRD
+- `/ticket` - Requires approved plan
+- `/implement` - Requires plan with ticket IDs
+- `/pr` - Requires passing tests, committed code
+- `/validate` - Requires open PR
 
 **Check prerequisites before delegating. If missing, guide user to correct phase.**
 
 ---
 
 ## Slash Commands
+
+See [WORKFLOW.md](WORKFLOW.md) for detailed phase documentation.
 
 | Command | Delegates To | Purpose |
 |---------|--------------|---------|
@@ -144,16 +137,6 @@ Workflow state persists in files, not context:
 | `/validate` | engineer | Pre-merge validation |
 | `/status` | (self) | Check workflow status |
 | `/hotfix` | engineer | Emergency fix (abbreviated workflow) |
-
-### Discovery vs Research
-
-| `/discover` | `/research` |
-|-------------|-------------|
-| **Interactive** conversation | **Autonomous** investigation |
-| You conduct it yourself | Delegate to researcher agent |
-| User explains their vision | Agent explores topic independently |
-| Output: `docs/discovery.md` | Output: `docs/research/YYYY-MM-DD-topic.md` |
-| Living document, revisable | Point-in-time findings |
 
 ---
 
@@ -193,38 +176,25 @@ When an agent returns:
 
 ## Git Conventions
 
-### Branch Naming
-```
-feature/TASK-{id}-{short-description}
-bugfix/TASK-{id}-{short-description}
-hotfix/TASK-{id}-{short-description}
-```
+See [WORKFLOW.md](WORKFLOW.md) for complete git conventions.
 
-### Commit Messages
-```
-[TASK-XXX] Brief description (50 chars max)
-
-- Detail about what changed
-
-Co-Authored-By: Claude <noreply@anthropic.com>
-```
+**Quick Reference:**
+- Branch: `feature/TASK-{id}-{short-description}`
+- Commit: `[TASK-XXX] Brief description` with Co-Authored-By line
 
 ---
 
 ## Emergency Procedures
 
-For production emergencies, `/hotfix` uses abbreviated workflow:
-- Skip discovery/plan/PRD
-- Still requires: ticket, tests, PR
-- Delegate to engineer with urgency flag
+For production emergencies, use `/hotfix` with abbreviated workflow. See [WORKFLOW.md](WORKFLOW.md) for details.
 
 ---
 
 ## Templates
 
 Templates available in `docs/templates/`:
-- `discovery-template.md`
-- `plan-template.md`
-- `prd-template.md`
+- `discovery-template.md` - Discovery document template
+- `prd-template.md` - PRD template
+- `plan-template.md` - Technical plan template
 
-Agents should use these as starting points.
+Agents should use these as starting points for all documents.

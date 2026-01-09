@@ -52,6 +52,17 @@ Extend/revise EXISTING PRD when:
 | PRD | `docs/prds/YYYY-MM-DD-{feature}.md` | What to build (one feature) |
 | Plan | `docs/plans/YYYY-MM-DD-{feature}.md` | How to build it (one PRD) |
 
+## Templates
+
+Always use the templates in `docs/templates/` when creating documents:
+
+| Document Type | Template Location |
+|---------------|-------------------|
+| PRD | `docs/templates/prd-template.md` |
+| Plan | `docs/templates/plan-template.md` |
+
+Copy the template, fill in the placeholders, and save to the appropriate location.
+
 ### PRD Structure
 
 **IMPORTANT: PRDs must include Discovery Reference field**

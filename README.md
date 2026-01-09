@@ -1,201 +1,37 @@
-# SDLC Automation Framework for Claude Code
+# SDLC Automation Framework
 
-A complete Software Development Lifecycle (SDLC) automation framework designed for clean Claude Code installations. This framework provides a structured, phase-based workflow from requirements gathering through deployment.
+Automated software development workflow for Claude Code.
 
 ## What This Is
 
-This is an SDLC automation framework that guides Claude Code through professional software development workflows:
+A complete Software Development Lifecycle (SDLC) automation framework that guides Claude Code through professional software development workflows - from interactive requirements gathering, through formal PRDs and technical planning, to test-driven implementation and deployment. The framework enforces quality gates, maintains traceability, and integrates with Asana for task management.
 
-- **Interactive Requirements Gathering** - Discovery conversations to understand user needs
-- **Formal Product Requirements** - PRDs with testable acceptance criteria
-- **Technical Planning** - Detailed implementation plans with architecture decisions
-- **Task Management** - Automatic ticket creation in Asana
-- **Test-Driven Development** - TDD workflow with quality gates
-- **Pull Request Automation** - Automated PR creation with validation
-- **Pre-Merge Validation** - Comprehensive checks before merging
+## Quick Start
 
-## The Workflow Explained
+1. Clone/copy this framework into your project
+2. Configure prerequisites (see below)
+3. Run `/discover` to start
 
-The framework enforces a phase-based workflow where each phase has clear inputs, outputs, and prerequisites:
+## Workflow
+
+See [WORKFLOW.md](WORKFLOW.md) for detailed workflow documentation.
 
 ```
-┌──────────┐     ┌─────┐     ┌──────┐     ┌────────┐     ┌───────────┐     ┌────┐     ┌──────────┐
-│ Discover │ --> │ PRD │ --> │ Plan │ --> │ Ticket │ --> │ Implement │ --> │ PR │ --> │ Validate │
-└──────────┘     └─────┘     └──────┘     └────────┘     └───────────┘     └────┘     └──────────┘
+/discover → /prd → /plan → /ticket → /implement → /pr → /validate
 ```
 
-### Phase Details
-
-#### 1. Discovery (`/discover`)
-**Interactive requirements gathering conversation**
-
-- **Who runs it**: You (orchestrator) - interactive with user
-- **Input**: User's vision and needs
-- **Output**: `docs/discovery.md` - Living document capturing requirements
-- **Status**: NOT STARTED → IN PROGRESS → READY FOR PLANNING
-- **Purpose**: Understand what the user wants to build and why
-
-#### 2. PRD (`/prd`)
-**Create formal Product Requirements Document**
-
-- **Who runs it**: Architect agent
-- **Prerequisites**: Approved discovery (or explicit skip)
-- **Input**: Discovery document, user requirements
-- **Output**: `docs/prds/YYYY-MM-DD-{feature}.md`
-- **Status**: DRAFT → APPROVED
-- **Contains**:
-  - Executive summary
-  - Functional requirements with acceptance criteria
-  - Non-functional requirements (performance, security)
-  - User stories
-  - Technical specifications
-  - Ticket definitions (IDs = TBD)
-  - Testing requirements
-  - Rollout/rollback plan
-
-**Key Principle**: The PRD defines **WHAT** to build, not **HOW** to build it.
-
-#### 3. Plan (`/plan`)
-**Create technical implementation plan**
-
-- **Who runs it**: Architect agent
-- **Prerequisites**: Approved PRD
-- **Input**: PRD, codebase exploration
-- **Output**: `docs/plans/YYYY-MM-DD-{feature}.md`
-- **Status**: DRAFT → APPROVED
-- **Contains**:
-  - Technical architecture and approach
-  - Key design decisions with rationale
-  - Component breakdown
-  - Data flow diagrams
-  - File structure
-  - Dependencies
-  - Implementation phases with exit criteria
-  - Ticket breakdown with estimates
-  - Test strategy
-  - Risks and mitigations
-
-**Key Principle**: The plan defines **HOW** to build what the PRD specified.
-
-#### 4. Ticket (`/ticket`)
-**Create Asana tasks from plan**
-
-- **Who runs it**: Haiku agent (fast, simple task)
-- **Prerequisites**: Approved plan
-- **Input**: Plan document with ticket table
-- **Output**: Tasks created in Asana, plan updated with ticket IDs
-- **Creates**: One Asana task per ticket row in the plan
-
-#### 5. Implement (`/implement`)
-**TDD implementation of a ticket**
-
-- **Who runs it**: Engineer agent
-- **Prerequisites**: Ticket ID from plan
-- **Input**: Ticket details, acceptance criteria from PRD, technical approach from plan
-- **Output**: Code + tests on feature branch
-- **Workflow**:
-  1. Create feature branch (`feature/ASANA-{id}-{description}`)
-  2. **RED**: Write failing tests
-  3. **GREEN**: Write code to pass tests
-  4. **REFACTOR**: Clean up while tests stay green
-  5. Verify: tests pass, lint passes, no debug code
-  6. Commit with structured message
-
-**Key Principle**: Tests are written **before** implementation code. No exceptions.
-
-#### 6. PR (`/pr`)
-**Create GitHub pull request**
-
-- **Who runs it**: Haiku agent (fast, simple task)
-- **Prerequisites**: Committed code with passing tests
-- **Input**: Feature branch, ticket ID
-- **Output**: GitHub pull request linked to ticket
-- **Creates**: PR with description, links to PRD/plan, test results
-
-#### 7. Validate (`/validate`)
-**Pre-merge validation**
-
-- **Who runs it**: Engineer agent
-- **Prerequisites**: Open pull request
-- **Input**: PR details, acceptance criteria from PRD
-- **Output**: Validation report
-- **Checks**:
-  - All tests pass
-  - Linting passes
-  - Acceptance criteria met
-  - No security issues
-  - Performance acceptable
-  - Documentation complete
-
-## Document Hierarchy
-
-The framework uses a clear hierarchy from holistic vision down to individual tasks:
-
-### The Hierarchy Model
-
-```
-docs/discovery.md              ← The whole app vision (living document)
-  ├── docs/prds/auth.md        ← Feature PRD
-  ├── docs/prds/sync-engine.md ← Feature PRD
-  └── docs/prds/cli.md         ← Feature PRD
-```
-
-| Document | Scope | Analogy | Status |
-|----------|-------|---------|--------|
-| **Discovery** | Whole application | "The book" | Living document (revised over time) |
-| **PRD** | One feature/epic | "A chapter" | Point-in-time (one per feature) |
-| **Plan** | Technical approach for PRD | "Chapter outline" | Point-in-time (one per PRD) |
-| **Tickets** | Individual tasks | "Paragraphs" | Created from plan |
-
-### Key Principles
-
-1. **One Discovery per application** - This is your holistic vision document that evolves over time
-2. **Multiple PRDs per application** - Each PRD focuses on a single feature or epic
-3. **PRDs reference Discovery** - Each PRD connects back to the overall vision
-4. **Plans implement PRDs** - Each plan defines how to build what a PRD specified
-
-### Document Flow
-
-```
-docs/
-├── discovery.md                    # Living application vision (THE BOOK)
-├── prds/
-│   ├── YYYY-MM-DD-feature-1.md    # Feature PRD (CHAPTER 1)
-│   ├── YYYY-MM-DD-feature-2.md    # Feature PRD (CHAPTER 2)
-│   └── YYYY-MM-DD-feature-3.md    # Feature PRD (CHAPTER 3)
-├── plans/
-│   ├── YYYY-MM-DD-feature-1.md    # How to build feature 1
-│   ├── YYYY-MM-DD-feature-2.md    # How to build feature 2
-│   └── PROGRESS.md                 # Implementation tracking
-├── research/
-│   └── YYYY-MM-DD-topic.md        # Technical research
-└── templates/
-    ├── discovery-template.md
-    ├── prd-template.md
-    └── plan-template.md
-```
-
-### Document Relationships
-
-```
-Discovery (whole app)
-    ↓
-   PRD 1 (Feature A - WHAT to build)      PRD 2 (Feature B)      PRD 3 (Feature C)
-    ├── Features                              ├── Features              ├── Features
-    ├── Acceptance Criteria                   ├── Acceptance Criteria   ├── Acceptance Criteria
-    └── Ticket Definitions                    └── Ticket Definitions    └── Ticket Definitions
-         ↓                                         ↓                         ↓
-        Plan 1 (HOW to build Feature A)         Plan 2                    Plan 3
-         ├── Technical Architecture
-         ├── Implementation Phases
-         └── Ticket Breakdown (with Asana IDs)
-              ↓
-             Implementation
-```
+**Phase Summary:**
+- `/discover` - Interactive requirements gathering
+- `/prd` - Formal Product Requirements Document
+- `/plan` - Technical implementation plan
+- `/ticket` - Create Asana tasks
+- `/implement` - TDD implementation
+- `/pr` - Create GitHub pull request
+- `/validate` - Pre-merge validation
 
 ## Prerequisites
 
-### Required CLI Tools
+### CLI Tools
 
 | Tool | Purpose | Install | Verify |
 |------|---------|---------|--------|
@@ -203,7 +39,7 @@ Discovery (whole app)
 | `gh` | GitHub CLI for PRs | [cli.github.com](https://cli.github.com) | `gh --version` |
 | Node.js | Runtime | [nodejs.org](https://nodejs.org) | `node --version` |
 
-### Required MCP Server
+### Asana MCP (Required)
 
 Configure Asana MCP in your Claude Code settings:
 
@@ -229,55 +65,6 @@ Configure Asana MCP in your Claude Code settings:
 export ASANA_ACCESS_TOKEN="your-asana-personal-access-token"
 export ASANA_PROJECT_ID="your-project-id"
 export ASANA_WORKSPACE_ID="your-workspace-id"
-```
-
-## Quick Start
-
-### 1. Initial Setup
-
-```bash
-# Clone this framework into your project
-git clone <this-repo-url> .
-
-# Verify prerequisites
-git --version
-gh --version
-gh auth status
-node --version
-
-# Verify Asana MCP is configured
-# (Should see asana tools available in Claude Code)
-```
-
-### 2. Start Your First Feature
-
-```bash
-# Start with discovery
-/discover
-
-# After discovery is approved, create PRD
-/prd {feature-name}
-
-# After PRD is approved, create plan
-/plan {feature-name}
-
-# After plan is approved, create tickets
-/ticket
-
-# Implement each ticket
-/implement ASANA-123
-
-# Create PR after implementation
-/pr ASANA-123
-
-# Validate before merge
-/validate ASANA-123
-```
-
-### 3. Check Status Anytime
-
-```bash
-/status
 ```
 
 ## File Structure
@@ -313,7 +100,8 @@ node --version
 │       ├── discovery-template.md
 │       ├── prd-template.md
 │       └── plan-template.md
-├── CLAUDE.md                     # Main workflow instructions
+├── CLAUDE.md                     # Orchestrator instructions
+├── WORKFLOW.md                   # Detailed workflow reference
 └── README.md                     # This file
 ```
 
@@ -357,48 +145,38 @@ The framework uses specialized agents for different tasks:
 
 The orchestrator (main Claude instance) coordinates these agents but does not do the implementation work itself.
 
-## Key Principles
+## Example Usage
 
-1. **Plan Before Code** - Never skip to implementation without a plan
-2. **Test First** - Write failing tests before implementation
-3. **Phase Gates** - Each phase requires approval before proceeding
-4. **Document Everything** - All decisions captured in version-controlled docs
-5. **Quality Gates** - Tests and linting must pass before merge
-6. **Traceability** - Every commit links to a ticket, every ticket to a PRD
-
-## Workflow Status Tracking
-
-The framework maintains state in document status fields:
-
-```markdown
-**Status:** DRAFT | APPROVED
-```
-
-Prerequisites are enforced by checking these status fields before proceeding to the next phase.
-
-## Optional: Research Phase
-
-The `/research` command can be used at any time for autonomous technical investigation:
+### Start Your First Feature
 
 ```bash
-/research "topic to investigate"
+# Start with discovery
+/discover
+
+# After discovery is approved, create PRD
+/prd {feature-name}
+
+# After PRD is approved, create plan
+/plan {feature-name}
+
+# After plan is approved, create tickets
+/ticket
+
+# Implement each ticket
+/implement ASANA-123
+
+# Create PR after implementation
+/pr ASANA-123
+
+# Validate before merge
+/validate ASANA-123
 ```
 
-Output: `docs/research/YYYY-MM-DD-{topic}.md`
-
-## Emergency: Hotfix Workflow
-
-For production emergencies, use the abbreviated hotfix workflow:
+### Check Status Anytime
 
 ```bash
-/hotfix "description of fix"
+/status
 ```
-
-This skips discovery/PRD/plan but still requires:
-- Ticket creation
-- TDD implementation
-- PR with tests
-- Validation before merge
 
 ## License
 

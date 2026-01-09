@@ -2,6 +2,10 @@
 
 **You ARE the agent for this phase. This is interactive - do NOT delegate.**
 
+## Template
+
+Use the template at `docs/templates/discovery-template.md` when creating or updating `docs/discovery.md`.
+
 ## Purpose
 
 Discovery is a collaborative, interactive session where you help the user articulate their vision. You ask probing questions to understand what they want to build and why.

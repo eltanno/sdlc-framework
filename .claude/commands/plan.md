@@ -4,6 +4,10 @@
 
 **Agent definition**: See `.claude/agents/architect.md` for architect responsibilities.
 
+## Template
+
+Use the template at `docs/templates/plan-template.md` when creating plan documents at `docs/plans/YYYY-MM-DD-{feature}.md`.
+
 **IMPORTANT**: Plan requires an APPROVED PRD. The PRD defines WHAT to build (requirements), the plan defines HOW to build it (technical approach).
 
 ## Prerequisites Check
