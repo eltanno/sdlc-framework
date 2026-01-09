@@ -155,6 +155,8 @@ The framework includes Claude Code hooks for security and auditing.
 |------|---------|---------|
 | `security-validator.ts` | PreToolUse (Bash) | Blocks dangerous commands (reverse shells, `rm -rf ~`, prompt injection) |
 | `capture-tool-output.ts` | PostToolUse | Logs tool executions for auditing |
+| `capture-session-summary.ts` | SessionEnd | Generates session summary documents |
+| `capture-subagent-summary.ts` | SubagentStop | Logs sub-agent completions |
 | `validate-docs.ts` | Manual | Validates markdown links before commits |
 
 ### Requirements
@@ -175,6 +177,8 @@ Logs are written to `.logs/` (git-ignored):
 
 - `.logs/claude-security-events.jsonl` - Blocked security events
 - `.logs/tool-outputs/YYYY-MM-DD-tool-outputs.jsonl` - Daily tool execution logs
+- `.logs/history/sessions/YYYY-MM/YYYY-MM-DD-HHMMSS_session.md` - Session summaries
+- `.logs/history/subagents/YYYY-MM-DD-subagents.jsonl` - Sub-agent completion logs
 
 ### Optional: Git Pre-Commit Validation
 

@@ -30,6 +30,30 @@
           }
         ]
       }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun run .claude/hooks/capture-session-summary.ts",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun run .claude/hooks/capture-subagent-summary.ts",
+            "timeout": 5
+          }
+        ]
+      }
     ]
   },
   "permissions": {
