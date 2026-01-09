@@ -68,7 +68,7 @@ if ! install_if_missing git "git"; then
     echo -e "${GREEN}✓${NC} git installed"
 fi
 
-# GitHub CLI (default provider)
+# GitHub CLI
 if ! install_if_missing gh "GitHub CLI"; then
     type -p curl >/dev/null || sudo apt install -y curl
     curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg 2>/dev/null
@@ -77,6 +77,14 @@ if ! install_if_missing gh "GitHub CLI"; then
     sudo apt update -qq
     sudo apt install -y gh
     echo -e "${GREEN}✓${NC} GitHub CLI installed"
+fi
+
+# GitLab CLI
+if ! install_if_missing glab "GitLab CLI"; then
+    type -p curl >/dev/null || sudo apt install -y curl
+    curl -fsSL https://raw.githubusercontent.com/upciti/wakemeops/main/assets/install_repository | sudo bash
+    sudo apt install -y glab
+    echo -e "${GREEN}✓${NC} GitLab CLI installed"
 fi
 
 # Node.js
@@ -145,7 +153,7 @@ echo ""
 
 ALL_GOOD=true
 
-for cmd in git gh node bun jq ccusage; do
+for cmd in git gh glab node bun jq ccusage; do
     if command -v "$cmd" &> /dev/null; then
         VERSION=$($cmd --version 2>/dev/null | head -n1)
         echo -e "${GREEN}✓${NC} $cmd: $VERSION"
@@ -164,7 +172,9 @@ if [ "$ALL_GOOD" = true ]; then
     echo ""
     echo "Next steps:"
     echo "  1. Edit .env with your API keys (ASANA_ACCESS_TOKEN, etc.)"
-    echo "  2. Run 'gh auth login' to authenticate GitHub CLI"
+    echo "  2. Authenticate your git provider:"
+    echo "     - GitHub: gh auth login"
+    echo "     - GitLab: glab auth login"
     echo ""
     echo "Asana MCP is pre-configured in .mcp.json"
     echo ""
