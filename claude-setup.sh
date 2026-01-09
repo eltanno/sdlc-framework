@@ -1,6 +1,7 @@
 #!/bin/bash
 # SDLC Framework Setup Script
-# Installs required dependencies for Linux/WSL
+# Installs all required dependencies for Linux/WSL
+# Fully automated - no user input required
 
 set -e
 
@@ -16,166 +17,97 @@ echo "SDLC Framework Setup"
 echo "=================================="
 echo ""
 
-# Track what needs to be installed
-MISSING_DEPS=()
-REPO_TYPE=""
-
 # -----------------------------------------------------------------------------
 # Check functions
 # -----------------------------------------------------------------------------
 
 check_command() {
     if command -v "$1" &> /dev/null; then
-        echo -e "${GREEN}✓${NC} $1 is installed ($(command -v $1))"
         return 0
     else
-        echo -e "${RED}✗${NC} $1 is not installed"
-        MISSING_DEPS+=("$1")
+        return 1
+    fi
+}
+
+install_if_missing() {
+    local cmd=$1
+    local name=$2
+
+    if check_command "$cmd"; then
+        echo -e "${GREEN}✓${NC} $name already installed"
+        return 0
+    else
+        echo -e "${BLUE}→${NC} Installing $name..."
         return 1
     fi
 }
 
 # -----------------------------------------------------------------------------
-# Determine repo type
+# Check for apt
 # -----------------------------------------------------------------------------
 
-echo "Select your git repository provider:"
-echo "  1) GitHub (default)"
-echo "  2) GitLab"
-echo ""
-read -p "Enter choice [1/2] (press Enter for GitHub): " -r REPO_CHOICE
-echo ""
-
-case $REPO_CHOICE in
-    2)
-        REPO_TYPE="gitlab"
-        REPO_CLI="glab"
-        echo -e "${BLUE}Selected: GitLab${NC}"
-        ;;
-    *)
-        REPO_TYPE="github"
-        REPO_CLI="gh"
-        echo -e "${BLUE}Selected: GitHub${NC}"
-        ;;
-esac
-
-echo ""
-
-# -----------------------------------------------------------------------------
-# Check required dependencies
-# -----------------------------------------------------------------------------
-
-echo "Checking required dependencies..."
-echo ""
-
-check_command git
-check_command $REPO_CLI
-check_command node
-check_command bun
-check_command jq
-
-echo ""
-
-# -----------------------------------------------------------------------------
-# Check optional dependencies
-# -----------------------------------------------------------------------------
-
-echo "Checking optional dependencies..."
-echo ""
-
-if command -v ccusage &> /dev/null; then
-    echo -e "${GREEN}✓${NC} ccusage is installed"
-else
-    echo -e "${YELLOW}○${NC} ccusage is not installed (optional - for token/cost display)"
-fi
-
-if command -v timeout &> /dev/null; then
-    echo -e "${GREEN}✓${NC} timeout is installed"
-else
-    echo -e "${YELLOW}○${NC} timeout is not installed (optional - for cache timeout)"
-fi
-
-echo ""
-
-# -----------------------------------------------------------------------------
-# Install missing dependencies
-# -----------------------------------------------------------------------------
-
-if [ ${#MISSING_DEPS[@]} -gt 0 ]; then
-    echo "=================================="
-    echo "Installing missing dependencies..."
-    echo "=================================="
-    echo ""
-
-    # Check if we can use apt
-    if ! command -v apt &> /dev/null; then
-        echo -e "${RED}Error: apt package manager not found.${NC}"
-        echo "Please install the following manually: ${MISSING_DEPS[*]}"
-        exit 1
-    fi
-
-    # Update package list
-    echo "Updating package list..."
-    sudo apt update
-
-    for dep in "${MISSING_DEPS[@]}"; do
-        case $dep in
-            git)
-                echo "Installing git..."
-                sudo apt install -y git
-                ;;
-            gh)
-                echo "Installing GitHub CLI..."
-                type -p curl >/dev/null || sudo apt install curl -y
-                curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
-                sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
-                echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-                sudo apt update
-                sudo apt install -y gh
-                ;;
-            glab)
-                echo "Installing GitLab CLI..."
-                type -p curl >/dev/null || sudo apt install curl -y
-                # Install glab via official script
-                curl -fsSL https://raw.githubusercontent.com/upciti/wakemeops/main/assets/install_repository | sudo bash
-                sudo apt install -y glab
-                ;;
-            node)
-                echo "Installing Node.js..."
-                curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
-                sudo apt install -y nodejs
-                ;;
-            bun)
-                echo "Installing Bun..."
-                curl -fsSL https://bun.sh/install | bash
-                # Add to current session
-                export BUN_INSTALL="$HOME/.bun"
-                export PATH="$BUN_INSTALL/bin:$PATH"
-                ;;
-            jq)
-                echo "Installing jq..."
-                sudo apt install -y jq
-                ;;
-        esac
-    done
-
-    echo ""
+if ! command -v apt &> /dev/null; then
+    echo -e "${RED}Error: apt package manager not found.${NC}"
+    echo "This script requires a Debian/Ubuntu-based system."
+    exit 1
 fi
 
 # -----------------------------------------------------------------------------
-# Install optional dependencies
+# Install dependencies
 # -----------------------------------------------------------------------------
 
-echo "=================================="
-echo "Optional: Install extras"
-echo "=================================="
+echo "Installing dependencies..."
 echo ""
 
-read -p "Install ccusage for token/cost display in statusline? [y/N] " -n 1 -r
-echo ""
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo "Installing ccusage..."
+# Update apt once at the start
+sudo apt update -qq
+
+# Git
+if ! install_if_missing git "git"; then
+    sudo apt install -y git
+    echo -e "${GREEN}✓${NC} git installed"
+fi
+
+# GitHub CLI (default provider)
+if ! install_if_missing gh "GitHub CLI"; then
+    type -p curl >/dev/null || sudo apt install -y curl
+    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg 2>/dev/null
+    sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+    sudo apt update -qq
+    sudo apt install -y gh
+    echo -e "${GREEN}✓${NC} GitHub CLI installed"
+fi
+
+# Node.js
+if ! install_if_missing node "Node.js"; then
+    curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+    sudo apt install -y nodejs
+    echo -e "${GREEN}✓${NC} Node.js installed"
+fi
+
+# jq
+if ! install_if_missing jq "jq"; then
+    sudo apt install -y jq
+    echo -e "${GREEN}✓${NC} jq installed"
+fi
+
+# Bun
+if ! install_if_missing bun "Bun"; then
+    curl -fsSL https://bun.sh/install | bash
+    export BUN_INSTALL="$HOME/.bun"
+    export PATH="$BUN_INSTALL/bin:$PATH"
+    echo -e "${GREEN}✓${NC} Bun installed"
+fi
+
+# Ensure bun is in PATH for ccusage install
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
+
+# ccusage (for token/cost display)
+if ! install_if_missing ccusage "ccusage"; then
     bun add -g ccusage
+    echo -e "${GREEN}✓${NC} ccusage installed"
 fi
 
 echo ""
@@ -192,25 +124,12 @@ echo ""
 if [ ! -f .env ]; then
     if [ -f .env.example ]; then
         cp .env.example .env
-        # Update REPO_TYPE in .env
-        sed -i "s/^REPO_TYPE=.*/REPO_TYPE=$REPO_TYPE/" .env
         echo -e "${GREEN}✓${NC} Created .env from .env.example"
-        echo -e "${GREEN}✓${NC} Set REPO_TYPE=$REPO_TYPE"
-        echo ""
-        echo -e "${YELLOW}Important:${NC} Edit .env and add your API keys:"
-        echo "  - ASANA_ACCESS_TOKEN"
-        echo "  - ASANA_WORKSPACE_ID"
-        echo "  - ASANA_PROJECT_ID"
     else
         echo -e "${YELLOW}Warning:${NC} .env.example not found"
     fi
 else
     echo -e "${GREEN}✓${NC} .env already exists"
-    # Update REPO_TYPE if it exists
-    if grep -q "^REPO_TYPE=" .env; then
-        sed -i "s/^REPO_TYPE=.*/REPO_TYPE=$REPO_TYPE/" .env
-        echo -e "${GREEN}✓${NC} Updated REPO_TYPE=$REPO_TYPE in .env"
-    fi
 fi
 
 echo ""
@@ -226,7 +145,7 @@ echo ""
 
 ALL_GOOD=true
 
-for cmd in git $REPO_CLI node bun jq; do
+for cmd in git gh node bun jq ccusage; do
     if command -v "$cmd" &> /dev/null; then
         VERSION=$($cmd --version 2>/dev/null | head -n1)
         echo -e "${GREEN}✓${NC} $cmd: $VERSION"
@@ -245,13 +164,9 @@ if [ "$ALL_GOOD" = true ]; then
     echo ""
     echo "Next steps:"
     echo "  1. Edit .env with your API keys (ASANA_ACCESS_TOKEN, etc.)"
-    if [ "$REPO_TYPE" = "github" ]; then
-        echo "  2. Run 'gh auth login' to authenticate GitHub CLI"
-    else
-        echo "  2. Run 'glab auth login' to authenticate GitLab CLI"
-    fi
+    echo "  2. Run 'gh auth login' to authenticate GitHub CLI"
     echo ""
-    echo "Asana MCP is pre-configured in .mcp.json - it will use ASANA_ACCESS_TOKEN from .env"
+    echo "Asana MCP is pre-configured in .mcp.json"
     echo ""
     echo "See README.md for detailed configuration instructions."
 else
@@ -260,6 +175,6 @@ else
     echo "==================================${NC}"
     echo ""
     echo "Some dependencies failed to install."
-    echo "Please install them manually and re-run this script."
+    echo "Please check the errors above and try again."
     exit 1
 fi
