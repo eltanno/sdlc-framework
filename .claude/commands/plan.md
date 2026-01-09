@@ -28,7 +28,7 @@ If no approved PRD exists:
 ```
 Task({
   subagent_type: "architect",
-  model: "sonnet",  // Use "opus" for complex architectural decisions
+  model: "opus",
   prompt: <see Agent Prompt below>
 })
 ```

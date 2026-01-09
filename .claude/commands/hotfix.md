@@ -53,7 +53,7 @@ Store as `TASK_ID="ASANA-1234567890"`
 ```
 Task({
   subagent_type: "engineer",
-  model: "sonnet",
+  model: "opus",
   prompt: <see below>
 })
 ```

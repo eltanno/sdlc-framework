@@ -49,7 +49,7 @@ If no approved discovery exists, ask user:
 ```
 Task({
   subagent_type: "architect",
-  model: "sonnet",
+  model: "opus",
   prompt: <see Agent Prompt below>
 })
 ```

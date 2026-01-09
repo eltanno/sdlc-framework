@@ -127,7 +127,7 @@ Optional: `/research` can be used anytime for autonomous technical investigation
 Task({
   subagent_type: "engineer",
   prompt: "Context and instructions here",
-  model: "sonnet"  // or haiku, opus
+  model: "opus"
 })
 ```
 
@@ -135,7 +135,7 @@ Task({
 
 | Agent | Use For | Model |
 |-------|---------|-------|
-| `general-purpose` | Research, investigations, flexible tasks | sonnet |
+| `general-purpose` | Research, investigations, flexible tasks | opus |
 | `architect` | Planning, PRDs, system design, technical decisions | opus |
 | `engineer` | Implementation, TDD, debugging, validation | opus |
 | `Explore` | Quick codebase searches | haiku |
@@ -145,7 +145,7 @@ Task({
 | Complexity | Model | Use When |
 |------------|-------|----------|
 | Simple/grunt work | `haiku` | Ticket creation, simple validation, formatting |
-| Standard work | `sonnet` | Implementation, research, most tasks |
+| Standard work | `opus` | Implementation, research, most tasks |
 | Complex decisions | `opus` | Architecture, difficult debugging, critical design |
 
 ---

@@ -32,7 +32,7 @@ git status --short
 ```
 Task({
   subagent_type: "engineer",
-  model: "sonnet",
+  model: "opus",
   prompt: <see Agent Prompt below>
 })
 ```

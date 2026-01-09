@@ -27,7 +27,7 @@ Before delegating, verify:
 ```
 Task({
   subagent_type: "general-purpose",
-  model: "sonnet",
+  model: "opus",
   prompt: <see Agent Prompt below>
 })
 ```
