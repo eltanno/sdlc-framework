@@ -34,25 +34,26 @@ CACHE_FILE="/tmp/.claude_ccusage_cache"
 LOCK_FILE="/tmp/.claude_ccusage.lock"
 CACHE_AGE=30   # 30 seconds for more real-time updates
 
-# Count MCPs - check local .mcp.json first, then fall back to global ~/.claude.json
+# Count MCPs - merge from both local .mcp.json and global ~/.claude.json
 mcp_names_raw=""
 mcps_count=0
 
-# Check local project .mcp.json first
+# Collect MCPs from local project .mcp.json
+local_mcps=""
 if [ -f "$current_dir/.mcp.json" ]; then
-    mcp_data=$(jq -r '.mcpServers | keys | join(" "), length' "$current_dir/.mcp.json" 2>/dev/null)
-    if [ -n "$mcp_data" ] && [ "$mcp_data" != "null" ]; then
-        mcp_names_raw=$(echo "$mcp_data" | head -1)
-        mcps_count=$(echo "$mcp_data" | tail -1)
-    fi
-# Fall back to global ~/.claude.json
-elif [ -f "$HOME/.claude.json" ]; then
-    mcp_data=$(jq -r '.mcpServers | keys | join(" "), length' "$HOME/.claude.json" 2>/dev/null)
-    if [ -n "$mcp_data" ] && [ "$mcp_data" != "null" ]; then
-        mcp_names_raw=$(echo "$mcp_data" | head -1)
-        mcps_count=$(echo "$mcp_data" | tail -1)
-    fi
+    local_mcps=$(jq -r '.mcpServers | keys | join(" ")' "$current_dir/.mcp.json" 2>/dev/null)
 fi
+
+# Collect MCPs from global ~/.claude.json
+global_mcps=""
+if [ -f "$HOME/.claude.json" ]; then
+    global_mcps=$(jq -r '.mcpServers | keys | join(" ")' "$HOME/.claude.json" 2>/dev/null)
+fi
+
+# Merge and deduplicate MCP names
+all_mcps="$local_mcps $global_mcps"
+mcp_names_raw=$(echo "$all_mcps" | tr ' ' '\n' | grep -v '^$' | sort -u | tr '\n' ' ' | sed 's/ $//')
+mcps_count=$(echo "$mcp_names_raw" | wc -w)
 
 # Get cached ccusage data - SAFE VERSION without background processes
 daily_tokens=""
