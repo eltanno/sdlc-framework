@@ -1,0 +1,65 @@
+# SDLC Workflow Configuration
+# This file defines the tools and preferences for this project
+
+# Project Management
+pm:
+  tool: asana                    # asana | trello | github | linear
+  # Asana-specific settings (when tool: asana)
+  asana:
+    project_id: "${ASANA_PROJECT_ID}"  # Set in environment or replace with actual ID
+    workspace_id: "${ASANA_WORKSPACE_ID}"
+  # Trello-specific settings (when tool: trello)
+  trello:
+    board_id: "${TRELLO_BOARD_ID}"
+    lists:
+      backlog: "${TRELLO_BACKLOG_LIST_ID}"
+      in_progress: "${TRELLO_IN_PROGRESS_LIST_ID}"
+      done: "${TRELLO_DONE_LIST_ID}"
+
+# Development
+dev:
+  runtime: node                  # node | bun | deno | python
+  package_manager: npm           # npm | bun | yarn | pnpm | uv
+  test_command: "npm test"
+  lint_command: "npm run lint"
+  build_command: "npm run build"
+
+# Git
+git:
+  default_branch: main
+  branch_prefix:
+    feature: "feature/"
+    bugfix: "bugfix/"
+    hotfix: "hotfix/"
+  commit_co_author: "Claude <noreply@anthropic.com>"
+
+# MCPs Required
+mcps:
+  required:
+    - name: asana
+      description: "Task management - create/update tickets"
+      tools:
+        - mcp__asana__create_task
+        - mcp__asana__update_task
+        - mcp__asana__get_task
+        - mcp__asana__search_tasks
+  optional:
+    - name: playwright
+      description: "Browser automation for E2E testing"
+    - name: github
+      description: "Enhanced GitHub operations beyond gh CLI"
+
+# CLI Tools Required
+cli:
+  required:
+    - name: git
+      version: ">=2.0"
+      verify: "git --version"
+    - name: gh
+      version: ">=2.0"
+      verify: "gh --version"
+      purpose: "GitHub CLI for PRs, issues"
+  optional:
+    - name: asana
+      verify: "asana --version"
+      purpose: "Asana CLI (alternative to MCP)"

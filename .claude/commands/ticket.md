@@ -1,94 +1,158 @@
 # Ticket Creation Phase - Orchestrator Instructions
 
-**You are the orchestrator. This is a simple coordination task - delegate to haiku or do directly.**
+**You are the orchestrator. Use Asana MCP for deterministic task creation.**
 
 ## Prerequisites Check
 
 Before proceeding, verify:
 1. PRD document exists and is APPROVED
+2. Asana MCP is configured and accessible
 
 ```bash
 # Check for approved PRD
-grep -l "Status: APPROVED" docs/prds/*.md 2>/dev/null
+grep -l "Status.*APPROVED" docs/prds/*.md 2>/dev/null
 ```
 
 If no approved PRD exists:
 - "No approved PRD found. Please run `/prd` first and get it approved."
 
-## Task: Create Asana Tickets
+## Read Configuration
 
-This phase is simple enough for haiku or direct execution:
+Load project config for Asana settings:
+```yaml
+# From .claude/config.yaml
+pm:
+  tool: asana
+  asana:
+    project_id: "${ASANA_PROJECT_ID}"
+    workspace_id: "${ASANA_WORKSPACE_ID}"
+```
+
+## Task: Create Asana Tasks
+
+### Step 1: Parse PRD Tickets Table
+
+Read the PRD and extract the tickets table:
+
+```markdown
+| ID | Title | Description | Priority | Estimate |
+|----|-------|-------------|----------|----------|
+| TBD | Ticket 1 | Description | P1 | M |
+| TBD | Ticket 2 | Description | P2 | S |
+```
+
+### Step 2: Create Tasks via Asana MCP
+
+For each ticket in the PRD, execute:
 
 ```
-Task({
-  subagent_type: "general-purpose",
-  model: "haiku",
-  prompt: <see Agent Prompt below>
+mcp__asana__create_task({
+  workspace_id: "<from config or env>",
+  project_id: "<from config or env>",
+  name: "[TASK] {title from PRD}",
+  notes: "## Context\n\nPRD: docs/prds/YYYY-MM-DD-feature.md\n\n## Description\n\n{description}\n\n## Acceptance Criteria\n\n{criteria from PRD}\n\n## Estimate\n\n{estimate}",
+  due_on: null,  // Or set if timeline defined
+  assignee: null  // Or set if known
 })
 ```
 
-## Agent Prompt
+**Expected response:**
+```json
+{
+  "gid": "1234567890",
+  "name": "[TASK] Ticket title",
+  "permalink_url": "https://app.asana.com/0/..."
+}
+```
 
----
+### Step 3: Capture Task IDs
 
-**TASK: Create Asana Tickets from PRD**
+Store the returned task IDs:
 
-## Context
+| PRD # | Asana GID | Title | URL |
+|-------|-----------|-------|-----|
+| 1 | 1234567890 | Ticket 1 | https://app.asana.com/... |
+| 2 | 1234567891 | Ticket 2 | https://app.asana.com/... |
 
-PRD location: $ARGUMENTS (or find most recent approved PRD)
-Project: /home/jim/workspace/test-sdlc-project
+### Step 4: Update PRD with Task IDs
 
-## Objective
+Use the Edit tool to update the PRD's ticket table:
 
-Create Asana tasks for each ticket defined in the PRD's ticket table, then update the PRD with the actual ticket IDs.
+```
+Edit({
+  file_path: "docs/prds/YYYY-MM-DD-feature.md",
+  old_string: "| TBD | Ticket 1 |",
+  new_string: "| ASANA-1234567890 | Ticket 1 |"
+})
+```
 
-## Steps
+Repeat for each ticket.
 
-1. **Read the PRD** - Find the Tickets table
+### Step 5: Create Parent Task (if 3+ tickets)
 
-2. **For each ticket, create Asana task:**
+If there are 3 or more tickets, create a parent task:
 
-   Use the Trello MCP tool (or Asana API):
-   ```
-   mcp__trello__add_card_to_list({
-     listId: "<appropriate-list-id>",
-     name: "[TASK] Ticket title from PRD",
-     description: "## Context\nPRD: docs/prds/YYYY-MM-DD-feature.md\n\n## Description\n{description from PRD}\n\n## Acceptance Criteria\n{criteria from PRD}"
-   })
-   ```
-
-3. **Record the ticket ID** returned from each creation
-
-4. **Update the PRD** - Replace "TBD" with actual ticket IDs in the table
+```
+mcp__asana__create_task({
+  workspace_id: "<workspace>",
+  project_id: "<project>",
+  name: "[EPIC] {feature name}",
+  notes: "## Feature\n\n{feature description}\n\n## PRD\n\ndocs/prds/YYYY-MM-DD-feature.md\n\n## Child Tasks\n\n- ASANA-123: Ticket 1\n- ASANA-456: Ticket 2\n- ASANA-789: Ticket 3"
+})
+```
 
 ## Deliverable
 
-Return:
+Return structured output:
 
 ```
 TICKETS CREATED
 
-PRD Updated: docs/prds/YYYY-MM-DD-feature.md
+PRD: docs/prds/YYYY-MM-DD-feature.md (updated with task IDs)
 
-Tickets:
-| PRD # | Asana ID | Title |
-|-------|----------|-------|
-| 1 | TASK-123 | Title |
-| 2 | TASK-124 | Title |
+## Tasks Created
 
-Total: [N] tickets created
+| # | Asana ID | Title | URL |
+|---|----------|-------|-----|
+| 1 | ASANA-1234567890 | Ticket 1 | [link](https://app.asana.com/0/...) |
+| 2 | ASANA-1234567891 | Ticket 2 | [link](https://app.asana.com/0/...) |
 
-Next: Ready for /implement TASK-XXX
+Total: 2 tasks created
+
+## Next Steps
+
+Ready to implement. Run:
+- `/implement ASANA-1234567890` for Ticket 1
+- `/implement ASANA-1234567891` for Ticket 2
 ```
 
----
+## Error Handling
 
-## After Agent Returns
+### If Asana MCP not available:
+```
+ERROR: Asana MCP not configured.
 
-1. **Verify** tickets were created
-2. **Verify** PRD was updated with ticket IDs
-3. **Summarize** for user with ticket links
-4. **Next step:** User can now run `/implement TASK-XXX` for any ticket
+To configure, add to your MCP settings:
+{
+  "mcpServers": {
+    "asana": {
+      "command": "npx",
+      "args": ["-y", "@anthropic/mcp-asana"],
+      "env": {
+        "ASANA_ACCESS_TOKEN": "your-token"
+      }
+    }
+  }
+}
+
+See README.md for full setup instructions.
+```
+
+### If task creation fails:
+- Log the error
+- Report which tasks succeeded/failed
+- Don't update PRD for failed tasks
+- Suggest retry or manual creation
 
 ## PRD to Process
 

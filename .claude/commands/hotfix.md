@@ -1,6 +1,6 @@
 # Hotfix Phase - Orchestrator Instructions
 
-**You are the orchestrator. Delegate to `engineer` agent with URGENCY flag.**
+**Production emergencies only. Uses Asana MCP + engineer agent.**
 
 ## When to Use
 
@@ -14,183 +14,218 @@ For non-emergencies, use standard workflow: `/discover` → `/plan` → etc.
 
 ## Abbreviated Workflow
 
-Hotfix skips Discovery, Plan, PRD but MUST still have:
-- Ticket (for tracking)
+```
+/hotfix → Asana task (MCP) → engineer agent → PR (gh CLI) → merge
+```
+
+Skips Discovery, Plan, PRD but MUST still have:
+- Asana ticket (for tracking)
 - Tests (prevent regression)
 - PR (code review)
 
+## Step 1: Create Emergency Ticket via Asana MCP
+
+**Execute immediately** (speed matters):
+
 ```
-/hotfix → ticket → engineer (urgent) → PR → merge
-```
-
-## Orchestrator Steps
-
-### 1. Create Emergency Ticket
-
-Do this directly (speed matters):
-
-```bash
-# Create ticket via Trello MCP
-mcp__trello__add_card_to_list({
-  listId: "<urgent-list-id>",
+mcp__asana__create_task({
+  workspace_id: "<from config>",
+  project_id: "<from config>",
   name: "[HOTFIX] $ARGUMENTS",
-  description: "## Emergency\n\nDescription of issue and impact.\n\n## Created\n$(date)"
+  notes: "## Emergency\n\n**Issue:** $ARGUMENTS\n\n**Impact:** [To be documented]\n\n**Created:** $(date -Iseconds)\n\n## Status\n\n- [ ] Root cause identified\n- [ ] Fix implemented\n- [ ] Tests added\n- [ ] PR created\n- [ ] Deployed\n- [ ] Verified",
+  due_on: "$(date -I)",  // Due today
+  assignee: null
 })
 ```
 
-### 2. Delegate to Engineer
+**Capture response:**
+```json
+{
+  "gid": "1234567890",
+  "permalink_url": "https://app.asana.com/0/..."
+}
+```
+
+Store as `TASK_ID="ASANA-1234567890"`
+
+## Step 2: Delegate to Engineer Agent
 
 ```
 Task({
   subagent_type: "engineer",
   model: "sonnet",
-  prompt: <see Agent Prompt below>
+  prompt: <see below>
 })
 ```
 
-## Agent Prompt
+### Engineer Agent Prompt
 
 ---
 
 **ENGINEER AGENT TASK: URGENT HOTFIX**
 
-## ⚠️ URGENCY: This is a production emergency
+## ⚠️ URGENCY: Production Emergency
 
 ## Context
 
-Issue: $ARGUMENTS
-Project: /home/jim/workspace/test-sdlc-project
-Ticket: [TASK-XXX created above]
+- **Issue:** $ARGUMENTS
+- **Ticket:** ASANA-{gid} - {permalink_url}
+- **Project:** /home/jim/workspace/test-sdlc-project
 
 ## Objective
 
-Fix the production issue as quickly as possible while maintaining minimum quality standards.
+Fix the production issue quickly while maintaining minimum quality standards.
 
-## Your Tasks
+## Required Steps
 
-### 1. Create Hotfix Branch (from main)
+### 1. Create Hotfix Branch
 
 ```bash
 git checkout main
 git pull origin main
-git checkout -b hotfix/TASK-{id}-{description}
+git checkout -b hotfix/ASANA-{gid}-{short-description}
 ```
 
-### 2. Reproduce and Fix
-
-- Identify root cause
-- Write a test that reproduces the bug
-- Fix the bug
-- Verify test passes
-
-### 3. Minimal Testing
+### 2. Reproduce → Test → Fix
 
 ```bash
-# Run tests (at minimum, the new test + related tests)
+# Write test that reproduces the bug
+# Implement the fix
+# Verify test passes
+
 npm test
-
-# Quick lint check
-npm run lint
 ```
 
-### 4. Commit with [HOTFIX] Tag
+### 3. Verify Quality
 
-```
-[HOTFIX][TASK-XXX] Fix critical issue
-
-- Root cause: X
-- Fix: Y
-
-Co-Authored-By: Claude <noreply@anthropic.com>
+```bash
+npm test          # All tests pass
+npm run lint      # No lint errors
 ```
 
-### 5. Create PR Immediately
+### 4. Commit with Hotfix Tag
+
+```bash
+git add -A
+git commit -m "[HOTFIX][ASANA-{gid}] Fix: {description}
+
+- Root cause: {explain}
+- Fix: {what changed}
+
+Co-Authored-By: Claude <noreply@anthropic.com>"
+```
+
+### 5. Push and Create PR
 
 ```bash
 git push -u origin $(git branch --show-current)
 
 gh pr create \
-  --title "[HOTFIX][TASK-XXX] Fix: description" \
-  --body "## HOTFIX - Production Emergency
+  --title "[HOTFIX][ASANA-{gid}] {description}" \
+  --body "## 🚨 HOTFIX - Production Emergency
 
 ### Issue
-What was broken.
+{what was broken}
 
 ### Root Cause
-Why it happened.
+{why it happened}
 
 ### Fix
-What this PR does.
+{what this PR does}
 
 ### Testing
 - [x] Regression test added
-- [x] Tests pass
+- [x] All tests pass
+- [x] Lint passes
 
 ### Rollback
-How to rollback if needed.
+\`\`\`bash
+git revert {commit-sha}
+\`\`\`
 
-Ticket: TASK-XXX"
+### Ticket
+[ASANA-{gid}]({permalink_url})"
 ```
 
 ## Deliverable
 
-Return:
-
 ```
 HOTFIX COMPLETE
 
-Ticket: TASK-XXX
-Branch: hotfix/TASK-XXX-description
-PR: #[number] - [HOTFIX] title
+Ticket: ASANA-{gid}
+URL: {permalink_url}
 
-Root Cause: [brief explanation]
-Fix: [what was changed]
+Branch: hotfix/ASANA-{gid}-{description}
+PR: #{number} - {title}
+PR URL: {pr_url}
+
+Root Cause: {brief explanation}
+Fix: {what was changed}
 
 Tests: PASS
-PR URL: https://github.com/...
+Lint: PASS
 
 READY FOR EXPEDITED REVIEW
-
-Post-merge:
-- [ ] Deploy to production
-- [ ] Monitor for issues
-- [ ] Create follow-up ticket if proper fix needed
 ```
-
-## Critical Rules
-
-1. **Speed matters** but don't skip tests
-2. **One test minimum** - reproduce the bug
-3. **Small fix** - don't refactor, just fix
-4. **Document** - future you needs to understand
 
 ---
 
-## After Agent Returns
+## Step 3: Update Asana Task with PR Link
 
-### Expedited Review Process
+After engineer returns, update the task:
 
-1. **Tag reviewers directly** - Don't wait for normal review cycle
-2. **Get single approval** - One approval is enough for hotfix
-3. **Merge immediately** after approval
-
-```bash
-gh pr merge --squash
+```
+mcp__asana__update_task({
+  task_id: "{gid}",
+  notes: "{existing notes}\n\n## Resolution\n\n- **PR:** {pr_url}\n- **Root Cause:** {root_cause}\n- **Fix:** {fix_description}"
+})
 ```
 
-### Post-Merge
+## Step 4: Expedited Review Process
+
+1. **Notify reviewers directly** - Don't wait for normal cycle
+2. **Single approval sufficient** - For hotfixes
+3. **Merge immediately** after approval:
+
+```bash
+gh pr merge --squash --delete-branch
+```
+
+## Step 5: Post-Merge
 
 1. **Deploy** to production
-2. **Monitor** for 15-30 minutes
-3. **Update ticket** with resolution
-4. **Create follow-up** if hotfix is a band-aid
+2. **Verify** fix in production
+3. **Update Asana task:**
 
-### If True P0 (Production Down)
+```
+mcp__asana__update_task({
+  task_id: "{gid}",
+  completed: true
+})
+```
 
-Can merge with post-hoc review:
-1. Merge immediately
-2. Get review within 24 hours
-3. Document in incident report
+4. **Create follow-up** if hotfix is a band-aid:
+
+```
+mcp__asana__create_task({
+  workspace_id: "<workspace>",
+  project_id: "<project>",
+  name: "[TECH-DEBT] Proper fix for {issue}",
+  notes: "## Context\n\nHotfix ASANA-{gid} was a quick fix.\n\n## Needed\n\nProper implementation of {description}"
+})
+```
+
+## Error Handling
+
+### If Asana MCP unavailable:
+- Create GitHub Issue as fallback: `gh issue create --title "[HOTFIX] {desc}" --body "..."`
+- Document the issue number
+- Continue with fix
+
+### If tests fail:
+- Do NOT merge
+- Fix tests first
+- Speed doesn't justify breaking things
 
 ## Issue to Hotfix
 
