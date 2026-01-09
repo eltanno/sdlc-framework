@@ -4,6 +4,15 @@
 #
 # Displays: model, version, directory, MCPs, token usage/cost
 #
+# DEPENDENCIES:
+#   Required:
+#     - jq          JSON parsing (install: apt install jq / brew install jq)
+#
+#   Optional:
+#     - ccusage     Token/cost display (install: bun add -g ccusage)
+#     - timeout     Cache update timeout (usually pre-installed on Linux)
+#     - gtimeout    macOS equivalent (install: brew install coreutils)
+#
 # CUSTOMIZATION:
 #   - Set SIMPLE_COLORS=1 in settings.json env for basic ANSI colors
 #     (fixes display issues on some terminals)
