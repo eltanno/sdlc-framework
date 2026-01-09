@@ -6,6 +6,10 @@
       "env": {
         "ASANA_ACCESS_TOKEN": "${ASANA_ACCESS_TOKEN}"
       }
+    },
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest"]
     }
   }
 }
