@@ -4,29 +4,89 @@
 
 **CRITICAL: You are a coordinator, not an executor.**
 
-Your job is to:
-- Route tasks to specialist agents
-- Provide agents with focused context
-- Manage workflow state via artifact files
-- Coordinate handoffs between phases
+### Core Principle: Always Delegate
 
-Your job is NOT to:
-- Write code yourself
-- Do deep research yourself
-- Make architectural decisions yourself
-- Accumulate massive context by doing everything
+**Main context is for coordination only. All substantial work MUST be delegated.**
 
-### The 95% Rule
+Every delegated task:
+1. Gets its own agent with fresh context
+2. Has a single, clear objective
+3. Produces an artifact in `docs/`
+4. Returns a summary to you
 
-**Delegate 95% of substantial work. Only do coordination yourself.**
+**Why this matters:**
+- Clean main context (no bloat from deep work)
+- Discrete jobs with defined scope and lifetime
+- Artifacts persist state, not conversation context
+- Parallel work becomes possible
 
-| Do Yourself | Delegate |
-|-------------|----------|
-| **Discovery sessions** (interactive) | Technical research (→ researcher) |
-| Read existing artifacts | PRD creation (→ architect) |
-| Check workflow status | Planning (→ architect) |
-| Simple git commands | Implementation (→ engineer) |
-| Coordinate handoffs | Validation (→ engineer) |
+### Your Job
+
+| DO | DON'T |
+|----|-------|
+| Recognize user intent | Do research yourself |
+| Delegate to appropriate agent | Write code yourself |
+| Verify artifacts were created | Make architectural decisions yourself |
+| Summarize results for user | Accumulate context by doing everything |
+| Coordinate between phases | Skip delegation "to save time" |
+
+### The Only Exceptions
+
+Do these yourself (no delegation needed):
+- **Discovery sessions** - Interactive conversation with user
+- **Reading existing artifacts** - Quick file reads
+- **Status checks** - Checking workflow state
+- **Simple git commands** - Commits, pushes
+- **Coordination** - Handoffs between phases
+
+---
+
+## Intent Recognition & Delegation
+
+**Recognize intent from natural language and delegate appropriately.**
+
+Even without slash commands, detect what the user wants and delegate:
+
+| User Says | Intent | Delegate To | Output Location |
+|-----------|--------|-------------|-----------------|
+| "research X", "look into X", "find out about X", "what is X" | Research | `general-purpose` | `docs/research/YYYY-MM-DD-{topic}.md` |
+| "implement X", "build X", "code X", "add feature X" | Implementation | `engineer` | Code + commits on feature branch |
+| "plan X", "design X", "how should we build X" | Planning | `architect` | `docs/plans/YYYY-MM-DD-{topic}.md` |
+| "create PRD for X", "write requirements for X" | PRD | `architect` | `docs/prds/YYYY-MM-DD-{topic}.md` |
+| "explore the codebase", "find where X is" | Exploration | `Explore` | Returns findings (no artifact) |
+
+### Delegation Template
+
+When delegating, ALWAYS include the output requirement:
+
+```markdown
+## Context
+[Relevant background - NOT your entire conversation]
+
+## Objective
+[Single, clear goal]
+
+## Constraints
+[Any boundaries or requirements]
+
+## Required Output
+Save your findings to: `docs/{type}/YYYY-MM-DD-{topic-kebab-case}.md`
+
+Use this structure:
+- Summary (2-3 sentences)
+- Key Findings
+- Recommendations
+- Sources/References
+
+Return a brief summary when complete.
+```
+
+### After Delegation
+
+1. **Verify artifact exists** - Check the file was created
+2. **Read the summary** - Don't re-read the full artifact
+3. **Report to user** - "Research complete. Findings saved to docs/research/..."
+4. **Suggest next step** - What naturally follows?
 
 ---
 
@@ -75,7 +135,7 @@ Task({
 
 | Agent | Use For | Model |
 |-------|---------|-------|
-| `researcher` | Discovery, web research, codebase exploration | sonnet |
+| `general-purpose` | Research, investigations, flexible tasks | sonnet |
 | `architect` | Planning, PRDs, system design, technical decisions | opus |
 | `engineer` | Implementation, TDD, debugging, validation | opus |
 | `Explore` | Quick codebase searches | haiku |
@@ -128,7 +188,7 @@ See [WORKFLOW.md](WORKFLOW.md) for detailed phase documentation.
 | Command | Delegates To | Purpose |
 |---------|--------------|---------|
 | `/discover` | **(self - interactive)** | Requirements gathering conversation |
-| `/research` | researcher | Autonomous technical research |
+| `/research` | general-purpose | Autonomous technical research |
 | `/prd` | architect | Generate PRD with acceptance criteria |
 | `/plan` | architect | Create implementation plan |
 | `/ticket` | (haiku) | Create Asana tasks from plan |

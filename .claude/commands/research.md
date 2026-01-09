@@ -1,6 +1,6 @@
 # Research Phase - Orchestrator Instructions
 
-**You are the orchestrator. Delegate this to the `researcher` agent.**
+**You are the orchestrator. Delegate this to the `general-purpose` agent.**
 
 ## Purpose
 
@@ -26,7 +26,7 @@ Before delegating, verify:
 
 ```
 Task({
-  subagent_type: "researcher",
+  subagent_type: "general-purpose",
   model: "sonnet",
   prompt: <see Agent Prompt below>
 })
@@ -34,7 +34,7 @@ Task({
 
 ## Agent Prompt
 
-Construct this prompt for the researcher agent:
+Construct this prompt for the agent:
 
 ---
 
