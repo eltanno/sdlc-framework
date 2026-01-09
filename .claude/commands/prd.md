@@ -65,7 +65,7 @@ Construct this prompt for the architect agent:
 ## Context
 
 Feature: $ARGUMENTS
-Project location: /home/jim/workspace/test-sdlc-project
+Project location: [current project directory]
 Template location: docs/templates/prd-template.md
 
 Discovery document: docs/discovery.md [include path or note if skipped]

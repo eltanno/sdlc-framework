@@ -44,7 +44,7 @@ Task({
 ## Context
 
 Ticket: $ARGUMENTS
-Project: /home/jim/workspace/test-sdlc-project
+Project: [current project directory]
 
 ## Objective
 

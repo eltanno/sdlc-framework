@@ -109,7 +109,7 @@ Discovery (whole app)
 | `/discover` | `/research` |
 |-------------|-------------|
 | **Interactive** conversation | **Autonomous** investigation |
-| You conduct it yourself | Delegate to researcher agent |
+| You conduct it yourself | Delegate to general-purpose agent |
 | User explains their vision | Agent explores topic independently |
 | Output: `docs/discovery.md` | Output: `docs/research/YYYY-MM-DD-topic.md` |
 | Living document, revisable | Point-in-time findings |

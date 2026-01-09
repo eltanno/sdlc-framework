@@ -70,7 +70,7 @@ Task({
 
 - **Issue:** $ARGUMENTS
 - **Ticket:** ASANA-{gid} - {permalink_url}
-- **Project:** /home/jim/workspace/test-sdlc-project
+- **Project:** [current project directory]
 
 ## Objective
 

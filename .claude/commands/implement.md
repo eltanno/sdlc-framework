@@ -48,7 +48,7 @@ Construct this prompt for the engineer agent:
 ## Context
 
 Ticket: $ARGUMENTS
-Project location: /home/jim/workspace/test-sdlc-project
+Project location: [current project directory]
 
 PRD: [path to PRD]
 Acceptance Criteria:

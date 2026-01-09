@@ -35,7 +35,7 @@ Construct this prompt for the engineer agent:
 ## Context
 
 PR: $ARGUMENTS (PR number or "current")
-Project: /home/jim/workspace/test-sdlc-project
+Project: [current project directory]
 
 ## Objective
 

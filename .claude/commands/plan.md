@@ -44,7 +44,7 @@ Construct this prompt for the architect agent:
 ## Context
 
 Feature to plan: $ARGUMENTS
-Project location: /home/jim/workspace/test-sdlc-project
+Project location: [current project directory]
 Template location: docs/templates/plan-template.md
 
 PRD document: [include path to approved PRD]
