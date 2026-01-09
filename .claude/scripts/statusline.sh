@@ -34,11 +34,19 @@ CACHE_FILE="/tmp/.claude_ccusage_cache"
 LOCK_FILE="/tmp/.claude_ccusage.lock"
 CACHE_AGE=30   # 30 seconds for more real-time updates
 
-# Count MCPs from ~/.claude.json (the actual source of MCP config)
+# Count MCPs - check local .mcp.json first, then fall back to global ~/.claude.json
 mcp_names_raw=""
 mcps_count=0
 
-if [ -f "$HOME/.claude.json" ]; then
+# Check local project .mcp.json first
+if [ -f "$current_dir/.mcp.json" ]; then
+    mcp_data=$(jq -r '.mcpServers | keys | join(" "), length' "$current_dir/.mcp.json" 2>/dev/null)
+    if [ -n "$mcp_data" ] && [ "$mcp_data" != "null" ]; then
+        mcp_names_raw=$(echo "$mcp_data" | head -1)
+        mcps_count=$(echo "$mcp_data" | tail -1)
+    fi
+# Fall back to global ~/.claude.json
+elif [ -f "$HOME/.claude.json" ]; then
     mcp_data=$(jq -r '.mcpServers | keys | join(" "), length' "$HOME/.claude.json" 2>/dev/null)
     if [ -n "$mcp_data" ] && [ "$mcp_data" != "null" ]; then
         mcp_names_raw=$(echo "$mcp_data" | head -1)
