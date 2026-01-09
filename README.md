@@ -9,8 +9,13 @@ A complete Software Development Lifecycle (SDLC) automation framework that guide
 ## Quick Start
 
 1. Clone/copy this framework into your project
-2. Configure prerequisites (see below)
-3. Run `/discover` to start
+2. Run the setup script:
+   ```bash
+   ./claude-setup.sh
+   ```
+3. Edit `.env` with your API keys
+4. Configure Asana MCP in Claude Code (see below)
+5. Run `/discover` to start
 
 ## Workflow
 
@@ -31,23 +36,23 @@ See [WORKFLOW.md](WORKFLOW.md) for detailed workflow documentation.
 
 ## Prerequisites
 
-### CLI Tools
+The setup script (`./claude-setup.sh`) will install these automatically on Linux/WSL.
 
-| Tool | Purpose | Install | Verify |
-|------|---------|---------|--------|
-| `git` | Version control | [git-scm.com](https://git-scm.com) | `git --version` |
-| `gh` | GitHub CLI for PRs | [cli.github.com](https://cli.github.com) | `gh --version` |
-| Node.js | Runtime | [nodejs.org](https://nodejs.org) | `node --version` |
-| `bun` | Hooks runtime | [bun.sh](https://bun.sh) | `bun --version` |
-| `jq` | JSON parsing (statusline) | `apt install jq` / `brew install jq` | `jq --version` |
+### Required Tools
+
+| Tool | Purpose | Verify |
+|------|---------|--------|
+| `git` | Version control | `git --version` |
+| `gh` | GitHub CLI for PRs | `gh --version` |
+| `node` | Runtime | `node --version` |
+| `bun` | Hooks runtime | `bun --version` |
+| `jq` | JSON parsing (statusline) | `jq --version` |
 
 ### Optional Tools
 
-| Tool | Purpose | Install | Verify |
-|------|---------|---------|--------|
-| `ccusage` | Token/cost display in statusline | `bun add -g ccusage` | `bunx ccusage --help` |
-| `timeout` | Cache timeout (Linux, usually pre-installed) | - | `timeout --version` |
-| `gtimeout` | Cache timeout (macOS) | `brew install coreutils` | `gtimeout --version` |
+| Tool | Purpose | Verify |
+|------|---------|--------|
+| `ccusage` | Token/cost display in statusline | `bunx ccusage --help` |
 
 ### Asana MCP (Required)
 
@@ -70,12 +75,18 @@ Configure Asana MCP in your Claude Code settings:
 
 ### Environment Variables
 
+Copy `.env.example` to `.env` and fill in your values:
+
 ```bash
-# Required for Asana integration
-export ASANA_ACCESS_TOKEN="your-asana-personal-access-token"
-export ASANA_PROJECT_ID="your-project-id"
-export ASANA_WORKSPACE_ID="your-workspace-id"
+cp .env.example .env
 ```
+
+Required variables:
+- `ASANA_ACCESS_TOKEN` - Your Asana personal access token
+- `ASANA_WORKSPACE_ID` - Your Asana workspace ID
+- `ASANA_PROJECT_ID` - Your Asana project ID
+
+See `.env.example` for all available configuration options.
 
 ## File Structure
 
@@ -97,9 +108,11 @@ export ASANA_WORKSPACE_ID="your-workspace-id"
 │   │   ├── research.md           # /research - Technical research
 │   │   └── hotfix.md             # /hotfix - Emergency fixes
 │   ├── hooks/                     # Claude Code hooks
-│   │   ├── security-validator.ts # PreToolUse security validation
-│   │   ├── capture-tool-output.ts# PostToolUse audit logging
-│   │   └── validate-docs.ts      # Documentation link validator
+│   │   ├── security-validator.ts  # PreToolUse security validation
+│   │   ├── capture-tool-output.ts # PostToolUse audit logging
+│   │   ├── capture-session-summary.ts # SessionEnd summary generation
+│   │   ├── capture-subagent-summary.ts # SubagentStop logging
+│   │   └── validate-docs.ts       # Documentation link validator
 │   ├── scripts/                   # Utility scripts
 │   │   └── statusline.sh         # Custom statusline display
 │   ├── settings.json             # Claude Code settings
@@ -117,6 +130,8 @@ export ASANA_WORKSPACE_ID="your-workspace-id"
 │       ├── discovery-template.md
 │       ├── prd-template.md
 │       └── plan-template.md
+├── .env.example                  # Environment variables template
+├── claude-setup.sh               # Dependency installation script
 ├── CLAUDE.md                     # Orchestrator instructions
 ├── WORKFLOW.md                   # Detailed workflow reference
 └── README.md                     # This file
