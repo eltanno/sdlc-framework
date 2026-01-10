@@ -68,7 +68,7 @@ Asana MCP is pre-configured in `.mcp.json`. It automatically uses the `ASANA_ACC
   "mcpServers": {
     "asana": {
       "command": "npx",
-      "args": ["-y", "@anthropic/mcp-asana"],
+      "args": ["-y", "mcp-asana-minimal"],
       "env": {
         "ASANA_ACCESS_TOKEN": "${ASANA_ACCESS_TOKEN}"
       }
