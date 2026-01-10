@@ -29,6 +29,12 @@ cc_version=$(echo "$input" | jq -r '.version // "unknown"')
 # Get directory name
 dir_name=$(basename "$current_dir")
 
+# Get git branch if in a repo
+git_branch=""
+if git -C "$current_dir" rev-parse --is-inside-work-tree &>/dev/null; then
+    git_branch=$(git -C "$current_dir" branch --show-current 2>/dev/null)
+fi
+
 # Cache file and lock file for ccusage data
 CACHE_FILE="/tmp/.claude_ccusage_cache"
 LOCK_FILE="/tmp/.claude_ccusage.lock"
@@ -151,6 +157,7 @@ SEPARATOR_COLOR='\033[38;2;140;152;180m'
 DIR_COLOR='\033[38;2;135;206;250m'
 
 MCP_DEFAULT="$LINE2_PRIMARY"
+GIT_BRANCH_COLOR='\033[38;2;255;150;100m'
 
 RESET='\033[0m\033[49m'
 
@@ -172,6 +179,7 @@ if [ "${SIMPLE_COLORS:-0}" = "1" ]; then
     SEPARATOR_COLOR='\033[37m'
     DIR_COLOR='\033[36m'
     MCP_DEFAULT='\033[34m'
+    GIT_BRANCH_COLOR='\033[33m'
 fi
 
 # Format MCP names
@@ -187,8 +195,12 @@ for mcp in $mcp_names_raw; do
 done
 
 # Output the statusline
-# LINE 1 - Greeting with version and model
-printf "Claude Code v${cc_version} ${MODEL_PURPLE}${model_name}${RESET} ${DIR_COLOR}${dir_name}${RESET}\n"
+# LINE 1 - Greeting with version, model, directory, and git branch
+git_info=""
+if [ -n "$git_branch" ]; then
+    git_info=" ${GIT_BRANCH_COLOR}${git_branch}${RESET}"
+fi
+printf "Claude Code v${cc_version} ${MODEL_PURPLE}${model_name}${RESET} ${DIR_COLOR}${dir_name}${RESET}${git_info}\n"
 
 # LINE 2 - MCPs
 if [ -n "$mcp_names_formatted" ]; then
