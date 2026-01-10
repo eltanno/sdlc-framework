@@ -18,9 +18,7 @@ The framework enforces a phase-based workflow where each phase has clear inputs,
                                                               └──────────────────────────────┘
 ```
 
-### The PIV Loop
-
-The framework follows the **PIV Loop** methodology: **Prime → Implement → Validate**
+### Command Flow
 
 ```
 /prime → /discover → /prd → /plan → /ticket → /implement → /pr → /validate
