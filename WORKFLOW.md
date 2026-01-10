@@ -44,6 +44,24 @@ context  interactive
 context  analysis  engineer  engineer
 ```
 
+### Autonomous Workflow (Ralph)
+
+```
+/ralph-prd [prd-path]
+       │
+       ▼
+   ┌─────────────────────────────────────────────────┐
+   │  RALPH LOOP                                     │
+   │                                                 │
+   │  /whats-next → delegate engineer → validate →  │
+   │       ↑           (implement)        commit    │
+   │       │                                 │      │
+   │       └─────────── next ticket ─────────┘      │
+   │                                                 │
+   │  Exit: PRD_COMPLETE or NEEDS_HUMAN_REVIEW      │
+   └─────────────────────────────────────────────────┘
+```
+
 ---
 
 ## Document Hierarchy
@@ -338,6 +356,7 @@ After merging a feature, complete the feedback loop:
 | Phase | Requires |
 |-------|----------|
 | `/whats-next` | None - run anytime to get oriented |
+| `/ralph-prd` | Approved plan with ticket IDs + clean git state |
 | `/prime` | None - run before any significant work |
 | `/discover` | None - can start anytime |
 | `/research` | None - can run anytime |
@@ -378,6 +397,39 @@ For production emergencies, use the abbreviated hotfix workflow:
    - Delegate to engineer with urgency flag
 
 **Key Principle**: Separate analysis from implementation. Understand the problem before coding the fix.
+
+---
+
+## Autonomous Workflow
+
+For hands-off implementation of approved PRDs, use the ralph-driven autonomous workflow:
+
+```
+/ralph-prd docs/prds/YYYY-MM-DD-feature.md
+```
+
+**How it works:**
+
+1. Ralph reads the PRD and corresponding plan
+2. Runs `/whats-next` to find the next ticket
+3. Delegates implementation to engineer agent
+4. Validates (tests, lint) after each ticket
+5. Commits, pushes, creates PR
+6. Loops back to step 2 until all tickets complete
+
+**When to use:**
+- PRD is approved with clear acceptance criteria
+- Plan has ticket IDs populated
+- Tickets are well-defined with testable outcomes
+- You can walk away and check back later
+
+**When NOT to use:**
+- Requirements are unclear or evolving
+- Design decisions still needed
+- First time implementing a new pattern
+- Debugging production issues
+
+**See:** `docs/guides/ralph-with-tickets.md` for detailed usage guide.
 
 ---
 
