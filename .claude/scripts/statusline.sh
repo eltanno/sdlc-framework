@@ -198,13 +198,13 @@ done
 # LINE 1 - Greeting with version, model, directory, and git branch
 git_info=""
 if [ -n "$git_branch" ]; then
-    git_info=" ${GIT_BRANCH_COLOR}${git_branch}${RESET}"
+    git_info=" ${GIT_BRANCH_COLOR}🔱 ${git_branch}${RESET}"
 fi
-printf "Claude Code v${cc_version} ${MODEL_PURPLE}${model_name}${RESET} ${DIR_COLOR}${dir_name}${RESET}${git_info}\n"
+printf "👋 Claude Code v${cc_version} ${MODEL_PURPLE}🧠 ${model_name}${RESET} ${DIR_COLOR}📁 ${dir_name}${RESET}${git_info}\n"
 
 # LINE 2 - MCPs
 if [ -n "$mcp_names_formatted" ]; then
-    printf "${LINE2_PRIMARY}MCPs${RESET}${SEPARATOR_COLOR}: ${RESET}${mcp_names_formatted}${RESET}\n"
+    printf "${LINE2_PRIMARY}🔌 MCPs${RESET}${SEPARATOR_COLOR}: ${RESET}${mcp_names_formatted}${RESET}\n"
 fi
 
 # LINE 3 - Tokens and cost
@@ -213,7 +213,7 @@ cost_display="${daily_cost:-N/A}"
 if [ -z "$daily_tokens" ]; then tokens_display="N/A"; fi
 if [ -z "$daily_cost" ]; then cost_display="N/A"; fi
 
-printf "${LINE3_PRIMARY}Tokens${RESET}${SEPARATOR_COLOR}: ${RESET}${LINE3_ACCENT}${tokens_display}${RESET}  ${LINE3_PRIMARY}Cost${RESET}${SEPARATOR_COLOR}: ${RESET}${COST_COLOR}${cost_display}${RESET}"
+printf "${LINE3_PRIMARY}💎 Tokens${RESET}${SEPARATOR_COLOR}: ${RESET}${LINE3_ACCENT}${tokens_display}${RESET}  ${LINE3_PRIMARY}Cost${RESET}${SEPARATOR_COLOR}: ${RESET}${COST_COLOR}${cost_display}${RESET}"
 
 # Rate limit info
 BLOCK_CACHE_FILE="/tmp/.claude_block_cache"
@@ -273,6 +273,6 @@ if [ "$block_cache_needs_update" = true ]; then
 fi
 
 if [ -n "$block_messages" ] && [ "$block_messages" != "0" ]; then
-    printf "  ${SEPARATOR_COLOR}|${RESET}  ${LINE3_ACCENT}${block_messages}${RESET} msgs, ${LINE3_ACCENT}${block_percent}%%${RESET} used, resets in ${LINE3_ACCENT}${block_reset}${RESET}"
+    printf "  ${SEPARATOR_COLOR}|${RESET}  📊 ${LINE3_ACCENT}${block_messages}${RESET} msgs, ${LINE3_ACCENT}${block_percent}%%${RESET} used, resets in ${LINE3_ACCENT}${block_reset}${RESET}"
 fi
 printf "\n"
