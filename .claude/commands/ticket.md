@@ -1,12 +1,11 @@
 # Ticket Creation Phase - Orchestrator Instructions
 
-**You are the orchestrator. Use Asana MCP for deterministic task creation.**
+**You are the orchestrator. Create tickets using the configured PM tool (or local tracking if none).**
 
 ## Prerequisites Check
 
 Before proceeding, verify:
 1. PRD document exists and is APPROVED
-2. Asana MCP is configured and accessible
 
 ```bash
 # Check for approved PRD
@@ -18,19 +17,30 @@ If no approved PRD exists:
 
 ## Read Configuration
 
-Load project config for Asana settings:
+**Step 1: Check which PM tool is configured**
+
+Read `config.yaml` from project root:
+
 ```yaml
-# From config.yaml (project root)
 pm:
-  tool: asana
-  asana:
-    project_id: "${ASANA_PROJECT_ID}"
-    workspace_id: "${ASANA_WORKSPACE_ID}"
+  tool: asana    # asana | trello | github | linear | none
 ```
 
-## Task: Create Asana Tasks
+**Step 2: Route to appropriate tool**
 
-### Step 1: Parse PRD Tickets Table
+Based on `pm.tool` value:
+
+| pm.tool | Connection Required (.env) | MCP/Tool |
+|---------|---------------------------|----------|
+| `asana` | ASANA_ACCESS_TOKEN, ASANA_WORKSPACE_ID, ASANA_PROJECT_ID | Asana MCP |
+| `trello` | TRELLO_API_KEY, TRELLO_TOKEN, TRELLO_BOARD_ID | Trello MCP |
+| `github` | gh CLI authenticated | `gh issue create` |
+| `linear` | LINEAR_API_KEY, LINEAR_TEAM_ID | Linear MCP |
+| `none` | (none) | Local tracking only |
+
+---
+
+## Common Step: Parse PRD Tickets Table
 
 Read the PRD and extract the tickets table:
 
@@ -41,65 +51,132 @@ Read the PRD and extract the tickets table:
 | TBD | Ticket 2 | Description | P2 | S |
 ```
 
-### Step 2: Create Tasks via Asana MCP
+---
 
-For each ticket in the PRD, execute:
+## Tool-Specific Instructions
+
+### If pm.tool = asana
+
+Create tasks via Asana MCP:
 
 ```
 mcp__asana__create_task({
-  workspace_id: "<from config or env>",
-  project_id: "<from config or env>",
+  workspace_id: "<from ASANA_WORKSPACE_ID>",
+  project_id: "<from ASANA_PROJECT_ID>",
   name: "[TASK] {title from PRD}",
-  notes: "## Context\n\nPRD: docs/prds/YYYY-MM-DD-feature.md\n\n## Description\n\n{description}\n\n## Acceptance Criteria\n\n{criteria from PRD}\n\n## Estimate\n\n{estimate}",
-  due_on: null,  // Or set if timeline defined
-  assignee: null  // Or set if known
+  notes: "## Context\n\nPRD: docs/prds/YYYY-MM-DD-feature.md\n\n## Description\n\n{description}\n\n## Acceptance Criteria\n\n{criteria from PRD}\n\n## Estimate\n\n{estimate}"
 })
 ```
 
-**Expected response:**
-```json
-{
-  "gid": "1234567890",
-  "name": "[TASK] Ticket title",
-  "permalink_url": "https://app.asana.com/0/..."
-}
+Update PRD with: `ASANA-{gid}`
+
+### If pm.tool = trello
+
+Create cards via Trello MCP:
+
+```
+mcp__trello__add_card_to_list({
+  listId: "<from TRELLO_LIST_ID or first list>",
+  name: "[TASK] {title from PRD}",
+  description: "## Context\n\nPRD: docs/prds/YYYY-MM-DD-feature.md\n\n## Description\n\n{description}\n\n## Acceptance Criteria\n\n{criteria from PRD}"
+})
 ```
 
-### Step 3: Capture Task IDs
+Update PRD with: `TRELLO-{card-id}`
 
-Store the returned task IDs:
+### If pm.tool = github
 
-| PRD # | Asana GID | Title | URL |
-|-------|-----------|-------|-----|
-| 1 | 1234567890 | Ticket 1 | https://app.asana.com/... |
-| 2 | 1234567891 | Ticket 2 | https://app.asana.com/... |
+Create issues via gh CLI:
 
-### Step 4: Update PRD with Task IDs
+```bash
+gh issue create \
+  --title "[TASK] {title from PRD}" \
+  --body "## Context
 
-Use the Edit tool to update the PRD's ticket table:
+PRD: docs/prds/YYYY-MM-DD-feature.md
+
+## Description
+
+{description}
+
+## Acceptance Criteria
+
+{criteria from PRD}
+
+## Estimate
+
+{estimate}" \
+  --label "task"
+```
+
+Update PRD with: `GH-{issue-number}`
+
+### If pm.tool = linear
+
+Create issues via Linear MCP (if available) or API:
+
+```
+mcp__linear__create_issue({
+  teamId: "<from LINEAR_TEAM_ID>",
+  title: "[TASK] {title from PRD}",
+  description: "## Context\n\nPRD: docs/prds/YYYY-MM-DD-feature.md\n\n{description}\n\n## Acceptance Criteria\n\n{criteria}"
+})
+```
+
+Update PRD with: `LINEAR-{issue-id}`
+
+### If pm.tool = none (Local Tracking Only)
+
+Create tickets in local tracking file:
+
+```bash
+# Create or update docs/plans/PROGRESS.md
+```
+
+Format:
+
+```markdown
+# Implementation Progress
+
+## Tickets
+
+| ID | Title | Status | Branch |
+|----|-------|--------|--------|
+| LOCAL-001 | Ticket 1 | pending | - |
+| LOCAL-002 | Ticket 2 | pending | - |
+```
+
+Update PRD with: `LOCAL-001`, `LOCAL-002`, etc.
+
+---
+
+## Update PRD with Task IDs
+
+For ALL pm.tool options, update the PRD's ticket table:
 
 ```
 Edit({
   file_path: "docs/prds/YYYY-MM-DD-feature.md",
   old_string: "| TBD | Ticket 1 |",
-  new_string: "| ASANA-1234567890 | Ticket 1 |"
+  new_string: "| {TOOL}-{ID} | Ticket 1 |"
 })
 ```
 
-Repeat for each ticket.
+---
 
-### Step 5: Create Parent Task (if 3+ tickets)
+## Create Parent/Epic (if 3+ tickets)
 
-If there are 3 or more tickets, create a parent task:
+If there are 3 or more tickets:
 
-```
-mcp__asana__create_task({
-  workspace_id: "<workspace>",
-  project_id: "<project>",
-  name: "[EPIC] {feature name}",
-  notes: "## Feature\n\n{feature description}\n\n## PRD\n\ndocs/prds/YYYY-MM-DD-feature.md\n\n## Child Tasks\n\n- ASANA-123: Ticket 1\n- ASANA-456: Ticket 2\n- ASANA-789: Ticket 3"
-})
-```
+| pm.tool | Action |
+|---------|--------|
+| asana | Create parent task with subtasks |
+| trello | Add checklist to a summary card |
+| github | Create milestone or project |
+| linear | Create parent issue |
+| none | Group in PROGRESS.md under epic heading |
+
+---
 
 ## Deliverable
 
@@ -108,51 +185,65 @@ Return structured output:
 ```
 TICKETS CREATED
 
+PM Tool: {pm.tool from config}
 PRD: docs/prds/YYYY-MM-DD-feature.md (updated with task IDs)
 
 ## Tasks Created
 
-| # | Asana ID | Title | URL |
-|---|----------|-------|-----|
-| 1 | ASANA-1234567890 | Ticket 1 | [link](https://app.asana.com/0/...) |
-| 2 | ASANA-1234567891 | Ticket 2 | [link](https://app.asana.com/0/...) |
+| # | ID | Title | URL |
+|---|-----|-------|-----|
+| 1 | {TOOL}-001 | Ticket 1 | [link](...) |
+| 2 | {TOOL}-002 | Ticket 2 | [link](...) |
 
-Total: 2 tasks created
+Total: N tasks created
 
 ## Next Steps
 
 Ready to implement. Run:
-- `/implement ASANA-1234567890` for Ticket 1
-- `/implement ASANA-1234567891` for Ticket 2
+- `/implement {TOOL}-001` for Ticket 1
+- `/implement {TOOL}-002` for Ticket 2
 ```
+
+---
 
 ## Error Handling
 
-### If Asana MCP not available:
+### If PM tool not configured:
+
 ```
-ERROR: Asana MCP not configured.
+WARNING: No PM tool configured in config.yaml
 
-To configure, add to your MCP settings:
-{
-  "mcpServers": {
-    "asana": {
-      "command": "npx",
-      "args": ["-y", "@anthropic/mcp-asana"],
-      "env": {
-        "ASANA_ACCESS_TOKEN": "your-token"
-      }
-    }
-  }
-}
+Options:
+1. Configure a PM tool:
+   - Edit config.yaml: pm.tool: asana (or trello, github, linear)
+   - Add credentials to .env
 
-See README.md for full setup instructions.
+2. Use local tracking:
+   - Edit config.yaml: pm.tool: none
+   - Tickets tracked in docs/plans/PROGRESS.md
+
+See README.md for setup instructions.
 ```
 
-### If task creation fails:
+### If connection fails:
+
 - Log the error
 - Report which tasks succeeded/failed
 - Don't update PRD for failed tasks
-- Suggest retry or manual creation
+- Suggest: check credentials, retry, or switch to `pm.tool: none`
+
+### If MCP not available for configured tool:
+
+```
+ERROR: {tool} MCP not available but pm.tool: {tool} in config.yaml
+
+Options:
+1. Install the MCP plugin: claude plugin install {tool}
+2. Switch to a different tool in config.yaml
+3. Use pm.tool: none for local tracking
+```
+
+---
 
 ## PRD to Process
 

@@ -13,14 +13,17 @@ Before proceeding, verify:
 # Check current branch
 git branch --show-current
 
-# Check test status
+# Check test status (use command from config.yaml dev.test_command)
 npm test
 
 # Check if pushed
 git status
+```
 
-# Check repo type from .env
-grep REPO_TYPE .env
+Read `config.yaml` from project root for repo type:
+```yaml
+repo:
+  type: github    # github | gitlab
 ```
 
 If tests fail: "Tests are failing. Please fix before creating PR/MR."
@@ -57,11 +60,15 @@ Create a PR (GitHub) or MR (GitLab) with proper documentation linking to the tic
 
 ### 1. Determine Provider
 
-```bash
-# Read REPO_TYPE from .env (defaults to github)
-REPO_TYPE=$(grep -E "^REPO_TYPE=" .env 2>/dev/null | cut -d= -f2 || echo "github")
-echo "Repository type: $REPO_TYPE"
+Read `repo.type` from `config.yaml` (defaults to github):
+
+```yaml
+# From config.yaml
+repo:
+  type: github    # github | gitlab
 ```
+
+Use `gh` for GitHub, `glab` for GitLab.
 
 ### 2. Gather Information
 

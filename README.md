@@ -63,8 +63,7 @@ The setup script will install `gh` (GitHub) or `glab` (GitLab) based on your sel
 Install the official plugins for Claude Code:
 
 ```bash
-# Install plugins via CLI (for Docker/automation)
-claude plugin install asana
+# Core plugins (install all)
 claude plugin install playwright
 claude plugin install github
 claude plugin install gitlab
@@ -74,13 +73,20 @@ claude plugin install pr-review-toolkit
 claude plugin install security-guidance
 claude plugin install ralph-wiggum
 claude plugin install context7
+
+# PM tool plugin (install ONE based on your config.yaml pm.tool setting)
+claude plugin install asana    # if pm.tool: asana
+claude plugin install trello   # if pm.tool: trello
+# github already installed above for pm.tool: github
+# linear uses API, no plugin needed for pm.tool: linear
 ```
 
 | Plugin | Purpose | SDLC Phase |
 |--------|---------|------------|
-| `asana` | Task management integration | `/ticket` |
+| `asana` | Task management (if using Asana) | `/ticket` |
+| `trello` | Task management (if using Trello) | `/ticket` |
 | `playwright` | Browser automation | Testing |
-| `github` | GitHub issues, PRs, actions | `/pr`, `/validate` |
+| `github` | GitHub issues, PRs, actions | `/ticket`, `/pr`, `/validate` |
 | `gitlab` | GitLab issues, MRs, pipelines | `/pr`, `/validate` |
 | `code-review` | Automated code review | `/validate` |
 | `commit-commands` | Enhanced git commit workflow | `/implement` |
@@ -89,30 +95,35 @@ claude plugin install context7
 | `ralph-wiggum` | Autonomous iteration loops | `/implement` |
 | `context7` | Live documentation fetching | All phases |
 
-**Asana Setup:**
-- Get your token: [Asana Developer Console](https://app.asana.com/0/developer-console)
-- Set in environment: `export ASANA_ACCESS_TOKEN="your-token-here"`
+**PM Tool Setup (choose one):**
 
-**GitHub Setup:**
-- Authenticate via: `gh auth login`
+The `/ticket` command creates tasks in your configured PM tool. Set `pm.tool` in `config.yaml`:
 
-**GitLab Setup:**
-- Authenticate via: `glab auth login`
+| Tool | Plugin | Credentials in .env |
+|------|--------|---------------------|
+| Asana | `asana` | ASANA_ACCESS_TOKEN, ASANA_WORKSPACE_ID, ASANA_PROJECT_ID |
+| Trello | `trello` | TRELLO_API_KEY, TRELLO_TOKEN, TRELLO_BOARD_ID |
+| GitHub Issues | `github` | gh CLI authenticated (`gh auth login`) |
+| Linear | (API) | LINEAR_API_KEY, LINEAR_TEAM_ID |
+| None | - | No credentials needed (local tracking only) |
+
+**Repository Setup:**
+
+- GitHub: `gh auth login`
+- GitLab (cloud): `glab auth login`
+- GitLab (self-hosted): `glab auth login --hostname gitlab.yourcompany.com`
+
+For self-hosted GitLab, the `glab` CLI handles all operations (clone, push, MR creation) once authenticated to your instance.
 
 ### Environment Variables
 
-Copy `.env.example` to `.env` and fill in your values:
+Copy `.env.example` to `.env` and fill in values for your chosen PM tool:
 
 ```bash
 cp .env.example .env
 ```
 
-Required variables:
-- `ASANA_ACCESS_TOKEN` - Your Asana personal access token
-- `ASANA_WORKSPACE_ID` - Your Asana workspace ID
-- `ASANA_PROJECT_ID` - Your Asana project ID
-
-See `.env.example` for all available configuration options.
+Only fill in the section that matches your `config.yaml` pm.tool setting. See `.env.example` for all options.
 
 ## File Structure
 
