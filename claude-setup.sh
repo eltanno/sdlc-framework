@@ -122,6 +122,8 @@ claude plugin install code-review
 claude plugin install commit-commands
 claude plugin install pr-review-toolkit
 claude plugin install security-guidance
+claude plugin install ralph-wiggum
+claude plugin install context7
 echo -e "${GREEN}✓${NC} Claude Code plugins installed"
 
 # ccusage (for token/cost display)

@@ -70,6 +70,8 @@ claude plugin install code-review
 claude plugin install commit-commands
 claude plugin install pr-review-toolkit
 claude plugin install security-guidance
+claude plugin install ralph-wiggum
+claude plugin install context7
 ```
 
 | Plugin | Purpose | SDLC Phase |
@@ -82,6 +84,8 @@ claude plugin install security-guidance
 | `commit-commands` | Enhanced git commit workflow | `/implement` |
 | `pr-review-toolkit` | PR review automation | `/pr`, `/validate` |
 | `security-guidance` | Security best practices | `/implement` |
+| `ralph-wiggum` | Autonomous iteration loops | `/implement` |
+| `context7` | Live documentation fetching | All phases |
 
 **Asana Setup:**
 - Get your token: [Asana Developer Console](https://app.asana.com/0/developer-console)
