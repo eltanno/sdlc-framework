@@ -166,25 +166,38 @@ See `.env.example` for all available configuration options.
 
 ## Configuration
 
-Edit `config.yaml` to customize:
+Two config files:
+
+- `config.yaml` - Project preferences (safe to commit)
+- `.env` - Secrets and connection details (gitignored)
+
+### config.yaml
 
 ```yaml
-project:
-  name: "Your Project Name"
-  pm_tool: "asana"  # or "trello", "github", "linear"
+pm:
+  tool: asana                    # asana | trello | github | linear | none
 
-commands:
-  test: "npm test"
-  lint: "npm run lint"
-  build: "npm run build"
+dev:
+  test_command: "npm test"
+  lint_command: "npm run lint"
+  build_command: "npm run build"
 
 git:
-  branch_prefix: "feature"  # or "feat", "dev"
-  commit_format: "[ASANA-{id}] {message}"
+  default_branch: main
+  branch_prefix:
+    feature: "feature/"
 
-asana:
-  workspace_id: "your-workspace-id"
-  project_id: "your-project-id"
+repo:
+  type: github                   # github | gitlab
+```
+
+### .env
+
+```bash
+# PM Tool Connection (based on pm.tool in config.yaml)
+ASANA_ACCESS_TOKEN=your-token
+ASANA_WORKSPACE_ID=your-workspace-id
+ASANA_PROJECT_ID=your-project-id
 ```
 
 ## Hooks
