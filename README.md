@@ -56,28 +56,25 @@ The setup script will install `gh` (GitHub) or `glab` (GitLab) based on your sel
 |------|---------|--------|
 | `ccusage` | Token/cost display in statusline | `bunx ccusage --help` |
 
-### Asana MCP (Required)
+### Asana Plugin (Required)
 
-Asana MCP is pre-configured in `.mcp.json`. It automatically uses the `ASANA_ACCESS_TOKEN` from your `.env` file.
+Install the official Asana plugin for Claude Code:
+
+```bash
+# Install Asana plugin via CLI (for Docker/automation)
+claude plugins install asana
+
+# Or interactively
+claude
+/plugin install asana
+```
 
 **Get your Asana token:** [Asana Developer Console](https://app.asana.com/0/developer-console)
 
-**Configuration file:** `.mcp.json`
-```json
-{
-  "mcpServers": {
-    "asana": {
-      "command": "npx",
-      "args": ["-y", "mcp-asana-minimal"],
-      "env": {
-        "ASANA_ACCESS_TOKEN": "${ASANA_ACCESS_TOKEN}"
-      }
-    }
-  }
-}
+Set your token in the environment:
+```bash
+export ASANA_ACCESS_TOKEN="your-token-here"
 ```
-
-Claude Code will automatically load this configuration and use the token from your environment.
 
 ### Environment Variables
 

@@ -114,8 +114,13 @@ fi
 
 # MCP Servers
 echo -e "${BLUE}→${NC} Installing MCP servers..."
-npm install -g mcp-asana-minimal @playwright/mcp
-echo -e "${GREEN}✓${NC} MCP servers installed (Asana, Playwright)"
+npm install -g @playwright/mcp
+echo -e "${GREEN}✓${NC} MCP servers installed (Playwright)"
+
+# Claude Code Plugins
+echo -e "${BLUE}→${NC} Installing Claude Code plugins..."
+claude plugins install asana
+echo -e "${GREEN}✓${NC} Claude Code plugins installed (Asana)"
 
 # ccusage (for token/cost display)
 if ! install_if_missing ccusage "ccusage"; then

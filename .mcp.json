@@ -1,12 +1,5 @@
 {
   "mcpServers": {
-    "asana": {
-      "command": "npx",
-      "args": ["-y", "mcp-asana-minimal"],
-      "env": {
-        "ASANA_ACCESS_TOKEN": "${ASANA_ACCESS_TOKEN}"
-      }
-    },
     "playwright": {
       "command": "npx",
       "args": ["-y", "@playwright/mcp@latest"]
