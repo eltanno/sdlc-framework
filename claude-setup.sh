@@ -116,7 +116,13 @@ fi
 echo -e "${BLUE}→${NC} Installing Claude Code plugins..."
 claude plugin install asana
 claude plugin install playwright
-echo -e "${GREEN}✓${NC} Claude Code plugins installed (Asana, Playwright)"
+claude plugin install github
+claude plugin install gitlab
+claude plugin install code-review
+claude plugin install commit-commands
+claude plugin install pr-review-toolkit
+claude plugin install security-guidance
+echo -e "${GREEN}✓${NC} Claude Code plugins installed"
 
 # ccusage (for token/cost display)
 if ! install_if_missing ccusage "ccusage"; then
@@ -182,7 +188,7 @@ if [ "$ALL_GOOD" = true ]; then
     echo "     - GitHub: gh auth login"
     echo "     - GitLab: glab auth login"
     echo ""
-    echo "Plugins installed: Asana, Playwright"
+    echo "Plugins installed: Asana, Playwright, GitHub, GitLab, Code Review, Commit Commands, PR Review, Security"
     echo ""
     echo "See README.md for detailed configuration instructions."
 else

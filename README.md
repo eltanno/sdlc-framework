@@ -64,17 +64,34 @@ Install the official plugins for Claude Code:
 # Install plugins via CLI (for Docker/automation)
 claude plugin install asana
 claude plugin install playwright
-
-# Or interactively within Claude Code
-/plugin install asana
-/plugin install playwright
+claude plugin install github
+claude plugin install gitlab
+claude plugin install code-review
+claude plugin install commit-commands
+claude plugin install pr-review-toolkit
+claude plugin install security-guidance
 ```
+
+| Plugin | Purpose | SDLC Phase |
+|--------|---------|------------|
+| `asana` | Task management integration | `/ticket` |
+| `playwright` | Browser automation | Testing |
+| `github` | GitHub issues, PRs, actions | `/pr`, `/validate` |
+| `gitlab` | GitLab issues, MRs, pipelines | `/pr`, `/validate` |
+| `code-review` | Automated code review | `/validate` |
+| `commit-commands` | Enhanced git commit workflow | `/implement` |
+| `pr-review-toolkit` | PR review automation | `/pr`, `/validate` |
+| `security-guidance` | Security best practices | `/implement` |
 
 **Asana Setup:**
 - Get your token: [Asana Developer Console](https://app.asana.com/0/developer-console)
 - Set in environment: `export ASANA_ACCESS_TOKEN="your-token-here"`
 
-**Playwright:** No additional setup required - browser automation works out of the box.
+**GitHub Setup:**
+- Authenticate via: `gh auth login`
+
+**GitLab Setup:**
+- Authenticate via: `glab auth login`
 
 ### Environment Variables
 
