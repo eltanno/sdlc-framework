@@ -112,15 +112,11 @@ if ! install_if_missing claude "Claude Code"; then
     echo -e "${GREEN}✓${NC} Claude Code installed"
 fi
 
-# MCP Servers
-echo -e "${BLUE}→${NC} Installing MCP servers..."
-npm install -g @playwright/mcp
-echo -e "${GREEN}✓${NC} MCP servers installed (Playwright)"
-
 # Claude Code Plugins
 echo -e "${BLUE}→${NC} Installing Claude Code plugins..."
-claude plugins install asana
-echo -e "${GREEN}✓${NC} Claude Code plugins installed (Asana)"
+claude plugin install asana
+claude plugin install playwright
+echo -e "${GREEN}✓${NC} Claude Code plugins installed (Asana, Playwright)"
 
 # ccusage (for token/cost display)
 if ! install_if_missing ccusage "ccusage"; then
@@ -186,7 +182,7 @@ if [ "$ALL_GOOD" = true ]; then
     echo "     - GitHub: gh auth login"
     echo "     - GitLab: glab auth login"
     echo ""
-    echo "Asana MCP is pre-configured in .mcp.json"
+    echo "Plugins installed: Asana, Playwright"
     echo ""
     echo "See README.md for detailed configuration instructions."
 else

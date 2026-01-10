@@ -56,25 +56,25 @@ The setup script will install `gh` (GitHub) or `glab` (GitLab) based on your sel
 |------|---------|--------|
 | `ccusage` | Token/cost display in statusline | `bunx ccusage --help` |
 
-### Asana Plugin (Required)
+### Claude Code Plugins (Required)
 
-Install the official Asana plugin for Claude Code:
+Install the official plugins for Claude Code:
 
 ```bash
-# Install Asana plugin via CLI (for Docker/automation)
-claude plugins install asana
+# Install plugins via CLI (for Docker/automation)
+claude plugin install asana
+claude plugin install playwright
 
-# Or interactively
-claude
+# Or interactively within Claude Code
 /plugin install asana
+/plugin install playwright
 ```
 
-**Get your Asana token:** [Asana Developer Console](https://app.asana.com/0/developer-console)
+**Asana Setup:**
+- Get your token: [Asana Developer Console](https://app.asana.com/0/developer-console)
+- Set in environment: `export ASANA_ACCESS_TOKEN="your-token-here"`
 
-Set your token in the environment:
-```bash
-export ASANA_ACCESS_TOKEN="your-token-here"
-```
+**Playwright:** No additional setup required - browser automation works out of the box.
 
 ### Environment Variables
 
