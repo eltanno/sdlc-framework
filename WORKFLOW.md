@@ -508,6 +508,76 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 7. **Traceability** - Every commit links to a ticket, every ticket to a PRD
 8. **Analyze Before Fix** - Use RCA for bugs before implementing fixes
 9. **Process Improvement** - Execution reports and system reviews close the feedback loop
+10. **COMMIT ARTIFACTS IMMEDIATELY** - Every document must be committed before proceeding (see below)
+
+---
+
+## CRITICAL: Artifact Commit Rule
+
+> **⚠️ MANDATORY: Every artifact MUST be committed immediately after creation.**
+
+Artifacts are the foundation of the entire workflow. Untracked files are NOT persisted state - they can be lost during branch operations. This rule is NON-NEGOTIABLE.
+
+### The Rule
+
+| Phase | Creates | MUST Commit Before Proceeding |
+|-------|---------|-------------------------------|
+| `/discover` | `docs/discovery.md` | ✅ `git add docs/discovery.md && git commit` |
+| `/prd` | `docs/prds/*.md` | ✅ `git add docs/prds/ && git commit` |
+| `/plan` | `docs/plans/*.md` | ✅ `git add docs/plans/ && git commit` |
+| `/research` | `docs/research/*.md` | ✅ `git add docs/research/ && git commit` |
+| `/rca` | `docs/rca/*.md` | ✅ `git add docs/rca/ && git commit` |
+
+### Commit Message Format
+
+```bash
+git add docs/
+git commit -m "[DOCS] Create {artifact-type}: {name}
+
+- {Brief description of content}
+
+Co-Authored-By: Claude <noreply@anthropic.com>"
+```
+
+Examples:
+```bash
+git commit -m "[DOCS] Create discovery: Local Todo App"
+git commit -m "[DOCS] Create PRD: todo-app-core-v1"
+git commit -m "[DOCS] Create plan: todo-app-core-v1"
+```
+
+### Pre-Implementation Verification
+
+**Before delegating ANY implementation work**, verify documents are committed:
+
+```bash
+# Must show "nothing to commit" for docs/
+git status docs/
+
+# If untracked files exist, STOP and commit them first
+git add docs/
+git commit -m "[DOCS] Commit artifacts before implementation"
+```
+
+### Why This Matters
+
+1. **Branch operations can lose untracked files** - When creating feature branches, untracked directories may not persist
+2. **Agents work on feature branches** - Each engineer agent creates/switches branches
+3. **Documents ARE the state** - If they're not committed, the workflow has no foundation
+4. **Recovery is impossible** - Untracked files have no git history to recover from
+
+### Enforcement
+
+The orchestrator MUST:
+1. Commit artifacts immediately after each phase completes
+2. Verify `git status docs/` shows clean before delegating to engineers
+3. Never proceed to `/implement` with uncommitted docs
+
+Engineer agents MUST:
+1. Check that required docs exist and are committed at start of work
+2. Refuse to proceed if docs are missing (request orchestrator to fix)
+
+**If you lose documents due to uncommitted state, you have violated this rule.**
 
 ---
 

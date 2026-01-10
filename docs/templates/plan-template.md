@@ -176,6 +176,19 @@
 
 ---
 
+## Pre-Implementation Checklist
+
+**CRITICAL: Before delegating ANY implementation work, verify:**
+
+- [ ] Discovery committed: `git log --oneline docs/discovery.md`
+- [ ] PRD committed: `git log --oneline docs/prds/`
+- [ ] This plan committed: `git log --oneline docs/plans/`
+- [ ] `git status docs/` shows "nothing to commit"
+
+> **Why this matters:** Untracked files can be lost during branch operations. Documents ARE the state - if they're not committed, implementation has no foundation. See WORKFLOW.md "Artifact Commit Rule" for details.
+
+---
+
 ## Approval
 
 - [ ] **Approved by:** {name} on YYYY-MM-DD

@@ -2,7 +2,7 @@
 #
 # Claude Code Statusline - Portable version
 #
-# Displays: model, version, directory, MCPs, token usage/cost
+# Displays: model, version, directory, MCPs, Plugins, token usage/cost
 #
 # DEPENDENCIES:
 #   Required:
@@ -60,6 +60,16 @@ fi
 all_mcps="$local_mcps $global_mcps"
 mcp_names_raw=$(echo "$all_mcps" | tr ' ' '\n' | grep -v '^$' | sort -u | tr '\n' ' ' | sed 's/ $//')
 mcps_count=$(echo "$mcp_names_raw" | wc -w)
+
+# Count Plugins from ~/.claude/plugins/installed_plugins.json
+plugin_names_raw=""
+plugins_count=0
+
+if [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then
+    # Extract plugin names (part before @) from the plugins object keys
+    plugin_names_raw=$(jq -r '.plugins | keys | .[] | split("@")[0]' "$HOME/.claude/plugins/installed_plugins.json" 2>/dev/null | sort -u | tr '\n' ' ' | sed 's/ $//')
+    plugins_count=$(echo "$plugin_names_raw" | wc -w)
+fi
 
 # Get cached ccusage data - SAFE VERSION without background processes
 daily_tokens=""
@@ -157,6 +167,7 @@ SEPARATOR_COLOR='\033[38;2;140;152;180m'
 DIR_COLOR='\033[38;2;135;206;250m'
 
 MCP_DEFAULT="$LINE2_PRIMARY"
+PLUGIN_COLOR='\033[38;2;255;180;100m'
 GIT_BRANCH_COLOR='\033[38;2;255;150;100m'
 
 RESET='\033[0m\033[49m'
@@ -179,6 +190,7 @@ if [ "${SIMPLE_COLORS:-0}" = "1" ]; then
     SEPARATOR_COLOR='\033[37m'
     DIR_COLOR='\033[36m'
     MCP_DEFAULT='\033[34m'
+    PLUGIN_COLOR='\033[33m'
     GIT_BRANCH_COLOR='\033[33m'
 fi
 
@@ -194,6 +206,18 @@ for mcp in $mcp_names_raw; do
     fi
 done
 
+# Format Plugin names
+plugin_names_formatted=""
+for plugin in $plugin_names_raw; do
+    formatted="${PLUGIN_COLOR}${plugin}${RESET}"
+
+    if [ -z "$plugin_names_formatted" ]; then
+        plugin_names_formatted="$formatted"
+    else
+        plugin_names_formatted="$plugin_names_formatted${SEPARATOR_COLOR}, ${formatted}"
+    fi
+done
+
 # Output the statusline
 # LINE 1 - Greeting with version, model, directory, and git branch
 git_info=""
@@ -202,9 +226,22 @@ if [ -n "$git_branch" ]; then
 fi
 printf "👋 Claude Code v${cc_version} ${MODEL_PURPLE}🧠 ${model_name}${RESET} ${DIR_COLOR}📁 ${dir_name}${RESET}${git_info}\n"
 
-# LINE 2 - MCPs
+# LINE 2 - MCPs and Plugins
+line2_parts=""
+
 if [ -n "$mcp_names_formatted" ]; then
-    printf "${LINE2_PRIMARY}🔌 MCPs${RESET}${SEPARATOR_COLOR}: ${RESET}${mcp_names_formatted}${RESET}\n"
+    line2_parts="${LINE2_PRIMARY}🔌 MCPs${RESET}${SEPARATOR_COLOR}: ${RESET}${mcp_names_formatted}"
+fi
+
+if [ -n "$plugin_names_formatted" ]; then
+    if [ -n "$line2_parts" ]; then
+        line2_parts="${line2_parts}  ${SEPARATOR_COLOR}|${RESET}  "
+    fi
+    line2_parts="${line2_parts}${PLUGIN_COLOR}🧩 Plugins${RESET}${SEPARATOR_COLOR}: ${RESET}${plugin_names_formatted}"
+fi
+
+if [ -n "$line2_parts" ]; then
+    printf "${line2_parts}${RESET}\n"
 fi
 
 # LINE 3 - Tokens and cost
