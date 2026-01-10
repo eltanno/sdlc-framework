@@ -66,22 +66,61 @@ Discover → PRD → Plan → Tickets → Implement → PR → Validate
 Claude will figure out the right command.
 ```
 
-### Detect Current State (Optional)
+### Detect Current State (REQUIRED)
 
-If you can quickly check the state, add contextual guidance:
+Always check the project state to give relevant guidance. Run these checks silently:
 
-```markdown
-## Where You Are Now
+```bash
+# Check git state
+git branch --show-current 2>/dev/null
+git status --short 2>/dev/null
 
-[Based on checking docs/ and git status]
-
-- **Discovery:** [exists/missing]
-- **Active PRD:** [name or none]
-- **Active Plan:** [name or none]
-- **Current Branch:** [branch name]
-
-**Suggested next step:** [specific recommendation]
+# Check for artifacts
+ls docs/discovery.md 2>/dev/null
+ls docs/prds/*.md 2>/dev/null
+ls docs/plans/*.md 2>/dev/null
 ```
+
+Then adapt your response based on what you find:
+
+**If brand new (no discovery.md):**
+```markdown
+## Where You Are
+
+This looks like a fresh project - no features in progress yet.
+
+**Your next step:** Run `/discover` and describe what you want to build.
+Just have a conversation about your requirements.
+```
+
+**If mid-workflow (has PRD or plan):**
+```markdown
+## Where You Are
+
+You're in the middle of implementing **[feature name]**.
+
+**Current state:**
+- PRD: [status]
+- Plan: [status]
+- Branch: `[branch name]`
+
+**Your next step:** [specific action based on state]
+
+Run `/whats-next` for detailed status.
+```
+
+**If on a feature branch with uncommitted work:**
+```markdown
+## Where You Are
+
+You're on branch `[branch]` with work in progress.
+
+**Uncommitted changes:** [count] files modified
+
+**Your next step:** Review your changes and commit, or continue implementation.
+```
+
+The guidance should feel personalized, not generic.
 
 ### Point to Resources
 
