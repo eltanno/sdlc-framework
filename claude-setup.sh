@@ -114,7 +114,7 @@ fi
 
 # MCP Servers
 echo -e "${BLUE}→${NC} Installing MCP servers..."
-npm install -g @anthropic/mcp-asana @playwright/mcp
+npm install -g mcp-asana-minimal @playwright/mcp
 echo -e "${GREEN}✓${NC} MCP servers installed (Asana, Playwright)"
 
 # ccusage (for token/cost display)

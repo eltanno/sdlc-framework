@@ -2,7 +2,7 @@
   "mcpServers": {
     "asana": {
       "command": "npx",
-      "args": ["-y", "@anthropic/mcp-asana"],
+      "args": ["-y", "mcp-asana-minimal"],
       "env": {
         "ASANA_ACCESS_TOKEN": "${ASANA_ACCESS_TOKEN}"
       }
