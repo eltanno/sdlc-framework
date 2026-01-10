@@ -7,17 +7,43 @@ This document provides comprehensive workflow documentation for the SDLC automat
 The framework enforces a phase-based workflow where each phase has clear inputs, outputs, and prerequisites:
 
 ```
-┌──────────┐     ┌─────┐     ┌──────┐     ┌────────┐     ┌───────────┐     ┌────┐     ┌──────────┐
-│ Discover │ --> │ PRD │ --> │ Plan │ --> │ Ticket │ --> │ Implement │ --> │ PR │ --> │ Validate │
-└──────────┘     └─────┘     └──────┘     └────────┘     └───────────┘     └────┘     └──────────┘
+┌───────┐     ┌──────────┐     ┌─────┐     ┌──────┐     ┌────────┐     ┌───────────┐     ┌────┐     ┌──────────┐
+│ Prime │ --> │ Discover │ --> │ PRD │ --> │ Plan │ --> │ Ticket │ --> │ Implement │ --> │ PR │ --> │ Validate │
+└───────┘     └──────────┘     └─────┘     └──────┘     └────────┘     └───────────┘     └────┘     └──────────┘
+                                                                              │
+                                                                              ▼
+                                                              ┌──────────────────────────────┐
+                                                              │ Execution Report → System    │
+                                                              │ Review (Process Improvement) │
+                                                              └──────────────────────────────┘
 ```
 
+### The PIV Loop
+
+The framework follows the **PIV Loop** methodology: **Prime → Implement → Validate**
+
 ```
-/discover → /prd → /plan → /ticket → /implement → /pr → /validate
-    │         │       │        │          │        │        │
-    ▼         ▼       ▼        ▼          ▼        ▼        ▼
- (self)  architect architect haiku   engineer  haiku  engineer
-interactive
+/prime → /discover → /prd → /plan → /ticket → /implement → /pr → /validate
+   │         │         │       │        │          │        │        │
+   ▼         ▼         ▼       ▼        ▼          ▼        ▼        ▼
+ (self)   (self)   architect architect haiku   engineer  haiku  engineer
+context  interactive
+
+                              After completion:
+                    /execution-report → /system-review
+                              │               │
+                              ▼               ▼
+                           (self)          (self)
+                         document     process improvement
+```
+
+### Bug Fix Workflow
+
+```
+/prime → /rca → /hotfix → /validate
+   │       │        │          │
+   ▼       ▼        ▼          ▼
+context  analysis  engineer  engineer
 ```
 
 ---
@@ -64,6 +90,12 @@ docs/
 │   └── PROGRESS.md                 # Implementation tracking
 ├── research/
 │   └── YYYY-MM-DD-topic.md        # Technical research
+├── rca/
+│   └── YYYY-MM-DD-issue.md        # Root cause analysis for bugs
+├── execution-reports/
+│   └── YYYY-MM-DD-feature.md      # Implementation vs plan comparison
+├── system-reviews/
+│   └── YYYY-MM-DD-feature.md      # Process meta-analysis
 └── templates/
     ├── discovery-template.md
     ├── prd-template.md
@@ -91,6 +123,35 @@ Discovery (whole app)
 ---
 
 ## Phase Details
+
+### 0. Prime Phase (`/prime`)
+
+**Load project context before any work begins**
+
+- **Who runs it**: You (orchestrator) - self-executed
+- **Input**: Current project state
+- **Output**: Context summary (displayed, not persisted)
+- **Purpose**: Ensure understanding of codebase, conventions, and current state
+
+**Prime is a context-loading step** - run before `/plan`, `/implement`, `/hotfix`, or any significant work.
+
+**The Prime Process:**
+1. Project structure (file tree, directories)
+2. Documentation review (CLAUDE.md, README, discovery, PRDs, plans)
+3. Technical context (entry points, configs, schemas)
+4. Current state (git status, recent commits)
+5. Active work (in-progress plans, open PRs)
+
+**When to Prime:**
+| Situation | Action |
+|-----------|--------|
+| Starting new session | Always prime |
+| Switching tasks | Prime if context changed |
+| Before `/plan` | Prime to understand current state |
+| Before `/implement` | Prime if >1 hour since last prime |
+| Before `/hotfix` | Quick prime (steps 4-5 minimum) |
+
+---
 
 ### 1. Discovery Phase (`/discover`)
 
@@ -226,18 +287,70 @@ Discovery (whole app)
 
 ---
 
+## Post-Completion Phases
+
+After merging a feature, complete the feedback loop:
+
+### 8. Execution Report (`/execution-report`)
+
+**Document what was implemented versus what was planned**
+
+- **Who runs it**: You (orchestrator) - self-executed
+- **Prerequisites**: Completed implementation (after `/implement`)
+- **Input**: Plan document, git history, files changed
+- **Output**: `docs/execution-reports/YYYY-MM-DD-{feature}.md`
+- **Documents**:
+  - Completed tasks
+  - Modified tasks (what changed and why)
+  - Skipped tasks (and reasoning)
+  - Validation results (lint, tests, build)
+  - Challenges encountered
+  - Divergences from plan (intentional vs unintentional)
+
+**Key Principle**: Create a record for process improvement analysis.
+
+---
+
+### 9. System Review (`/system-review`)
+
+**Analyze process effectiveness, not code quality**
+
+- **Who runs it**: You (orchestrator) - self-executed
+- **Prerequisites**: Execution report
+- **Input**: Plan, PRD, execution report, git history
+- **Output**: `docs/system-reviews/YYYY-MM-DD-{feature}.md`
+- **Analyzes**:
+  - Good divergences (keep/encourage)
+  - Bad divergences (prevent in future)
+  - Root cause categories (unclear planning, missing context, etc.)
+  - Pattern compliance
+- **Generates**:
+  - CLAUDE.md updates
+  - Command updates
+  - Template updates
+  - New automation
+  - Reference docs
+
+**Key Principle**: "You're not looking for bugs in the code - you're looking for bugs in the process."
+
+---
+
 ## Prerequisites by Phase
 
 | Phase | Requires |
 |-------|----------|
+| `/prime` | None - run before any significant work |
 | `/discover` | None - can start anytime |
 | `/research` | None - can run anytime |
+| `/rca` | Bug report or issue to investigate |
 | `/prd` | Discovery status = READY FOR PLANNING (or explicit skip) |
 | `/plan` | Approved PRD |
 | `/ticket` | Approved plan |
 | `/implement` | Plan with ticket IDs |
 | `/pr` | Passing tests, committed code |
 | `/validate` | Open PR |
+| `/execution-report` | Completed implementation |
+| `/system-review` | Execution report |
 
 **Check prerequisites before proceeding. If missing, guide user to correct phase.**
 
@@ -247,20 +360,25 @@ Discovery (whole app)
 
 For production emergencies, use the abbreviated hotfix workflow:
 
-```bash
-/hotfix "description of fix"
+```
+/prime → /rca → /hotfix → /validate
 ```
 
-This skips discovery/PRD/plan but still requires:
-- Ticket creation
-- TDD implementation
-- PR with tests
-- Validation before merge
+**Two-Stage Bug Fix Process:**
 
-The hotfix workflow uses abbreviated flow:
-- Skip discovery/plan/PRD
-- Still requires: ticket, tests, PR
-- Delegate to engineer with urgency flag
+1. **Root Cause Analysis (`/rca`)** - Investigate before fixing
+   - Gather issue details
+   - Reproduce the issue
+   - Identify root cause
+   - Design the fix
+   - Output: `docs/rca/YYYY-MM-DD-{issue}.md`
+
+2. **Hotfix (`/hotfix`)** - Implement the fix
+   - Skip discovery/PRD/plan
+   - Still requires: ticket, tests, PR
+   - Delegate to engineer with urgency flag
+
+**Key Principle**: Separate analysis from implementation. Understand the problem before coding the fix.
 
 ---
 
@@ -284,9 +402,12 @@ Workflow state persists in files, not context:
 |-------|-------------------|--------------|-------|
 | Discovery | `docs/discovery.md` (living doc) | NOT STARTED → IN PROGRESS → READY FOR PLANNING | **Whole application vision** |
 | Research | `docs/research/YYYY-MM-DD-{topic}.md` | (point-in-time) | Technical investigations |
+| RCA | `docs/rca/YYYY-MM-DD-{issue}.md` | ANALYZING → FIX PROPOSED → VERIFIED | Bug investigation |
 | PRD | `docs/prds/YYYY-MM-DD-{feature}.md` | DRAFT → APPROVED | **One feature/epic per PRD** |
 | Plan | `docs/plans/YYYY-MM-DD-{feature}.md` | DRAFT → APPROVED | Technical approach for one PRD |
 | Tickets | Updated in plan (ticket IDs added) | IDs populated | Individual tasks from plan |
+| Execution Report | `docs/execution-reports/YYYY-MM-DD-{feature}.md` | COMPLETE / PARTIAL / BLOCKED | Implementation record |
+| System Review | `docs/system-reviews/YYYY-MM-DD-{feature}.md` | (point-in-time) | Process improvement |
 
 **Reading artifacts gives you state. Writing artifacts persists state.**
 
@@ -326,12 +447,15 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 
 ## Key Principles
 
-1. **Plan Before Code** - Never skip to implementation without a plan
-2. **Test First** - Write failing tests before implementation
-3. **Phase Gates** - Each phase requires approval before proceeding
-4. **Document Everything** - All decisions captured in version-controlled docs
-5. **Quality Gates** - Tests and linting must pass before merge
-6. **Traceability** - Every commit links to a ticket, every ticket to a PRD
+1. **Context First** - Always prime before significant work
+2. **Plan Before Code** - Never skip to implementation without a plan
+3. **Test First** - Write failing tests before implementation
+4. **Phase Gates** - Each phase requires approval before proceeding
+5. **Document Everything** - All decisions captured in version-controlled docs
+6. **Quality Gates** - Tests and linting must pass before merge
+7. **Traceability** - Every commit links to a ticket, every ticket to a PRD
+8. **Analyze Before Fix** - Use RCA for bugs before implementing fixes
+9. **Process Improvement** - Execution reports and system reviews close the feedback loop
 
 ---
 
