@@ -15,7 +15,7 @@ A complete Software Development Lifecycle (SDLC) automation framework that guide
    ```
 3. Edit `.env` with your API keys
 4. Configure Asana MCP in Claude Code (see below)
-5. Run `/discover` to start
+5. Run `/guide` if you're new, or `/discover` to start a feature
 
 ## Workflow
 
@@ -26,6 +26,8 @@ See [WORKFLOW.md](WORKFLOW.md) for detailed workflow documentation.
 ```
 
 **Phase Summary:**
+- `/guide` - Help and orientation for new users
+- `/whats-next` - Find your current state and next action
 - `/discover` - Interactive requirements gathering
 - `/prd` - Formal Product Requirements Document
 - `/plan` - Technical implementation plan

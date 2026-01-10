@@ -355,6 +355,7 @@ After merging a feature, complete the feedback loop:
 
 | Phase | Requires |
 |-------|----------|
+| `/guide` | None - help for new users anytime |
 | `/whats-next` | None - run anytime to get oriented |
 | `/ralph-prd` | Approved plan with ticket IDs + clean git state |
 | `/prime` | None - run before any significant work |
