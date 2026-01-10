@@ -465,5 +465,8 @@ Templates available in `docs/templates/`:
 - `discovery-template.md` - Discovery document template
 - `prd-template.md` - PRD template
 - `plan-template.md` - Technical plan template
+- `rca-template.md` - Root cause analysis template
+- `execution-report-template.md` - Execution report template
+- `system-review-template.md` - System review template
 
 Agents should use these as starting points.
