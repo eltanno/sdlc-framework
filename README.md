@@ -141,8 +141,8 @@ See `.env.example` for all available configuration options.
 │   │   └── validate-docs.ts       # Documentation link validator
 │   ├── scripts/                   # Utility scripts
 │   │   └── statusline.sh         # Custom statusline display
-│   ├── settings.json             # Claude Code settings
-│   └── config.yaml               # Project configuration
+│   └── settings.json             # Claude Code settings
+├── config.yaml                   # Project configuration
 ├── docs/
 │   ├── discovery.md              # Living requirements doc
 │   ├── plans/                    # Implementation plans
@@ -166,7 +166,7 @@ See `.env.example` for all available configuration options.
 
 ## Configuration
 
-Edit `.claude/config.yaml` to customize:
+Edit `config.yaml` to customize:
 
 ```yaml
 project:

@@ -29,7 +29,7 @@ Read these files in order (if they exist):
 3. `docs/discovery.md` - Product vision
 4. `docs/prds/` - Latest PRD (most recent by date)
 5. `docs/plans/` - Latest plan (most recent by date)
-6. `.claude/config.yaml` - SDLC configuration
+6. `config.yaml` - SDLC configuration (project root)
 
 ### Step 3: Technical Context
 

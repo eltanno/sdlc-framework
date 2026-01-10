@@ -20,7 +20,7 @@ If no approved PRD exists:
 
 Load project config for Asana settings:
 ```yaml
-# From .claude/config.yaml
+# From config.yaml (project root)
 pm:
   tool: asana
   asana:
