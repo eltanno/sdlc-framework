@@ -337,6 +337,7 @@ After merging a feature, complete the feedback loop:
 
 | Phase | Requires |
 |-------|----------|
+| `/whats-next` | None - run anytime to get oriented |
 | `/prime` | None - run before any significant work |
 | `/discover` | None - can start anytime |
 | `/research` | None - can run anytime |
