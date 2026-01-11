@@ -1,5 +1,8 @@
 # Planning Phase - Orchestrator Instructions
 
+> **⚠️ MANDATORY: READ THIS ENTIRE FILE BEFORE PROCEEDING.**
+> **You must confirm you have read and understood all sections.**
+
 **You are the orchestrator. Delegate this to the `architect` agent.**
 
 **Agent definition**: See `.claude/agents/architect.md` for architect responsibilities.
@@ -119,7 +122,7 @@ Key Decisions:
 - Decision 1
 - Decision 2
 
-Next: User should review and approve, then run /ticket
+Next: User should review and approve, then run /ralph-prd
 ```
 
 ---
@@ -129,20 +132,20 @@ Next: User should review and approve, then run /ticket
 1. **Verify** the plan document was created
 2. **Summarize** approach for user
 3. **Prompt** user to review and approve (change status to APPROVED)
-4. **Next step:** Once approved, user can run `/ticket`
+4. **Next step:** Once approved, user can run `/ralph-prd`
 
 ## Workflow State Update
 
 At the **start** of this phase, update `workflow-state.json`:
 
 ```bash
-jq '.phase = "plan"' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
+.claude/scripts/update-workflow-state.sh '.phase = "plan"'
 ```
 
 At the **end** of this phase (after plan is created and verified), mark complete:
 
 ```bash
-jq '.completed = (.completed + ["plan"] | unique)' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
+.claude/scripts/update-workflow-state.sh '.completed = (.completed + ["plan"] | unique)'
 ```
 
 ## Feature for Planning

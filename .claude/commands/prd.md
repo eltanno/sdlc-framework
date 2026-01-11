@@ -1,5 +1,8 @@
 # PRD Phase - Orchestrator Instructions
 
+> **⚠️ MANDATORY: READ THIS ENTIRE FILE BEFORE PROCEEDING.**
+> **You must confirm you have read and understood all sections.**
+
 **You are the orchestrator. Delegate this to the `architect` agent.**
 
 **Agent definition**: See `.claude/agents/architect.md` for architect responsibilities.
@@ -181,13 +184,13 @@ Next: User should review and approve, then run /plan
 At the **start** of this phase, update `workflow-state.json`:
 
 ```bash
-jq '.phase = "prd"' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
+.claude/scripts/update-workflow-state.sh '.phase = "prd"'
 ```
 
 At the **end** of this phase (after PRD is created and verified), mark complete:
 
 ```bash
-jq '.completed = (.completed + ["prd"] | unique)' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
+.claude/scripts/update-workflow-state.sh '.completed = (.completed + ["prd"] | unique)'
 ```
 
 ## Feature for PRD

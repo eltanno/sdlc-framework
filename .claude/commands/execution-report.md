@@ -1,5 +1,8 @@
 # Execution Report
 
+> **⚠️ MANDATORY: READ THIS ENTIRE FILE BEFORE PROCEEDING.**
+> **You must confirm you have read and understood all sections.**
+
 **Document what was implemented versus what was planned.**
 
 ## Purpose
@@ -221,6 +224,20 @@ Create `docs/execution-reports/YYYY-MM-DD-{feature-slug}.md`:
 1. **Create PR** - Use report to write PR description
 2. **Run `/system-review`** - Analyze process effectiveness
 3. **Update PROGRESS.md** - Mark tasks complete
+
+## Workflow State Update
+
+At the **start** of this phase, update `workflow-state.json`:
+
+```bash
+.claude/scripts/update-workflow-state.sh '.phase = "report"'
+```
+
+At the **end** of this phase (after report is created), mark complete:
+
+```bash
+.claude/scripts/update-workflow-state.sh '.completed = (.completed + ["report"] | unique)'
+```
 
 ## Arguments
 

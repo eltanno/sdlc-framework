@@ -1,5 +1,8 @@
 # Ralph PRD - Autonomous PRD Implementation
 
+> **⚠️ MANDATORY: READ THIS ENTIRE FILE BEFORE PROCEEDING.**
+> **You must confirm you have read and understood all sections.**
+
 **Drive a PRD to completion autonomously using ralph-wiggum.**
 
 ## Purpose
@@ -122,26 +125,27 @@ After each ticket:
 
 At the START of ralph-prd, update workflow-state.json:
 \`\`\`bash
-# Set phase to ralph and initialize tracking (replace N with ticket count from plan)
-jq '.phase = \"ralph\" | .ralph.current = 0 | .ralph.total = N | .ralph.current_ticket = null | .ralph.tickets_done = []' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
+# Set phase to ralph, initialize tracking, and reset post-implementation phases (replace N with ticket count from plan)
+# Remove report/review from completed since they need to be re-run after this implementation cycle
+.claude/scripts/update-workflow-state.sh '.phase = \"ralph\" | .ralph.current = 0 | .ralph.total = N | .ralph.current_ticket = null | .ralph.tickets_done = [] | .completed = (.completed - [\"report\", \"review\", \"ralph\"])'
 \`\`\`
 
 After EACH ticket completes:
 \`\`\`bash
 # Update ralph progress (replace TICKET-ID with actual ID)
-jq '.ralph.current = (.ralph.current + 1) | .ralph.current_ticket = null | .ralph.tickets_done += [\"TICKET-ID\"]' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
+.claude/scripts/update-workflow-state.sh '.ralph.current = (.ralph.current + 1) | .ralph.current_ticket = null | .ralph.tickets_done += [\"TICKET-ID\"]'
 \`\`\`
 
 Before STARTING a ticket:
 \`\`\`bash
 # Set current ticket being worked on
-jq '.ralph.current_ticket = \"TICKET-ID\"' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
+.claude/scripts/update-workflow-state.sh '.ralph.current_ticket = \"TICKET-ID\"'
 \`\`\`
 
 At the END (PRD_COMPLETE):
 \`\`\`bash
 # Mark ralph complete
-jq '.phase = \"idle\" | .completed = (.completed + [\"ralph\"] | unique)' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
+.claude/scripts/update-workflow-state.sh '.phase = \"idle\" | .completed = (.completed + [\"ralph\"] | unique)'
 \`\`\`
 
 " --completion-promise "PRD_COMPLETE" --max-iterations 100

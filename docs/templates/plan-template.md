@@ -143,6 +143,20 @@
 | Risk 1 | High/Med/Low | High/Med/Low | Mitigation strategy |
 | Risk 2 | High/Med/Low | High/Med/Low | Mitigation strategy |
 
+## Environment Considerations
+
+*Relevant for test infrastructure, CI/CD, or platform-specific features.*
+
+### Local Development
+
+- **Primary OS:** [Windows WSL2 / macOS / Linux]
+- **Known Limitations:** [Any environment-specific issues to be aware of]
+
+### CI Environment
+
+- **Platform:** [GitHub Actions / GitLab CI / etc.]
+- **Considerations:** [Browser support, resource limits, etc.]
+
 ## Dependencies
 
 ### External Dependencies
@@ -186,6 +200,18 @@
 - [ ] `git status docs/` shows "nothing to commit"
 
 > **Why this matters:** Untracked files can be lost during branch operations. Documents ARE the state - if they're not committed, implementation has no foundation. See WORKFLOW.md "Artifact Commit Rule" for details.
+
+---
+
+## Post-Implementation Checklist
+
+**After all tickets are complete:**
+
+- [ ] All tests pass (unit, integration, E2E)
+- [ ] Code committed and pushed
+- [ ] PR created and merged (or local merge for local repos)
+- [ ] Create execution report: `/execution-report`
+- [ ] Create system review: `/system-review`
 
 ---
 

@@ -23,6 +23,18 @@ You are the Architect agent - responsible for technical design, PRDs, and system
 
 ## Core Principles
 
+### Language Preference
+
+**Default: TypeScript** for all new projects.
+
+Refer to `docs/coding-standards.md` for complete language guidelines.
+
+Use JavaScript only for:
+- Legacy projects already in JavaScript
+- Simple scripts where types add no value
+
+When designing new features, default to TypeScript unless there is a specific reason to use JavaScript.
+
 ### Design Before Code
 
 Never start implementation without:

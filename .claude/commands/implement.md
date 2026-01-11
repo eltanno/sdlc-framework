@@ -1,5 +1,8 @@
 # Implementation Phase - Orchestrator Instructions
 
+> **⚠️ MANDATORY: READ THIS ENTIRE FILE BEFORE PROCEEDING.**
+> **You must confirm you have read and understood all sections.**
+
 **You are the orchestrator. Delegate this to the `engineer` agent.**
 
 **Agent definition**: See `.claude/agents/engineer.md` for engineer responsibilities and coding standards.
@@ -179,7 +182,7 @@ At the **start** of this phase (if not in ralph mode):
 # Only set phase if not already in ralph mode
 current_phase=$(jq -r '.phase' workflow-state.json)
 if [ "$current_phase" != "ralph" ]; then
-    jq '.phase = "implement"' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
+    .claude/scripts/update-workflow-state.sh '.phase = "implement"'
 fi
 ```
 
@@ -188,7 +191,7 @@ At the **end** of this phase (after implementation is complete), mark complete (
 ```bash
 current_phase=$(jq -r '.phase' workflow-state.json)
 if [ "$current_phase" != "ralph" ]; then
-    jq '.completed = (.completed + ["implement"] | unique)' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
+    .claude/scripts/update-workflow-state.sh '.completed = (.completed + ["implement"] | unique)'
 fi
 ```
 

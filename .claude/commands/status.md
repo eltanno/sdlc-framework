@@ -1,5 +1,8 @@
 # Workflow Status - Orchestrator Direct Task
 
+> **⚠️ MANDATORY: READ THIS ENTIRE FILE BEFORE PROCEEDING.**
+> **You must confirm you have read and understood all sections.**
+
 **You are the orchestrator. This is a coordination task - do it yourself.**
 
 Status checking is lightweight - just read files and report. No delegation needed.

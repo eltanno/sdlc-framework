@@ -1,5 +1,8 @@
 # New Project - Orchestrator Direct Task
 
+> **⚠️ MANDATORY: READ THIS ENTIRE FILE BEFORE PROCEEDING.**
+> **You must confirm you have read and understood all sections.**
+
 **You are the orchestrator. This is a coordination task - do it yourself.**
 
 This command creates a new project folder with the SDLC framework files from the current project.

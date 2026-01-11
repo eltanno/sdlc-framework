@@ -1,5 +1,8 @@
 # Research Phase - Orchestrator Instructions
 
+> **⚠️ MANDATORY: READ THIS ENTIRE FILE BEFORE PROCEEDING.**
+> **You must confirm you have read and understood all sections.**
+
 **You are the orchestrator. Delegate this to the `general-purpose` agent.**
 
 ## Purpose

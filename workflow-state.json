@@ -1,11 +1,28 @@
 {
-  "phase": "idle",
-  "feature": null,
-  "completed": [],
+  "phase": "review",
+  "feature": "workflow-standards",
+  "completed": [
+    "plan",
+    "prd",
+    "ralph",
+    "report",
+    "review"
+  ],
   "ralph": {
-    "current": 0,
-    "total": 0,
+    "current": 10,
+    "total": 10,
     "current_ticket": null,
-    "tickets_done": []
+    "tickets_done": [
+      "Ticket-1",
+      "Ticket-2",
+      "Ticket-3",
+      "Ticket-4",
+      "Ticket-5",
+      "Ticket-6",
+      "Ticket-7",
+      "Ticket-8",
+      "Ticket-9",
+      "Ticket-10"
+    ]
   }
 }

@@ -340,8 +340,8 @@ fi
 printf "\n"
 
 # LINE 4 - Workflow progress
-# Phases in order (simplified: manual phases + ralph autonomous loop)
-PHASES="discover prd plan ralph"
+# Phases in order (manual phases + ralph autonomous loop + post-impl docs)
+PHASES="discover prd plan ralph report review"
 
 # Helper to check if phase is completed
 is_completed() {
@@ -349,23 +349,39 @@ is_completed() {
 }
 
 # Helper to generate progress bar
-# Args: current, total, width (default 10)
+# Args: current, total, has_in_progress (0 or 1)
+# Uses: ✓ for completed, ○ for in progress, • for not started
 progress_bar() {
     local current=$1
     local total=$2
-    local width=${3:-10}
+    local has_in_progress=${3:-0}
 
     if [ "$total" -eq 0 ]; then
         # No tickets yet - empty bar
-        printf "%${width}s" | tr ' ' '░'
+        printf "••••••••••"
         return
     fi
 
-    local filled=$((current * width / total))
-    local empty=$((width - filled))
+    local result=""
+    local i
 
-    printf "%${filled}s" | tr ' ' '█'
-    printf "%${empty}s" | tr ' ' '░'
+    # Add completed ticks
+    for ((i=0; i<current; i++)); do
+        result="${result}✓"
+    done
+
+    # Add in-progress marker if there is one
+    if [ "$has_in_progress" -eq 1 ] && [ "$current" -lt "$total" ]; then
+        result="${result}○"
+        current=$((current + 1))
+    fi
+
+    # Add pending dots
+    for ((i=current; i<total; i++)); do
+        result="${result}•"
+    done
+
+    printf "%s" "$result"
 }
 
 # Build workflow line
@@ -383,6 +399,8 @@ for phase in $PHASES; do
     case "$phase" in
         prd) display_name="PRD" ;;
         ralph) display_name="Ralph" ;;
+        report) display_name="Report" ;;
+        review) display_name="Review" ;;
         *) display_name=$(echo "$phase" | sed 's/\b\(.\)/\u\1/') ;;
     esac
 
@@ -393,7 +411,12 @@ for phase in $PHASES; do
         workflow_line="${workflow_line}${WORKFLOW_ACTIVE}●${display_name}${RESET}"
         # Add progress bar for ralph phase
         if [ "$phase" = "ralph" ] && [ "$ralph_total" -gt 0 ]; then
-            bar=$(progress_bar "$ralph_current" "$ralph_total")
+            # Check if there's a ticket in progress
+            has_in_progress=0
+            if [ -n "$ralph_current_ticket" ] && [ "$ralph_current_ticket" != "null" ]; then
+                has_in_progress=1
+            fi
+            bar=$(progress_bar "$ralph_current" "$ralph_total" "$has_in_progress")
             workflow_line="${workflow_line}${WORKFLOW_PENDING} [${WORKFLOW_COMPLETED}${bar}${WORKFLOW_PENDING}] ${WORKFLOW_ACTIVE}${ralph_current}/${ralph_total}${RESET}"
         fi
     else

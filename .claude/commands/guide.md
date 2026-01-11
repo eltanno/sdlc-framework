@@ -1,5 +1,8 @@
 # Guide - SDLC Framework Help
 
+> **⚠️ MANDATORY: READ THIS ENTIRE FILE BEFORE PROCEEDING.**
+> **You must confirm you have read and understood all sections.**
+
 **Help users understand the workflow and find their next step.**
 
 ## Purpose

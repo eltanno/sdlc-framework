@@ -1,5 +1,8 @@
 # Discovery Phase - Orchestrator Instructions
 
+> **⚠️ MANDATORY: READ THIS ENTIRE FILE BEFORE PROCEEDING.**
+> **You must confirm you have read and understood all sections.**
+
 **You ARE the agent for this phase. This is interactive - do NOT delegate.**
 
 ## Template
@@ -256,13 +259,13 @@ What's on your mind?
 At the **start** of this phase, update `workflow-state.json`:
 
 ```bash
-jq '.phase = "discover"' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
+.claude/scripts/update-workflow-state.sh '.phase = "discover"'
 ```
 
 At the **end** of this phase (when user marks discovery as complete), mark complete:
 
 ```bash
-jq '.completed = (.completed + ["discover"] | unique)' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
+.claude/scripts/update-workflow-state.sh '.completed = (.completed + ["discover"] | unique)'
 ```
 
 ## Topic/Context for Discovery

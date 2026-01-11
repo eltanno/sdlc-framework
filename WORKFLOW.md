@@ -561,12 +561,21 @@ hotfix/TASK-{id}-{short-description}
 
 ### Commit Messages
 ```
-[TASK-XXX] Brief description (50 chars max)
+type(scope): description [TICKET-ID]
 
-- Detail about what changed
+Types: feat, fix, docs, test, refactor, chore
+Scope: component or area affected
+Ticket: reference to task tracker (Trello, Jira, etc.)
 
-Co-Authored-By: Claude <noreply@anthropic.com>
+Examples:
+- feat(auth): add JWT token refresh endpoint [TASK-123]
+- fix(api): handle null user in profile response [TASK-456]
+- test(user): add integration tests for signup flow [TASK-789]
+- refactor(db): extract connection pooling to module [TASK-101]
+- docs(readme): update setup instructions
 ```
+
+Note: Ticket ID is optional for docs/chore commits that aren't tied to a specific task.
 
 ---
 
@@ -605,18 +614,14 @@ Artifacts are the foundation of the entire workflow. Untracked files are NOT per
 
 ```bash
 git add docs/
-git commit -m "[DOCS] Create {artifact-type}: {name}
-
-- {Brief description of content}
-
-Co-Authored-By: Claude <noreply@anthropic.com>"
+git commit -m "docs({artifact-type}): create {name}"
 ```
 
 Examples:
 ```bash
-git commit -m "[DOCS] Create discovery: Local Todo App"
-git commit -m "[DOCS] Create PRD: todo-app-core-v1"
-git commit -m "[DOCS] Create plan: todo-app-core-v1"
+git commit -m "docs(discovery): create Local Todo App"
+git commit -m "docs(prd): create todo-app-core-v1"
+git commit -m "docs(plan): create plan for todo-app-core-v1"
 ```
 
 ### Pre-Implementation Verification
@@ -629,7 +634,7 @@ git status docs/
 
 # If untracked files exist, STOP and commit them first
 git add docs/
-git commit -m "[DOCS] Commit artifacts before implementation"
+git commit -m "docs(workflow): commit artifacts before implementation"
 ```
 
 ### Why This Matters

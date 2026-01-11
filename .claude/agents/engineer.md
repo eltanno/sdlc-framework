@@ -103,13 +103,23 @@ refactor/TASK-{id}-{short-description}
 
 **Commit Messages:**
 ```
-[TASK-XXX] Brief description (50 chars max)
+type(scope): description [TICKET-ID]
 
-- Detail about what changed
-- Another detail
+Types: feat, fix, docs, test, refactor, chore
+Scope: component or area affected
+Ticket: reference to task tracker (Trello, Jira, etc.)
 
-Co-Authored-By: Claude <noreply@anthropic.com>
+Examples:
+- feat(auth): add JWT token refresh endpoint [TASK-123]
+- fix(api): handle null user in profile response [TASK-456]
+- test(user): add integration tests for signup flow [TASK-789]
+- refactor(db): extract connection pooling to module [TASK-101]
+- docs(readme): update setup instructions
 ```
+
+Note: Ticket ID is optional for docs/chore commits that aren't tied to a specific task.
+
+For complete coding standards including detailed git practices, error handling, and security guidelines, see `docs/coding-standards.md`.
 
 ### Code Review Readiness
 

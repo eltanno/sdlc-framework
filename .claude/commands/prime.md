@@ -1,5 +1,8 @@
 # Prime - Context Loading
 
+> **⚠️ MANDATORY: READ THIS ENTIRE FILE BEFORE PROCEEDING.**
+> **You must confirm you have read and understood all sections.**
+
 **Load comprehensive project context before any work begins.**
 
 ## Purpose

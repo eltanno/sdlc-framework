@@ -1,5 +1,8 @@
 # What's Next - Workflow State & Recommendations
 
+> **⚠️ MANDATORY: READ THIS ENTIRE FILE BEFORE PROCEEDING.**
+> **You must confirm you have read and understood all sections.**
+
 **Analyze current state and recommend next actions.**
 
 ## Purpose

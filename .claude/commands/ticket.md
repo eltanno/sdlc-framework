@@ -1,5 +1,8 @@
 # Ticket Creation Phase - Orchestrator Instructions
 
+> **⚠️ MANDATORY: READ THIS ENTIRE FILE BEFORE PROCEEDING.**
+> **You must confirm you have read and understood all sections.**
+
 **You are the orchestrator. Create tickets using the configured PM tool (or local tracking if none).**
 
 ## Prerequisites Check
@@ -255,7 +258,7 @@ At the **start** of this phase (if not in ralph mode):
 # Only set phase if not already in ralph mode
 current_phase=$(jq -r '.phase' workflow-state.json)
 if [ "$current_phase" != "ralph" ]; then
-    jq '.phase = "ticket"' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
+    .claude/scripts/update-workflow-state.sh '.phase = "ticket"'
 fi
 ```
 
@@ -264,7 +267,7 @@ At the **end** of this phase (after tickets are created), mark complete (if not 
 ```bash
 current_phase=$(jq -r '.phase' workflow-state.json)
 if [ "$current_phase" != "ralph" ]; then
-    jq '.completed = (.completed + ["ticket"] | unique)' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
+    .claude/scripts/update-workflow-state.sh '.completed = (.completed + ["ticket"] | unique)'
 fi
 ```
 

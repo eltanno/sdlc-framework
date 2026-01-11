@@ -1,5 +1,8 @@
 # Bugfix Phase - Orchestrator Instructions
 
+> **⚠️ MANDATORY: READ THIS ENTIRE FILE BEFORE PROCEEDING.**
+> **You must confirm you have read and understood all sections.**
+
 **Standard bug fixes where root cause is already known. Delegates to `engineer` agent.**
 
 ## When to Use

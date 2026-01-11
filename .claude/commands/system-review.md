@@ -1,5 +1,8 @@
 # System Review - Process Meta-Analysis
 
+> **⚠️ MANDATORY: READ THIS ENTIRE FILE BEFORE PROCEEDING.**
+> **You must confirm you have read and understood all sections.**
+
 **Analyze process effectiveness, not code quality.**
 
 ## Purpose
@@ -244,6 +247,24 @@ Create `docs/system-reviews/YYYY-MM-DD-{feature-slug}.md`:
 - Blame individuals
 - Ignore patterns across multiple reviews
 - Skip this step after significant features
+
+## Workflow State Update
+
+At the **start** of this phase, update `workflow-state.json`:
+
+```bash
+.claude/scripts/update-workflow-state.sh '.phase = "review"'
+```
+
+At the **end** of this phase (after review is created), mark complete and reset for next feature:
+
+```bash
+# Mark review complete
+.claude/scripts/update-workflow-state.sh '.completed = (.completed + ["review"] | unique)'
+
+# Reset for next feature cycle (optional - keeps history or resets)
+# To reset: .claude/scripts/update-workflow-state.sh '.phase = "idle" | .completed = [] | .ralph = {"current": 0, "total": 0, "current_ticket": null, "tickets_done": []}'
+```
 
 ## Arguments
 

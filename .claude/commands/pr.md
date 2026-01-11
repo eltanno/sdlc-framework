@@ -1,5 +1,8 @@
 # Pull Request / Merge Request Phase - Orchestrator Instructions
 
+> **⚠️ MANDATORY: READ THIS ENTIRE FILE BEFORE PROCEEDING.**
+> **You must confirm you have read and understood all sections.**
+
 **You are the orchestrator. This is coordination - delegate to haiku or do directly.**
 
 ## Prerequisites Check
@@ -248,7 +251,7 @@ At the **start** of this phase (if not in ralph mode):
 # Only set phase if not already in ralph mode
 current_phase=$(jq -r '.phase' workflow-state.json)
 if [ "$current_phase" != "ralph" ]; then
-    jq '.phase = "pr"' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
+    .claude/scripts/update-workflow-state.sh '.phase = "pr"'
 fi
 ```
 
@@ -257,7 +260,7 @@ At the **end** of this phase (after PR/MR is created), mark complete (if not in 
 ```bash
 current_phase=$(jq -r '.phase' workflow-state.json)
 if [ "$current_phase" != "ralph" ]; then
-    jq '.completed = (.completed + ["pr"] | unique)' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
+    .claude/scripts/update-workflow-state.sh '.completed = (.completed + ["pr"] | unique)'
 fi
 ```
 
