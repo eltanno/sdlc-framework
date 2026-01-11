@@ -48,3 +48,4 @@ temp/
 
 # Project-specific
 # Add project-specific ignores below
+workflow-state.json
