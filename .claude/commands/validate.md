@@ -175,6 +175,33 @@ Next Steps:
 2. Guide back to `/implement` to fix
 3. Re-run `/validate` after fixes
 
+## Workflow State Update
+
+**Note:** If running as part of `/ralph-prd`, ralph manages the workflow state. Only update if NOT in ralph mode.
+
+At the **start** of this phase (if not in ralph mode):
+
+```bash
+# Only set phase if not already in ralph mode
+current_phase=$(jq -r '.phase' workflow-state.json)
+if [ "$current_phase" != "ralph" ]; then
+    jq '.phase = "validate"' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
+fi
+```
+
+At the **end** of this phase (after validation passes and PR is merged), mark complete (if not in ralph mode):
+
+```bash
+current_phase=$(jq -r '.phase' workflow-state.json)
+if [ "$current_phase" != "ralph" ]; then
+    # Mark validate as complete
+    jq '.completed = (.completed + ["validate"] | unique)' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
+
+    # Reset for next feature (optional - keep completed as history or reset)
+    # To reset: jq '.phase = "idle" | .completed = []' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
+fi
+```
+
 ## PR to Validate
 
 $ARGUMENTS

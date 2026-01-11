@@ -144,6 +144,21 @@ if [ "$cache_needs_update" = true ]; then
     fi
 fi
 
+# Read workflow state
+WORKFLOW_STATE_FILE="$current_dir/workflow-state.json"
+workflow_phase="idle"
+workflow_completed=""
+ralph_current=0
+ralph_total=0
+ralph_current_ticket=""
+if [ -f "$WORKFLOW_STATE_FILE" ]; then
+    workflow_phase=$(jq -r '.phase // "idle"' "$WORKFLOW_STATE_FILE" 2>/dev/null)
+    workflow_completed=$(jq -r '.completed // [] | join(" ")' "$WORKFLOW_STATE_FILE" 2>/dev/null)
+    ralph_current=$(jq -r '.ralph.current // 0' "$WORKFLOW_STATE_FILE" 2>/dev/null)
+    ralph_total=$(jq -r '.ralph.total // 0' "$WORKFLOW_STATE_FILE" 2>/dev/null)
+    ralph_current_ticket=$(jq -r '.ralph.current_ticket // ""' "$WORKFLOW_STATE_FILE" 2>/dev/null)
+fi
+
 # Tokyo Night Storm Color Scheme (24-bit RGB)
 BRIGHT_PURPLE='\033[38;2;187;154;247m'
 BRIGHT_BLUE='\033[38;2;122;162;247m'
@@ -170,6 +185,12 @@ MCP_DEFAULT="$LINE2_PRIMARY"
 PLUGIN_COLOR='\033[38;2;255;180;100m'
 GIT_BRANCH_COLOR='\033[38;2;255;150;100m'
 
+# Workflow line colors
+WORKFLOW_COMPLETED='\033[38;2;158;206;106m'  # Bright green
+WORKFLOW_ACTIVE='\033[1;38;2;255;255;255m'   # Bold white
+WORKFLOW_PENDING='\033[38;2;100;100;120m'    # Dim grey
+WORKFLOW_ARROW='\033[38;2;80;80;100m'        # Darker grey for arrows
+
 RESET='\033[0m\033[49m'
 
 # Simple colors mode - set SIMPLE_COLORS=1 if you have terminal display issues
@@ -192,6 +213,10 @@ if [ "${SIMPLE_COLORS:-0}" = "1" ]; then
     MCP_DEFAULT='\033[34m'
     PLUGIN_COLOR='\033[33m'
     GIT_BRANCH_COLOR='\033[33m'
+    WORKFLOW_COMPLETED='\033[32m'
+    WORKFLOW_ACTIVE='\033[1;37m'
+    WORKFLOW_PENDING='\033[90m'
+    WORKFLOW_ARROW='\033[90m'
 fi
 
 # Format MCP names
@@ -313,3 +338,67 @@ if [ -n "$block_messages" ] && [ "$block_messages" != "0" ]; then
     printf "  ${SEPARATOR_COLOR}|${RESET}  📊 ${LINE3_ACCENT}${block_messages}${RESET} msgs, ${LINE3_ACCENT}${block_percent}%%${RESET} used, resets in ${LINE3_ACCENT}${block_reset}${RESET}"
 fi
 printf "\n"
+
+# LINE 4 - Workflow progress
+# Phases in order (simplified: manual phases + ralph autonomous loop)
+PHASES="discover prd plan ralph"
+
+# Helper to check if phase is completed
+is_completed() {
+    echo " $workflow_completed " | grep -q " $1 "
+}
+
+# Helper to generate progress bar
+# Args: current, total, width (default 10)
+progress_bar() {
+    local current=$1
+    local total=$2
+    local width=${3:-10}
+
+    if [ "$total" -eq 0 ]; then
+        # No tickets yet - empty bar
+        printf "%${width}s" | tr ' ' '░'
+        return
+    fi
+
+    local filled=$((current * width / total))
+    local empty=$((width - filled))
+
+    printf "%${filled}s" | tr ' ' '█'
+    printf "%${empty}s" | tr ' ' '░'
+}
+
+# Build workflow line
+workflow_line=""
+first=true
+for phase in $PHASES; do
+    # Add arrow separator (except for first)
+    if [ "$first" = true ]; then
+        first=false
+    else
+        workflow_line="${workflow_line}${WORKFLOW_ARROW} → ${RESET}"
+    fi
+
+    # Determine phase display name (capitalize)
+    case "$phase" in
+        prd) display_name="PRD" ;;
+        ralph) display_name="Ralph" ;;
+        *) display_name=$(echo "$phase" | sed 's/\b\(.\)/\u\1/') ;;
+    esac
+
+    # Determine state and format
+    if is_completed "$phase"; then
+        workflow_line="${workflow_line}${WORKFLOW_COMPLETED}✓${display_name}${RESET}"
+    elif [ "$workflow_phase" = "$phase" ]; then
+        workflow_line="${workflow_line}${WORKFLOW_ACTIVE}●${display_name}${RESET}"
+        # Add progress bar for ralph phase
+        if [ "$phase" = "ralph" ] && [ "$ralph_total" -gt 0 ]; then
+            bar=$(progress_bar "$ralph_current" "$ralph_total")
+            workflow_line="${workflow_line}${WORKFLOW_PENDING} [${WORKFLOW_COMPLETED}${bar}${WORKFLOW_PENDING}] ${WORKFLOW_ACTIVE}${ralph_current}/${ralph_total}${RESET}"
+        fi
+    else
+        workflow_line="${workflow_line}${WORKFLOW_PENDING}${display_name}${RESET}"
+    fi
+done
+
+printf "📋 Workflow: ${workflow_line}\n"

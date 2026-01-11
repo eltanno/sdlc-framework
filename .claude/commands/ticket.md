@@ -245,6 +245,29 @@ Options:
 
 ---
 
+## Workflow State Update
+
+**Note:** If running as part of `/ralph-prd`, ralph manages the workflow state. Only update if NOT in ralph mode.
+
+At the **start** of this phase (if not in ralph mode):
+
+```bash
+# Only set phase if not already in ralph mode
+current_phase=$(jq -r '.phase' workflow-state.json)
+if [ "$current_phase" != "ralph" ]; then
+    jq '.phase = "ticket"' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
+fi
+```
+
+At the **end** of this phase (after tickets are created), mark complete (if not in ralph mode):
+
+```bash
+current_phase=$(jq -r '.phase' workflow-state.json)
+if [ "$current_phase" != "ralph" ]; then
+    jq '.completed = (.completed + ["ticket"] | unique)' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
+fi
+```
+
 ## PRD to Process
 
 $ARGUMENTS

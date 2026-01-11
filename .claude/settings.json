@@ -1,11 +1,34 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "model": "opus",
-  "alwaysThinkingEnabled": true,
-  "statusLine": {
-    "type": "command",
-    "command": ".claude/scripts/statusline.sh"
+  "permissions": {
+    "allow": [
+      "Bash(git *)",
+      "Bash(npm *)",
+      "Bash(npx *)",
+      "Bash(ls *)",
+      "Bash(cat *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(find *)",
+      "Bash(grep *)",
+      "Bash(pwd)",
+      "Bash(which *)",
+      "Bash(echo *)"
+    ],
+    "deny": [
+      "Bash(rm -rf /)",
+      "Bash(rm -rf /*)",
+      "Bash(rm -rf ~)",
+      "Bash(rm -rf $HOME)",
+      "Bash(sudo rm -rf /)",
+      "Bash(sudo rm -rf /*)",
+      "Bash(dd if=/dev/zero of=/dev/sda)",
+      "Bash(mkfs.ext4 /dev/sda)",
+      "Bash(> /dev/sda)",
+      "Bash(fork bomb)"
+    ]
   },
+  "model": "opus",
   "hooks": {
     "PreToolUse": [
       {
@@ -56,18 +79,12 @@
       }
     ]
   },
-  "permissions": {
-    "deny": [
-      "Bash(rm -rf /)",
-      "Bash(rm -rf /*)",
-      "Bash(rm -rf ~)",
-      "Bash(rm -rf $HOME)",
-      "Bash(sudo rm -rf /)",
-      "Bash(sudo rm -rf /*)",
-      "Bash(dd if=/dev/zero of=/dev/sda)",
-      "Bash(mkfs.ext4 /dev/sda)",
-      "Bash(> /dev/sda)",
-      "Bash(fork bomb)"
-    ]
+  "statusLine": {
+    "type": "command",
+    "command": ".claude/scripts/statusline.sh"
+  },
+  "alwaysThinkingEnabled": true,
+  "enabledPlugins": {
+    "playwright@claude-plugins-official": true
   }
 }

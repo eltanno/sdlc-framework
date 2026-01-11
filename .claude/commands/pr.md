@@ -7,7 +7,7 @@
 Before proceeding, verify:
 1. Feature branch exists with commits
 2. All tests pass
-3. Branch is pushed to remote
+3. Branch is pushed to remote (unless local-only repo)
 
 ```bash
 # Check current branch
@@ -16,9 +16,49 @@ git branch --show-current
 # Check test status (use command from config.yaml dev.test_command)
 npm test
 
-# Check if pushed
-git status
+# Check for remote
+git remote -v
 ```
+
+If tests fail: "Tests are failing. Please fix before creating PR/MR."
+
+---
+
+## Local Repository (No Remote)
+
+**If `git remote -v` returns empty, this is a local-only repository.**
+
+For local repos, PR phase = merge to main/master:
+
+```bash
+# Get current branch and default branch
+CURRENT_BRANCH=$(git branch --show-current)
+DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || echo "master")
+
+# If on feature branch, merge to default branch
+if [[ "$CURRENT_BRANCH" != "$DEFAULT_BRANCH" && "$CURRENT_BRANCH" != "main" && "$CURRENT_BRANCH" != "master" ]]; then
+    git checkout $DEFAULT_BRANCH
+    git merge $CURRENT_BRANCH
+    echo "Merged $CURRENT_BRANCH → $DEFAULT_BRANCH"
+fi
+```
+
+**Return for local repos:**
+
+```
+LOCAL MERGE COMPLETE
+
+Branch: [feature-branch] → [main/master]
+Commits: [N] commits merged
+
+Next: Run /validate
+```
+
+Then skip to "Workflow State Update" section and mark PR complete.
+
+---
+
+## Remote Repository
 
 Read `config.yaml` from project root for repo type:
 ```yaml
@@ -26,7 +66,6 @@ repo:
   type: github    # github | gitlab
 ```
 
-If tests fail: "Tests are failing. Please fix before creating PR/MR."
 If not pushed: Push first with `git push -u origin $(git branch --show-current)`
 
 ## Task: Create PR/MR
@@ -198,6 +237,29 @@ Next: Wait for CI, get review, then /validate
 1. **Verify** PR/MR was created
 2. **Provide** PR/MR link to user
 3. **Next step:** Wait for CI checks and review, then `/validate`
+
+## Workflow State Update
+
+**Note:** If running as part of `/ralph-prd`, ralph manages the workflow state. Only update if NOT in ralph mode.
+
+At the **start** of this phase (if not in ralph mode):
+
+```bash
+# Only set phase if not already in ralph mode
+current_phase=$(jq -r '.phase' workflow-state.json)
+if [ "$current_phase" != "ralph" ]; then
+    jq '.phase = "pr"' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
+fi
+```
+
+At the **end** of this phase (after PR/MR is created), mark complete (if not in ralph mode):
+
+```bash
+current_phase=$(jq -r '.phase' workflow-state.json)
+if [ "$current_phase" != "ralph" ]; then
+    jq '.completed = (.completed + ["pr"] | unique)' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
+fi
+```
 
 ## Ticket for PR/MR
 

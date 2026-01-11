@@ -1,0 +1,11 @@
+{
+  "phase": "idle",
+  "feature": null,
+  "completed": [],
+  "ralph": {
+    "current": 0,
+    "total": 0,
+    "current_ticket": null,
+    "tickets_done": []
+  }
+}

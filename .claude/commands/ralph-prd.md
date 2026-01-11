@@ -113,9 +113,36 @@ Output PRD_COMPLETE when:
 ## Status Tracking
 
 After each ticket:
-1. Update docs/plans/PROGRESS.md with ticket status
-2. Log what was completed
-3. Note any deviations from plan
+1. Update workflow-state.json with ralph progress
+2. Update docs/plans/PROGRESS.md with ticket status
+3. Log what was completed
+4. Note any deviations from plan
+
+### Workflow State Updates
+
+At the START of ralph-prd, update workflow-state.json:
+\`\`\`bash
+# Set phase to ralph and initialize tracking (replace N with ticket count from plan)
+jq '.phase = \"ralph\" | .ralph.current = 0 | .ralph.total = N | .ralph.current_ticket = null | .ralph.tickets_done = []' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
+\`\`\`
+
+After EACH ticket completes:
+\`\`\`bash
+# Update ralph progress (replace TICKET-ID with actual ID)
+jq '.ralph.current = (.ralph.current + 1) | .ralph.current_ticket = null | .ralph.tickets_done += [\"TICKET-ID\"]' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
+\`\`\`
+
+Before STARTING a ticket:
+\`\`\`bash
+# Set current ticket being worked on
+jq '.ralph.current_ticket = \"TICKET-ID\"' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
+\`\`\`
+
+At the END (PRD_COMPLETE):
+\`\`\`bash
+# Mark ralph complete
+jq '.phase = \"idle\" | .completed = (.completed + [\"ralph\"] | unique)' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
+\`\`\`
 
 " --completion-promise "PRD_COMPLETE" --max-iterations 100
 ```

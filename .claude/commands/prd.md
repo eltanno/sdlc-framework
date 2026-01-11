@@ -176,6 +176,20 @@ Next: User should review and approve, then run /plan
 4. **Prompt** user to review and approve
 5. **Next step:** Once approved, user can run `/plan`
 
+## Workflow State Update
+
+At the **start** of this phase, update `workflow-state.json`:
+
+```bash
+jq '.phase = "prd"' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
+```
+
+At the **end** of this phase (after PRD is created and verified), mark complete:
+
+```bash
+jq '.completed = (.completed + ["prd"] | unique)' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
+```
+
 ## Feature for PRD
 
 $ARGUMENTS

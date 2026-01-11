@@ -35,13 +35,29 @@ context  interactive
                          document     process improvement
 ```
 
-### Bug Fix Workflow
+### Bug Fix Workflows
+
+**Choose based on severity and complexity:**
 
 ```
-/prime → /rca → /hotfix → /validate
-   │       │        │          │
-   ▼       ▼        ▼          ▼
-context  analysis  engineer  engineer
+CRITICAL (Production down):
+/prime → /hotfix → /validate
+   │        │          │
+   ▼        ▼          ▼
+context  engineer  engineer
+   (abbreviated - fix first, document later)
+
+COMPLEX (Root cause unclear):
+/prime → /rca → ticket → branch → fix → /pr → /validate
+   │       │       │        │       │      │        │
+   ▼       ▼       ▼        ▼       ▼      ▼        ▼
+context  analysis Trello  git   engineer haiku  engineer
+
+STANDARD (Root cause clear):
+ticket → branch → fix → /pr → /validate
+   │        │       │      │        │
+   ▼        ▼       ▼      ▼        ▼
+ Trello   git   engineer haiku  engineer
 ```
 
 ### Autonomous Workflow (Ralph)
@@ -375,29 +391,86 @@ After merging a feature, complete the feedback loop:
 
 ---
 
-## Hotfix Workflow
+## Bug Handling Workflows
 
-For production emergencies, use the abbreviated hotfix workflow:
+Bugs are handled differently based on severity and whether the root cause is known.
+
+### Severity Classification
+
+| Severity | Definition | Workflow |
+|----------|------------|----------|
+| **Critical** | Production down, data loss, security breach | `/hotfix` (abbreviated) |
+| **Complex** | Root cause unclear, needs investigation | `/rca` → Standard |
+| **Standard** | Root cause clear, straightforward fix | Standard (ticket → branch → fix) |
+
+### Standard Bug Workflow
+
+For bugs where the root cause is already understood:
 
 ```
-/prime → /rca → /hotfix → /validate
+1. Create ticket (Trello/Asana) documenting:
+   - Bug description
+   - Root cause
+   - Proposed fix
+   - Affected files
+
+2. Create branch:
+   git checkout -b bugfix/{ticket-id}-{short-description}
+
+3. Implement fix:
+   - Write failing test that reproduces bug
+   - Fix the bug
+   - Verify test passes
+   - Run full test suite
+
+4. Create PR and validate:
+   /pr → /validate
 ```
 
-**Two-Stage Bug Fix Process:**
+**Branch naming:** `bugfix/BUG-{id}-{description}` or `bugfix/{description}` if no ticket system.
 
-1. **Root Cause Analysis (`/rca`)** - Investigate before fixing
+### Complex Bug Workflow (with RCA)
+
+For bugs where root cause needs investigation:
+
+```
+/prime → /rca → (then Standard workflow)
+```
+
+1. **Root Cause Analysis (`/rca`)**
    - Gather issue details
    - Reproduce the issue
    - Identify root cause
    - Design the fix
    - Output: `docs/rca/YYYY-MM-DD-{issue}.md`
 
-2. **Hotfix (`/hotfix`)** - Implement the fix
-   - Skip discovery/PRD/plan
-   - Still requires: ticket, tests, PR
-   - Delegate to engineer with urgency flag
+2. **Standard workflow** once RCA is complete
+
+### Critical/Hotfix Workflow
+
+For production emergencies only:
+
+```
+/prime → /hotfix → /validate
+```
+
+- Skip discovery/PRD/plan
+- Still requires: tests, PR
+- Document with RCA **after** fix is deployed
+- Delegate to engineer with urgency flag
 
 **Key Principle**: Separate analysis from implementation. Understand the problem before coding the fix.
+
+### When to Use Each Workflow
+
+| Situation | Use |
+|-----------|-----|
+| App crashes on button click, cause obvious from stack trace | Standard |
+| Data corruption, unclear what's causing it | Complex (RCA) |
+| Production site is down | Critical (Hotfix) |
+| Test passes but feature doesn't work | Standard or Complex |
+| Security vulnerability reported | Critical (Hotfix) |
+| Performance degradation, unclear source | Complex (RCA) |
 
 ---
 

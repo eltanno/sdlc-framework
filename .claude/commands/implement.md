@@ -169,6 +169,29 @@ Next: Ready for /pr TASK-XXX
 4. **Summarize** implementation for user
 5. **Next step:** User can run `/pr TASK-XXX`
 
+## Workflow State Update
+
+**Note:** If running as part of `/ralph-prd`, ralph manages the workflow state. Only update if NOT in ralph mode.
+
+At the **start** of this phase (if not in ralph mode):
+
+```bash
+# Only set phase if not already in ralph mode
+current_phase=$(jq -r '.phase' workflow-state.json)
+if [ "$current_phase" != "ralph" ]; then
+    jq '.phase = "implement"' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
+fi
+```
+
+At the **end** of this phase (after implementation is complete), mark complete (if not in ralph mode):
+
+```bash
+current_phase=$(jq -r '.phase' workflow-state.json)
+if [ "$current_phase" != "ralph" ]; then
+    jq '.completed = (.completed + ["implement"] | unique)' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
+fi
+```
+
 ## Ticket to Implement
 
 $ARGUMENTS

@@ -251,6 +251,20 @@ What's on your mind?
 - Rush through questions
 - Make decisions for them
 
+## Workflow State Update
+
+At the **start** of this phase, update `workflow-state.json`:
+
+```bash
+jq '.phase = "discover"' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
+```
+
+At the **end** of this phase (when user marks discovery as complete), mark complete:
+
+```bash
+jq '.completed = (.completed + ["discover"] | unique)' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
+```
+
 ## Topic/Context for Discovery
 
 $ARGUMENTS

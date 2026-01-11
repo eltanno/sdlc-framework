@@ -131,6 +131,20 @@ Next: User should review and approve, then run /ticket
 3. **Prompt** user to review and approve (change status to APPROVED)
 4. **Next step:** Once approved, user can run `/ticket`
 
+## Workflow State Update
+
+At the **start** of this phase, update `workflow-state.json`:
+
+```bash
+jq '.phase = "plan"' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
+```
+
+At the **end** of this phase (after plan is created and verified), mark complete:
+
+```bash
+jq '.completed = (.completed + ["plan"] | unique)' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
+```
+
 ## Feature for Planning
 
 $ARGUMENTS
