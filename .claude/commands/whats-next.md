@@ -34,9 +34,10 @@ gh pr list --state open 2>/dev/null || echo "No GitHub CLI or not a repo"
 
 Read and assess status of each artifact type:
 
-**Discovery** (`docs/discovery.md`):
-- Does it exist?
-- What's the status field? (NOT STARTED / IN PROGRESS / READY FOR PLANNING)
+**Discovery** (`docs/discovery/*.md`):
+- Do any discovery docs exist?
+- What's the status of each? (NOT STARTED / IN PROGRESS / READY FOR PLANNING)
+- Is there an in-progress discovery for the current iteration?
 
 **PRDs** (`docs/prds/`):
 - List all PRDs
@@ -65,7 +66,7 @@ Based on artifacts, determine:
 
 | Situation | You Are At | Next Action |
 |-----------|------------|-------------|
-| No discovery.md | Beginning | `/discover` |
+| No discovery docs | Beginning | `/discover` |
 | Discovery = IN PROGRESS | Discovery | Continue `/discover` |
 | Discovery = READY, no PRDs | Pre-PRD | `/prd` |
 | PRD = DRAFT | PRD review | Get approval or revise |

@@ -7,11 +7,18 @@
 
 ## Template
 
-Use the template at `docs/templates/discovery-template.md` when creating or updating `docs/discovery.md`.
+Use the template at `docs/templates/discovery-template.md` when creating discovery documents.
+
+**Output location:** `docs/discovery/YYYY-MM-DD-{version-or-scope}.md`
+
+Each iteration/version gets its own discovery document:
+- `docs/discovery/2025-01-15-v1-core.md`
+- `docs/discovery/2025-02-20-v1.1-oauth.md`
+- `docs/discovery/2025-04-10-v2-admin.md`
 
 ## Purpose
 
-Discovery is a collaborative, interactive session where you help the user articulate their vision. You ask probing questions to understand what they want to build and why.
+Discovery is a collaborative, interactive session where you help the user articulate their vision for **this iteration**. You ask probing questions to understand what they want to build and why.
 
 This is different from `/research` which is autonomous investigation.
 
@@ -32,7 +39,7 @@ When the user runs `/discover`, begin with:
 ## Discovery Session Started
 
 I'll help you flesh out your idea through a series of questions.
-We'll build up docs/discovery.md together as we go.
+We'll create a discovery document for this iteration as we go.
 
 Let's start with the basics:
 
@@ -80,7 +87,7 @@ After each user response:
 1. **Acknowledge** what they said
 2. **Reflect** your understanding back
 3. **Probe** deeper OR move to next area
-4. **Update** docs/discovery.md incrementally
+4. **Update** the discovery document incrementally
 
 Example flow:
 ```
@@ -91,12 +98,12 @@ You: "Got it - a task management app. Let me understand more:
 - Who will use this? Just you, a team, or public?
 - What's missing from existing tools that you need?
 
-[Updating discovery.md with initial vision...]"
+[Updating discovery document with initial vision...]"
 ```
 
 ## The Discovery Document
 
-Maintain `docs/discovery.md` as a living document:
+Create `docs/discovery/YYYY-MM-DD-{version}.md` for this iteration:
 
 ```markdown
 # Project Discovery
@@ -193,7 +200,7 @@ Maintain `docs/discovery.md` as a living document:
 
 ## Updating the Document
 
-**Incrementally update** docs/discovery.md as the conversation progresses:
+**Incrementally update** the discovery document as the conversation progresses:
 - Don't wait until the end
 - Show the user what you're capturing
 - Ask "Does this capture it correctly?"
@@ -211,7 +218,7 @@ I think we have a good foundation. Here's what we've captured:
 **Core Features:** [bullet list]
 **Key Constraints:** [bullet list]
 
-The full discovery is in docs/discovery.md
+The full discovery is saved in docs/discovery/
 
 **Ready for next steps?**
 - Review and refine: "Let's revisit [section]"
@@ -221,19 +228,27 @@ The full discovery is in docs/discovery.md
 When you're happy with discovery, run `/plan` to create the technical plan.
 ```
 
-## Resuming Discovery
+## Resuming or New Discovery
 
-If the user runs `/discover` and docs/discovery.md exists:
+If the user runs `/discover`, check for existing discovery documents:
+
+```bash
+ls -la docs/discovery/*.md 2>/dev/null
+```
+
+If documents exist, ask:
 
 ```
-## Resuming Discovery
+## Discovery Documents Found
 
-I found an existing discovery document (last updated: YYYY-MM-DD).
+I found existing discovery documents:
+- docs/discovery/YYYY-MM-DD-v1-core.md (Status: APPROVED)
+- docs/discovery/YYYY-MM-DD-v1.1-oauth.md (Status: IN PROGRESS)
 
 Would you like to:
-1. **Continue** where we left off
-2. **Revise** a specific section
-3. **Start fresh** (will archive current version)
+1. **Continue** the in-progress discovery
+2. **Start new** discovery for a new iteration/feature
+3. **Revise** an existing approved discovery
 
 What's on your mind?
 ```

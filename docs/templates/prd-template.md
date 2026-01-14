@@ -2,7 +2,7 @@
 
 **Date:** YYYY-MM-DD
 **Status:** DRAFT
-**Discovery:** [docs/discovery.md](../discovery.md)
+**Discovery:** [Link to iteration's discovery doc in docs/discovery/]
 **Plan:** [Link to plan document when created]
 **Owner:** {name}
 **Stakeholders:** {names}
@@ -11,13 +11,13 @@
 
 ## Discovery Reference
 
-**Note:** This PRD is for ONE feature/epic, not the whole application. The discovery document contains the holistic application vision.
+**Note:** This PRD is for ONE feature/epic within this iteration. The discovery document contains the iteration's scope and vision.
 
-**Application Vision:**
-_[1-2 sentences from discovery.md describing the overall application goal]_
+**Iteration Vision:**
+_[1-2 sentences from the discovery doc describing this iteration's goal]_
 
 **How This Feature Fits:**
-_[2-3 sentences explaining how this specific feature supports the overall application vision from the discovery document]_
+_[2-3 sentences explaining how this specific feature supports the iteration scope from the discovery document]_
 
 ---
 

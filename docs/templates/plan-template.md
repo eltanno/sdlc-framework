@@ -194,7 +194,7 @@
 
 **CRITICAL: Before delegating ANY implementation work, verify:**
 
-- [ ] Discovery committed: `git log --oneline docs/discovery.md`
+- [ ] Discovery committed: `git log --oneline docs/discovery/`
 - [ ] PRD committed: `git log --oneline docs/prds/`
 - [ ] This plan committed: `git log --oneline docs/plans/`
 - [ ] `git status docs/` shows "nothing to commit"

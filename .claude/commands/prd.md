@@ -14,7 +14,7 @@ Use the template at `docs/templates/prd-template.md` when creating PRD documents
 **IMPORTANT HIERARCHY CONCEPTS:**
 
 1. **PRD Scope**: PRDs are **per-feature/epic**, NOT whole-application documents
-2. **Discovery Reference**: Each PRD should reference `docs/discovery.md` (the whole app vision)
+2. **Discovery Reference**: Each PRD should reference its iteration's discovery doc (`docs/discovery/YYYY-MM-DD-*.md`)
 3. **Multiple PRDs Expected**: Real applications will have multiple PRDs, one for each major feature
 4. **PRD comes BEFORE plan**: The PRD defines WHAT to build, the plan defines HOW to build it
 
@@ -71,13 +71,13 @@ Feature: $ARGUMENTS
 Project location: [current project directory]
 Template location: docs/templates/prd-template.md
 
-Discovery document: docs/discovery.md [include path or note if skipped]
+Discovery document: [find the most recent approved discovery in docs/discovery/*.md]
 
 **CRITICAL: PRD Scope**
 - This PRD is for ONE feature/epic, NOT the whole application
-- The discovery document contains the holistic application vision
+- The discovery document contains the iteration's scope and vision
 - This PRD should focus on the specific feature: $ARGUMENTS
-- Reference the discovery document to show how this feature fits into the bigger picture
+- Reference the discovery document to show how this feature fits into the iteration
 
 ## Objective
 
@@ -120,7 +120,7 @@ Create a PRD at: `docs/prds/{todays-date}-{feature-kebab-case}.md`
 Use the template at `docs/templates/prd-template.md` as your structure.
 
 **Required sections:**
-- **Discovery Reference** - Link to docs/discovery.md and explain how this feature fits the bigger picture
+- **Discovery Reference** - Link to the iteration's discovery doc and explain how this feature fits the iteration scope
 - Executive Summary (problem, solution, success metrics)
 - Functional Requirements with acceptance criteria
 - Non-Functional Requirements

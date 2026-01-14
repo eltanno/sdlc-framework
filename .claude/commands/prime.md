@@ -29,7 +29,7 @@ Read these files in order (if they exist):
 
 1. `CLAUDE.md` - Project conventions and instructions
 2. `README.md` - Project overview
-3. `docs/discovery.md` - Product vision
+3. `docs/discovery/` - Latest discovery doc (most recent by date)
 4. `docs/prds/` - Latest PRD (most recent by date)
 5. `docs/plans/` - Latest plan (most recent by date)
 6. `config.yaml` - SDLC configuration (project root)

@@ -37,9 +37,10 @@ gh pr list --state open 2>/dev/null || echo "No GitHub CLI or not a repo"
 
 Read and assess status of each artifact type:
 
-**Discovery** (`docs/discovery.md`):
-- Does it exist?
-- What's the status field? (NOT STARTED / IN PROGRESS / READY FOR PLANNING)
+**Discovery** (`docs/discovery/*.md`):
+- Do any discovery docs exist?
+- What's the status of each? (NOT STARTED / IN PROGRESS / READY FOR PLANNING)
+- Is there an in-progress discovery for the current iteration?
 
 **PRDs** (`docs/prds/`):
 - List all PRDs
@@ -68,7 +69,7 @@ Use the same mapping as `/whats-next`:
 
 | Situation | You Are At | Next Action |
 |-----------|------------|-------------|
-| No discovery.md | Beginning | `/discover` |
+| No discovery docs | Beginning | `/discover` |
 | Discovery = IN PROGRESS | Discovery | Continue `/discover` |
 | Discovery = READY, no PRDs | Pre-PRD | `/prd` |
 | PRD = DRAFT | PRD review | Get approval or revise |
@@ -102,7 +103,7 @@ of decisions while Claude handles implementation. Here's where things stand:
 
 Adapt based on what you found:
 
-**If fresh project (no discovery.md):**
+**If fresh project (no discovery docs):**
 ```markdown
 ## Where You Are
 
@@ -134,7 +135,7 @@ clarifying questions.
 
 You're in the **Discovery** phase - still gathering requirements for your feature.
 
-The discovery document at `docs/discovery.md` has status: [STATUS]
+The current discovery document has status: [STATUS]
 
 ### What This Means
 
@@ -144,7 +145,7 @@ and move to creating a formal PRD.
 
 ### Your Next Step
 
-Continue the discovery conversation. Review `docs/discovery.md` to see what's
+Continue the discovery conversation. Review the current discovery document to see what's
 been captured so far. When you're satisfied, update the status to READY FOR PLANNING.
 ```
 

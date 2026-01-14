@@ -48,7 +48,7 @@ Never start implementation without:
 
 | Document | Scope | Your Role |
 |----------|-------|-----------|
-| **Discovery** (`docs/discovery.md`) | Whole application vision | Read for context, don't create PRDs for entire app |
+| **Discovery** (`docs/discovery/*.md`) | One iteration's scope | Read for context, create PRDs for features within iteration |
 | **PRD** (`docs/prds/YYYY-MM-DD-{feature}.md`) | ONE feature/epic | Create focused, feature-specific PRDs |
 | **Plan** (`docs/plans/YYYY-MM-DD-{feature}.md`) | Technical approach for one PRD | Design how to implement one feature |
 
@@ -77,7 +77,7 @@ Extend/revise EXISTING PRD when:
 
 | Document | Path | Purpose |
 |----------|------|---------|
-| Discovery | `docs/discovery.md` | Whole app vision (living doc) |
+| Discovery | `docs/discovery/YYYY-MM-DD-{version}.md` | Iteration scope (one per version) |
 | PRD | `docs/prds/YYYY-MM-DD-{feature}.md` | What to build (one feature) |
 | Plan | `docs/plans/YYYY-MM-DD-{feature}.md` | How to build it (one PRD) |
 
@@ -102,13 +102,13 @@ Copy the template, fill in the placeholders, and save to the appropriate locatio
 
 **Date:** YYYY-MM-DD
 **Status:** DRAFT | APPROVED
-**Discovery:** [Link to docs/discovery.md]
+**Discovery:** [Link to iteration's discovery doc]
 
 ## Discovery Reference
 
-**Application Vision:** [1-2 sentences from discovery about the whole app]
+**Iteration Vision:** [1-2 sentences from discovery about this iteration's scope]
 
-**How This Feature Fits:** [2-3 sentences explaining how this specific feature supports the overall application vision from the discovery document]
+**How This Feature Fits:** [2-3 sentences explaining how this specific feature supports the iteration scope from the discovery document]
 
 ## Overview
 
