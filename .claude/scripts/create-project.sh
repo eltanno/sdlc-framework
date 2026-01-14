@@ -11,8 +11,9 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-# Get script directory (where framework lives)
+# Get script directory and project root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # -----------------------------------------------------------------------------
 # Usage
@@ -120,21 +121,25 @@ mkdir -p "$PROJECT_PATH"
 
 echo -e "${BLUE}→${NC} Copying framework files..."
 
-# Copy framework files (exclude git, node_modules, etc.)
+# Copy framework files (exclude git, node_modules, project-specific content)
 rsync -a \
     --exclude='.git' \
     --exclude='node_modules' \
     --exclude='.env' \
     --exclude='workflow-state.json' \
+    --exclude='.logs' \
+    --exclude='.mcp.json' \
+    --exclude='.claude/settings.local.json' \
+    --exclude='docs/discovery.md' \
     --exclude='docs/discovery/*' \
     --exclude='docs/prds/*' \
-    --exclude='docs/plans/*' \
+    --exclude='docs/plans/*.md' \
     --exclude='docs/research/*' \
     --exclude='docs/rca/*' \
     --exclude='docs/execution-reports/*' \
     --exclude='docs/system-reviews/*' \
-    --exclude='create-project.sh' \
-    "$SCRIPT_DIR/" "$PROJECT_PATH/"
+    --exclude='capture-workflow-changes.sh' \
+    "$PROJECT_ROOT/" "$PROJECT_PATH/"
 
 echo -e "${GREEN}✓${NC} Framework files copied"
 
