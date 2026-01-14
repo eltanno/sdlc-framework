@@ -9,21 +9,7 @@
       "Write",
       "WebSearch",
       "WebFetch",
-      "Bash(git *)",
-      "Bash(npm *)",
-      "Bash(npx *)",
-      "Bash(ls *)",
-      "Bash(cat *)",
-      "Bash(head *)",
-      "Bash(tail *)",
-      "Bash(find *)",
-      "Bash(grep *)",
-      "Bash(pwd)",
-      "Bash(which *)",
-      "Bash(echo *)",
-      "Bash(.claude/scripts/update-workflow-state.sh *)",
-      "Bash(jq -r * workflow-state.json)",
-      "Bash(jq * workflow-state.json > *)"
+      "Bash"
     ],
     "deny": [
       "Bash(rm -rf /)",
@@ -93,8 +79,5 @@
     "type": "command",
     "command": ".claude/scripts/statusline.sh"
   },
-  "alwaysThinkingEnabled": true,
-  "enabledPlugins": {
-    "playwright@claude-plugins-official": true
-  }
+  "alwaysThinkingEnabled": true
 }

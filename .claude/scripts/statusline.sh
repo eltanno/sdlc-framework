@@ -61,13 +61,15 @@ all_mcps="$local_mcps $global_mcps"
 mcp_names_raw=$(echo "$all_mcps" | tr ' ' '\n' | grep -v '^$' | sort -u | tr '\n' ' ' | sed 's/ $//')
 mcps_count=$(echo "$mcp_names_raw" | wc -w)
 
-# Count Plugins from ~/.claude/plugins/installed_plugins.json
+# Count Plugins - check ENABLED plugins from project settings, not just installed
 plugin_names_raw=""
 plugins_count=0
 
-if [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then
-    # Extract plugin names (part before @) from the plugins object keys
-    plugin_names_raw=$(jq -r '.plugins | keys | .[] | split("@")[0]' "$HOME/.claude/plugins/installed_plugins.json" 2>/dev/null | sort -u | tr '\n' ' ' | sed 's/ $//')
+# Check project settings for enabled plugins
+PROJECT_SETTINGS="$current_dir/.claude/settings.json"
+if [ -f "$PROJECT_SETTINGS" ]; then
+    # Extract plugin names (part before @) from enabledPlugins where value is true
+    plugin_names_raw=$(jq -r '.enabledPlugins // {} | to_entries | map(select(.value == true)) | .[].key | split("@")[0]' "$PROJECT_SETTINGS" 2>/dev/null | sort -u | tr '\n' ' ' | sed 's/ $//')
     plugins_count=$(echo "$plugin_names_raw" | wc -w)
 fi
 
@@ -144,13 +146,29 @@ if [ "$cache_needs_update" = true ]; then
     fi
 fi
 
-# Read workflow state
+# Read workflow state (create default if missing)
 WORKFLOW_STATE_FILE="$current_dir/workflow-state.json"
 workflow_phase="idle"
 workflow_completed=""
 ralph_current=0
 ralph_total=0
 ralph_current_ticket=""
+
+# Create default workflow-state.json if it doesn't exist
+if [ ! -f "$WORKFLOW_STATE_FILE" ]; then
+    cat > "$WORKFLOW_STATE_FILE" << 'DEFAULTSTATE'
+{
+  "phase": "idle",
+  "completed": [],
+  "ralph": {
+    "current": 0,
+    "total": 0,
+    "current_ticket": ""
+  }
+}
+DEFAULTSTATE
+fi
+
 if [ -f "$WORKFLOW_STATE_FILE" ]; then
     workflow_phase=$(jq -r '.phase // "idle"' "$WORKFLOW_STATE_FILE" 2>/dev/null)
     workflow_completed=$(jq -r '.completed // [] | join(" ")' "$WORKFLOW_STATE_FILE" 2>/dev/null)
@@ -340,8 +358,9 @@ fi
 printf "\n"
 
 # LINE 4 - Workflow progress
-# Phases in order (manual phases + ralph autonomous loop + post-impl docs)
-PHASES="discover prd plan ralph report review"
+# Two-section workflow: Plan phases + Execute phases
+PLAN_PHASES="discover prd plan ticket"
+EXECUTE_PHASES="ralph report review"
 
 # Helper to check if phase is completed
 is_completed() {
@@ -384,16 +403,10 @@ progress_bar() {
     printf "%s" "$result"
 }
 
-# Build workflow line
-workflow_line=""
-first=true
-for phase in $PHASES; do
-    # Add arrow separator (except for first)
-    if [ "$first" = true ]; then
-        first=false
-    else
-        workflow_line="${workflow_line}${WORKFLOW_ARROW} → ${RESET}"
-    fi
+# Helper to format a phase
+format_phase() {
+    local phase=$1
+    local display_name
 
     # Determine phase display name (capitalize)
     case "$phase" in
@@ -406,9 +419,9 @@ for phase in $PHASES; do
 
     # Determine state and format
     if is_completed "$phase"; then
-        workflow_line="${workflow_line}${WORKFLOW_COMPLETED}✓${display_name}${RESET}"
+        printf "${WORKFLOW_COMPLETED}✓${display_name}${RESET}"
     elif [ "$workflow_phase" = "$phase" ]; then
-        workflow_line="${workflow_line}${WORKFLOW_ACTIVE}●${display_name}${RESET}"
+        printf "${WORKFLOW_ACTIVE}●${display_name}${RESET}"
         # Add progress bar for ralph phase
         if [ "$phase" = "ralph" ] && [ "$ralph_total" -gt 0 ]; then
             # Check if there's a ticket in progress
@@ -417,11 +430,35 @@ for phase in $PHASES; do
                 has_in_progress=1
             fi
             bar=$(progress_bar "$ralph_current" "$ralph_total" "$has_in_progress")
-            workflow_line="${workflow_line}${WORKFLOW_PENDING} [${WORKFLOW_COMPLETED}${bar}${WORKFLOW_PENDING}] ${WORKFLOW_ACTIVE}${ralph_current}/${ralph_total}${RESET}"
+            printf "${WORKFLOW_PENDING} [${WORKFLOW_COMPLETED}${bar}${WORKFLOW_PENDING}] ${WORKFLOW_ACTIVE}${ralph_current}/${ralph_total}${RESET}"
         fi
     else
-        workflow_line="${workflow_line}${WORKFLOW_PENDING}${display_name}${RESET}"
+        printf "${WORKFLOW_PENDING}${display_name}${RESET}"
     fi
+}
+
+# Build Plan section
+plan_line=""
+first=true
+for phase in $PLAN_PHASES; do
+    if [ "$first" = true ]; then
+        first=false
+    else
+        plan_line="${plan_line}${WORKFLOW_ARROW} → ${RESET}"
+    fi
+    plan_line="${plan_line}$(format_phase "$phase")"
 done
 
-printf "📋 Workflow: ${workflow_line}\n"
+# Build Execute section
+execute_line=""
+first=true
+for phase in $EXECUTE_PHASES; do
+    if [ "$first" = true ]; then
+        first=false
+    else
+        execute_line="${execute_line}${WORKFLOW_ARROW} → ${RESET}"
+    fi
+    execute_line="${execute_line}$(format_phase "$phase")"
+done
+
+printf "📋 ${LINE3_PRIMARY}Plan${RESET}${SEPARATOR_COLOR}: ${RESET}${plan_line}${SEPARATOR_COLOR}. ${RESET}${LINE3_PRIMARY}Execute${RESET}${SEPARATOR_COLOR}: ${RESET}${execute_line}\n"

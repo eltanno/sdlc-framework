@@ -4,30 +4,72 @@ This document provides comprehensive workflow documentation for the SDLC automat
 
 ## Workflow Overview
 
-The framework enforces a phase-based workflow where each phase has clear inputs, outputs, and prerequisites:
+The framework enforces a phase-based workflow divided into two major stages:
+
+### The Two Stages
+
+| Stage | Phases | Purpose | Output |
+|-------|--------|---------|--------|
+| **Planning** | discover → prd → plan → ticket | Define WHAT and HOW | Approved plan + tickets in PM |
+| **Execution** | implement → pr → validate | Build and ship | Merged code |
 
 ```
-┌───────┐     ┌──────────┐     ┌─────┐     ┌──────┐     ┌────────┐     ┌───────────┐     ┌────┐     ┌──────────┐
-│ Prime │ --> │ Discover │ --> │ PRD │ --> │ Plan │ --> │ Ticket │ --> │ Implement │ --> │ PR │ --> │ Validate │
-└───────┘     └──────────┘     └─────┘     └──────┘     └────────┘     └───────────┘     └────┘     └──────────┘
-                                                                              │
-                                                                              ▼
+┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                              PLANNING                                                        │
+│                                         (What & How)                                                         │
+│                                                                                                              │
+│   ┌───────┐     ┌──────────┐     ┌─────┐     ┌──────┐     ┌────────┐                                        │
+│   │ Prime │ --> │ Discover │ --> │ PRD │ --> │ Plan │ --> │ Ticket │ ──────────────────────┐               │
+│   └───────┘     └──────────┘     └─────┘     └──────┘     └────────┘                       │               │
+│                                                                                             │               │
+│   Outputs: docs/discovery.md, docs/prds/*.md, docs/plans/*.md, tickets in PM               │               │
+│   Human approval required at: Discovery, PRD, Plan                                          │               │
+└─────────────────────────────────────────────────────────────────────────────────────────────│───────────────┘
+                                                                                              │
+                                                                                              ▼
+┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                              EXECUTION                                                       │
+│                                          (Do & Ship)                                                         │
+│                                                                                                              │
+│                                        ┌───────────┐     ┌────┐     ┌──────────┐                            │
+│                                        │ Implement │ --> │ PR │ --> │ Validate │                            │
+│                                        └───────────┘     └────┘     └──────────┘                            │
+│                                                                            │                                 │
+│   Can be run autonomously (ralph) or human-managed (Boris-style sessions)  │                                 │
+│   Outputs: Feature branch, tests, code, merged PR                          │                                 │
+└────────────────────────────────────────────────────────────────────────────│─────────────────────────────────┘
+                                                                             │
+                                                                             ▼
                                                               ┌──────────────────────────────┐
                                                               │ Execution Report → System    │
                                                               │ Review (Process Improvement) │
                                                               └──────────────────────────────┘
 ```
 
+### Key Boundary
+
+**Planning ends when:** You have tickets with IDs in your PM tool (or PROGRESS.md)
+**Execution begins when:** You pick up a ticket and start coding
+
 ### Command Flow
 
 ```
-/prime → /discover → /prd → /plan → /ticket → /implement → /pr → /validate
-   │         │         │       │        │          │        │        │
-   ▼         ▼         ▼       ▼        ▼          ▼        ▼        ▼
- (self)   (self)   architect architect haiku   engineer  haiku  engineer
-context  interactive
+PLANNING PHASES:
+/prime → /discover → /prd → /plan → /ticket
+   │         │         │       │        │
+   ▼         ▼         ▼       ▼        ▼
+ (self)   (self)   architect architect haiku
+context  interactive                    │
+                                        ↓
+                              [Tickets ready in PM]
+                                        ↓
+EXECUTION PHASES:
+                              /implement → /pr → /validate
+                                   │        │        │
+                                   ▼        ▼        ▼
+                               engineer  haiku  engineer
 
-                              After completion:
+POST-COMPLETION:
                     /execution-report → /system-review
                               │               │
                               ▼               ▼
@@ -156,6 +198,16 @@ Discovery (whole app)
 
 ## Phase Details
 
+---
+
+## PLANNING PHASES
+
+> **Planning defines WHAT to build and HOW to build it.**
+> Human approval is required at key gates (Discovery, PRD, Plan).
+> Planning ends when tickets are created in your PM tool.
+
+---
+
 ### 0. Prime Phase (`/prime`)
 
 **Load project context before any work begins**
@@ -259,13 +311,23 @@ Discovery (whole app)
 
 ### 4. Ticket Phase (`/ticket`)
 
-**Create Asana tasks from plan**
+**Create tasks from plan in your PM tool**
 
 - **Who runs it**: Haiku agent (fast, simple task)
 - **Prerequisites**: Approved plan
 - **Input**: Plan document with ticket table
-- **Output**: Tasks created in Asana, plan updated with ticket IDs
-- **Creates**: One Asana task per ticket row in the plan
+- **Output**: Tasks created in PM tool (Trello, Asana, GitHub, Linear, or local PROGRESS.md), plan updated with ticket IDs
+- **Creates**: One task per ticket row in the plan
+
+**This is the final Planning phase.** Once tickets exist with IDs, Execution can begin.
+
+---
+
+## EXECUTION PHASES
+
+> **Execution builds and ships the planned work.**
+> Can be run autonomously (ralph-prd) or human-managed (Boris-style parallel sessions).
+> Execution ends when code is merged.
 
 ---
 
@@ -369,23 +431,40 @@ After merging a feature, complete the feedback loop:
 
 ## Prerequisites by Phase
 
+### Utility Commands (No Prerequisites)
+
 | Phase | Requires |
 |-------|----------|
 | `/guide` | None - help for new users anytime |
 | `/whats-next` | None - run anytime to get oriented |
-| `/ralph-prd` | Approved plan with ticket IDs + clean git state |
 | `/prime` | None - run before any significant work |
-| `/discover` | None - can start anytime |
 | `/research` | None - can run anytime |
 | `/rca` | Bug report or issue to investigate |
-| `/prd` | Discovery status = READY FOR PLANNING (or explicit skip) |
-| `/plan` | Approved PRD |
-| `/ticket` | Approved plan |
-| `/implement` | Plan with ticket IDs |
-| `/pr` | Passing tests, committed code |
-| `/validate` | Open PR |
-| `/execution-report` | Completed implementation |
-| `/system-review` | Execution report |
+
+### Planning Phases
+
+| Phase | Requires | Output |
+|-------|----------|--------|
+| `/discover` | None - can start anytime | `docs/discovery.md` |
+| `/prd` | Discovery status = READY FOR PLANNING (or explicit skip) | `docs/prds/*.md` |
+| `/plan` | Approved PRD | `docs/plans/*.md` |
+| `/ticket` | Approved plan | Tickets in PM tool |
+
+### Execution Phases
+
+| Phase | Requires | Output |
+|-------|----------|--------|
+| `/implement` | Plan with ticket IDs | Code + tests on branch |
+| `/pr` | Passing tests, committed code | Pull request |
+| `/validate` | Open PR | Validation report |
+| `/ralph-prd` | Approved plan with ticket IDs + clean git state | Autonomous execution |
+
+### Post-Completion Phases
+
+| Phase | Requires | Output |
+|-------|----------|--------|
+| `/execution-report` | Completed implementation | `docs/execution-reports/*.md` |
+| `/system-review` | Execution report | `docs/system-reviews/*.md` |
 
 **Check prerequisites before proceeding. If missing, guide user to correct phase.**
 
