@@ -61,17 +61,29 @@ all_mcps="$local_mcps $global_mcps"
 mcp_names_raw=$(echo "$all_mcps" | tr ' ' '\n' | grep -v '^$' | sort -u | tr '\n' ' ' | sed 's/ $//')
 mcps_count=$(echo "$mcp_names_raw" | wc -w)
 
-# Count Plugins - check ENABLED plugins from project settings, not just installed
+# Count Plugins - merge ENABLED plugins from local and global settings
 plugin_names_raw=""
 plugins_count=0
 
-# Check project settings for enabled plugins
+# Collect plugins from local project settings
+local_plugins=""
 PROJECT_SETTINGS="$current_dir/.claude/settings.json"
 if [ -f "$PROJECT_SETTINGS" ]; then
     # Extract plugin names (part before @) from enabledPlugins where value is true
-    plugin_names_raw=$(jq -r '.enabledPlugins // {} | to_entries | map(select(.value == true)) | .[].key | split("@")[0]' "$PROJECT_SETTINGS" 2>/dev/null | sort -u | tr '\n' ' ' | sed 's/ $//')
-    plugins_count=$(echo "$plugin_names_raw" | wc -w)
+    local_plugins=$(jq -r '.enabledPlugins // {} | to_entries | map(select(.value == true)) | .[].key | split("@")[0]' "$PROJECT_SETTINGS" 2>/dev/null | tr '\n' ' ')
 fi
+
+# Collect plugins from global ~/.claude/settings.json
+global_plugins=""
+GLOBAL_SETTINGS="$HOME/.claude/settings.json"
+if [ -f "$GLOBAL_SETTINGS" ]; then
+    global_plugins=$(jq -r '.enabledPlugins // {} | to_entries | map(select(.value == true)) | .[].key | split("@")[0]' "$GLOBAL_SETTINGS" 2>/dev/null | tr '\n' ' ')
+fi
+
+# Merge and deduplicate plugin names
+all_plugins="$local_plugins $global_plugins"
+plugin_names_raw=$(echo "$all_plugins" | tr ' ' '\n' | grep -v '^$' | sort -u | tr '\n' ' ' | sed 's/ $//')
+plugins_count=$(echo "$plugin_names_raw" | wc -w)
 
 # Get cached ccusage data - SAFE VERSION without background processes
 daily_tokens=""
