@@ -1,100 +1,45 @@
 # New Project - Orchestrator Direct Task
 
-> **⚠️ MANDATORY: READ THIS ENTIRE FILE BEFORE PROCEEDING.**
-> **You must confirm you have read and understood all sections.**
+> **Direct execution - no delegation needed.**
 
-**You are the orchestrator. This is a coordination task - do it yourself.**
-
-This command creates a new project folder with the SDLC framework files from the current project.
-
-## Process
-
-### 1. Ask for Target Location
-
-Use `AskUserQuestion` to prompt the user for the target folder path:
+## Usage
 
 ```
-"Where should the new project be created? Provide the full path."
+/new-project <path> [options]
 ```
 
-### 2. Validate and Create Folder
+## Arguments
+
+- `path` - Path to create the new project (required)
+- `--no-git` - Don't initialize git repository
+- `--pm <tool>` - Set PM tool (asana|trello|github|linear|none)
+- `--repo <type>` - Set repo type (github|gitlab)
+
+## Examples
+
+```
+/new-project ~/projects/my-new-app
+/new-project ../../projects/test-auction-site
+/new-project ./my-app --pm trello --repo gitlab
+```
+
+## Execution
+
+Run the create-project script with the provided arguments:
 
 ```bash
-# Check if folder already exists
-if [ -d "$TARGET_PATH" ]; then
-  echo "Warning: Folder already exists"
-  # Ask user if they want to proceed
-fi
-
-# Create the folder
-mkdir -p "$TARGET_PATH"
+.claude/scripts/create-project.sh $ARGUMENTS
 ```
 
-### 3. Copy SDLC Framework Files
+## After Execution
 
-Copy these files/folders to the new project:
+Report the result to the user and remind them of next steps:
+1. `cd` to the new project
+2. Edit `config.yaml` with project settings
+3. Edit `.env` with API keys
+4. Authenticate git provider (`gh auth login` or `glab auth login`)
+5. Start with `/discover`
 
-```bash
-# Core SDLC files
-cp -r .claude "$TARGET_PATH/"
-cp CLAUDE.md "$TARGET_PATH/"
-cp WORKFLOW.md "$TARGET_PATH/"
+## Project Path
 
-# Templates only from docs
-mkdir -p "$TARGET_PATH/docs/templates"
-cp -r docs/templates/* "$TARGET_PATH/docs/templates/" 2>/dev/null || true
-
-# Config file if present
-cp config.yaml "$TARGET_PATH/" 2>/dev/null || true
-```
-
-**DO NOT copy:**
-- `.git/` - New project gets fresh git
-- `.env` - Contains secrets/project-specific config
-- `docs/` (except templates) - Project-specific documents
-- Any other project-specific files
-
-### 4. Initialize Git
-
-```bash
-cd "$TARGET_PATH"
-git init
-echo "# New Project" > README.md
-git add .
-git commit -m "Initial commit: SDLC framework setup"
-```
-
-### 5. Confirm Completion
-
-Report to user:
-
-```markdown
-## New Project Created
-
-**Location:** $TARGET_PATH
-
-**Files copied:**
-- `.claude/` (agents, commands, scripts, settings)
-- `CLAUDE.md`, `WORKFLOW.md`
-- `docs/templates/`
-- `config.yaml` (if present)
-
-**Git initialized** with initial commit.
-
-**Next steps:**
-1. `cd $TARGET_PATH`
-2. Run `/discover` to start requirements gathering
-3. Or run `/status` to see available commands
-```
-
-## Error Handling
-
-- If target path is invalid, ask for a valid path
-- If folder exists and has files, warn user before proceeding
-- If copy fails, report which files failed
-
-## Notes
-
-- This command creates a clean SDLC framework copy
-- No project-specific content is transferred
-- User starts fresh with empty docs/ (except templates)
+$ARGUMENTS
