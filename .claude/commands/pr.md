@@ -69,6 +69,28 @@ repo:
   type: github    # github | gitlab
 ```
 
+### Authentication Check
+
+Before creating PR/MR, verify the user is authenticated with the correct provider:
+
+```bash
+# Read repo type from config.yaml
+REPO_TYPE=$(grep -E "^\s*type:" config.yaml 2>/dev/null | grep -E "github|gitlab" | awk '{print $2}' || echo "github")
+
+# Check authentication
+if [ "$REPO_TYPE" = "gitlab" ]; then
+  glab auth status || echo "Not authenticated. Run: glab auth login"
+else
+  gh auth status || echo "Not authenticated. Run: gh auth login"
+fi
+```
+
+If not authenticated, guide user:
+- **GitHub:** `gh auth login`
+- **GitLab:** `glab auth login`
+
+### Push Check
+
 If not pushed: Push first with `git push -u origin $(git branch --show-current)`
 
 ## Task: Create PR/MR

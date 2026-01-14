@@ -21,7 +21,7 @@ For non-emergencies, use standard workflow: `/discover` → `/plan` → etc.
 /hotfix → Asana task (MCP) → engineer agent → PR/MR (gh/glab CLI) → merge
 ```
 
-**Note:** Commands use `gh` (GitHub) or `glab` (GitLab) based on `REPO_TYPE` in `.env`.
+**Note:** Commands use `gh` (GitHub) or `glab` (GitLab) based on `repo.type` in `config.yaml`.
 
 Skips Discovery, Plan, PRD but MUST still have:
 - Asana ticket (for tracking)
@@ -125,11 +125,11 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 ```bash
 git push -u origin $(git branch --show-current)
 
-# Read REPO_TYPE from .env (defaults to github)
-REPO_TYPE=$(grep -E "^REPO_TYPE=" .env 2>/dev/null | cut -d= -f2 || echo "github")
+# Read repo type from config.yaml (defaults to github)
+REPO_TYPE=$(grep -E "^\s*type:" config.yaml 2>/dev/null | grep -E "github|gitlab" | awk '{print $2}' || echo "github")
 ```
 
-**For GitHub (REPO_TYPE=github):**
+**For GitHub (repo.type: github):**
 ```bash
 gh pr create \
   --title "[HOTFIX][ASANA-{gid}] {description}" \
@@ -137,7 +137,7 @@ gh pr create \
 ..."
 ```
 
-**For GitLab (REPO_TYPE=gitlab):**
+**For GitLab (repo.type: gitlab):**
 ```bash
 glab mr create \
   --title "[HOTFIX][ASANA-{gid}] {description}" \

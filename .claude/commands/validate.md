@@ -11,8 +11,8 @@ Before delegating, verify:
 1. PR/MR exists and has been reviewed/approved
 
 ```bash
-# Check REPO_TYPE from .env
-REPO_TYPE=$(grep -E "^REPO_TYPE=" .env 2>/dev/null | cut -d= -f2 || echo "github")
+# Read repo type from config.yaml (defaults to github)
+REPO_TYPE=$(grep -E "^\s*type:" config.yaml 2>/dev/null | grep -E "github|gitlab" | awk '{print $2}' || echo "github")
 
 # Check PR/MR status
 if [ "$REPO_TYPE" = "gitlab" ]; then
@@ -75,18 +75,18 @@ grep -r "TODO" src/ --include="*.ts" --include="*.js" | grep -v "TODO(TASK-"
 ### 2. PR/MR Status Checks
 
 ```bash
-# Read REPO_TYPE from .env (defaults to github)
-REPO_TYPE=$(grep -E "^REPO_TYPE=" .env 2>/dev/null | cut -d= -f2 || echo "github")
+# Read repo type from config.yaml (defaults to github)
+REPO_TYPE=$(grep -E "^\s*type:" config.yaml 2>/dev/null | grep -E "github|gitlab" | awk '{print $2}' || echo "github")
 ```
 
-**For GitHub (REPO_TYPE=github):**
+**For GitHub (repo.type: github):**
 ```bash
 gh pr checks
 gh pr view --json reviews
 gh pr view --json mergeable
 ```
 
-**For GitLab (REPO_TYPE=gitlab):**
+**For GitLab (repo.type: gitlab):**
 ```bash
 glab mr view
 glab ci status

@@ -50,8 +50,8 @@ git status --short
 # Recent commits
 git log --oneline -5 2>/dev/null || echo "No commits yet"
 
-# Open PRs/MRs (check REPO_TYPE in .env)
-REPO_TYPE=$(grep -E "^REPO_TYPE=" .env 2>/dev/null | cut -d= -f2 || echo "github")
+# Open PRs/MRs (check repo.type in config.yaml)
+REPO_TYPE=$(grep -E "^\s*type:" config.yaml 2>/dev/null | grep -E "github|gitlab" | awk '{print $2}' || echo "github")
 if [ "$REPO_TYPE" = "gitlab" ]; then
   glab mr list 2>/dev/null || echo "No GitLab remote"
 else
