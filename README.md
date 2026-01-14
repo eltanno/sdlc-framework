@@ -33,17 +33,21 @@ This framework enforces a **two-stage development cycle** that separates thinkin
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                            EXECUTION                                     │
-│                          (Build & Ship)                                  │
+│                      (Build, Review & Ship)                              │
 │                                                                          │
 │   For each ticket:                                                       │
 │   ┌─────────────────────────────────────────────────────────────────┐   │
-│   │ Branch ──→ TDD ──→ Implement ──→ PR ──→ Review ──→ Merge       │   │
-│   │                                           ↓                     │   │
-│   │                                    Claude reviews               │   │
-│   │                                    Auto-merge on pass           │   │
+│   │ Branch ──→ TDD ──→ Implement ──→ PR ──→ Validate ──→ Merge     │   │
 │   └─────────────────────────────────────────────────────────────────┘   │
 │                                                                          │
-│   Output: Merged PRs, tested code, completed tickets                    │
+│   After all tickets complete:                                            │
+│   ┌─────────────────────────────────────────────────────────────────┐   │
+│   │ Report ──→ Review ──→ Release                                   │   │
+│   │    ↓          ↓          ↓                                      │   │
+│   │ Document   Analyze   Update README                              │   │
+│   └─────────────────────────────────────────────────────────────────┘   │
+│                                                                          │
+│   Output: Merged PRs, tested code, updated README                       │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -57,10 +61,10 @@ Planning defines **what** to build and **how** to build it. Each phase produces 
 
 ### Phase 1: Discovery (`/discover`)
 
-Interactive conversation to understand requirements.
+Interactive conversation to understand requirements for this iteration.
 
-- **Input:** User's idea or problem
-- **Output:** `docs/discovery.md` - Living document capturing the full vision
+- **Input:** User's idea or problem for this version
+- **Output:** `docs/discovery/YYYY-MM-DD-{version}.md` - Versioned document for this iteration
 - **Gate:** User approves before proceeding to PRD
 
 ### Phase 2: PRD (`/prd`)
@@ -196,6 +200,30 @@ Claude reviews each PR checking:
 
 **On Fail:** Mark ticket as blocked with reason, continue to next ticket, flag for human review
 
+### After All Tickets: Report, Review, Release
+
+Once all tickets are complete and merged:
+
+#### Execution Report (`/execution-report`)
+Document what was implemented vs what was planned:
+- Completed tasks
+- Modified tasks (what changed and why)
+- Challenges encountered
+- Divergences from plan
+
+#### System Review (`/system-review`)
+Analyze process effectiveness:
+- What worked well
+- What could improve
+- Process updates needed
+- Template improvements
+
+#### Release (`/release`)
+Finalize the iteration:
+- Update README with new features
+- Tag the release in git
+- Mark iteration complete
+
 ---
 
 ## Full Lifecycle Example
@@ -205,7 +233,7 @@ Claude reviews each PR checking:
 ```bash
 # PLANNING
 /discover                    # "I need user authentication"
-# → Discuss requirements, approve discovery.md
+# → Creates docs/discovery/2025-01-15-v1-auth.md
 
 /prd user-auth              # Generate PRD from discovery
 # → Review acceptance criteria, approve PRD
@@ -219,14 +247,19 @@ Claude reviews each PR checking:
 # → TICKET-103: Login endpoint
 # → TICKET-104: Session management
 
-# EXECUTION
+# EXECUTION (for each ticket)
 /implement TICKET-101       # TDD implementation
-# → Branch, test, implement, PR, review, merge
+# → Branch, test, implement, PR, validate, merge
 
 /implement TICKET-102       # Next ticket
-# → Branch, test, implement, PR, review, merge
+# → Branch, test, implement, PR, validate, merge
 
 # ... continue until all tickets complete
+
+# FINALIZE
+/execution-report           # Document what was built
+/system-review              # Analyze process effectiveness
+/release                    # Update README, tag v1.0
 
 # v1.0 shipped!
 ```
@@ -236,7 +269,7 @@ Claude reviews each PR checking:
 ```bash
 # PLANNING (new cycle)
 /discover                    # "Add Google/GitHub OAuth"
-# → Update discovery.md with OAuth requirements
+# → Creates docs/discovery/2025-02-20-v1.1-oauth.md
 
 /prd oauth-integration      # New PRD for OAuth scope
 /plan oauth-integration     # Technical plan for OAuth
@@ -250,7 +283,12 @@ Claude reviews each PR checking:
 /implement TICKET-202
 /implement TICKET-203
 
-# v2.0 shipped!
+# FINALIZE
+/execution-report
+/system-review
+/release                    # Update README, tag v1.1
+
+# v1.1 shipped!
 ```
 
 ---
@@ -261,7 +299,7 @@ Claude reviews each PR checking:
 
 | Command | Purpose | Output |
 |---------|---------|--------|
-| `/discover` | Interactive requirements gathering | `docs/discovery.md` |
+| `/discover` | Interactive requirements gathering | `docs/discovery/YYYY-MM-DD-{version}.md` |
 | `/prd {name}` | Generate PRD with acceptance criteria | `docs/prds/YYYY-MM-DD-{name}.md` |
 | `/plan {name}` | Generate technical implementation plan | `docs/plans/YYYY-MM-DD-{name}.md` |
 | `/ticket` | Create tickets in PM tool | Ticket IDs in PM tool |
@@ -273,6 +311,9 @@ Claude reviews each PR checking:
 | `/implement {ticket}` | TDD implementation of ticket | Feature branch + PR |
 | `/pr {ticket}` | Create pull request | Open PR linked to ticket |
 | `/validate {ticket}` | Pre-merge validation | Pass/fail status |
+| `/execution-report` | Document what was implemented | `docs/execution-reports/*.md` |
+| `/system-review` | Analyze process effectiveness | `docs/system-reviews/*.md` |
+| `/release` | Update README, tag release | Updated README.md |
 
 ### Utility Commands
 
@@ -368,15 +409,17 @@ cp .env.example .env
 │   ├── hooks/              # Security and audit hooks
 │   └── scripts/            # Utility scripts
 ├── docs/
-│   ├── discovery.md        # Living requirements document
+│   ├── discovery/          # Versioned discovery docs (one per iteration)
 │   ├── prds/               # PRD documents (one per feature)
 │   ├── plans/              # Technical plans (one per feature)
+│   ├── execution-reports/  # Implementation vs plan records
+│   ├── system-reviews/     # Process improvement analysis
 │   └── research/           # Research findings
 ├── config.yaml             # Project configuration
 ├── .env                    # Secrets (gitignored)
 ├── CLAUDE.md               # Orchestrator instructions
 ├── WORKFLOW.md             # Detailed workflow reference
-└── README.md               # This file
+└── README.md               # This file (updated after each release)
 ```
 
 ---

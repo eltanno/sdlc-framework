@@ -11,7 +11,7 @@ The framework enforces a phase-based workflow divided into two major stages:
 | Stage | Phases | Purpose | Output |
 |-------|--------|---------|--------|
 | **Planning** | discover → prd → plan → ticket | Define WHAT and HOW | Approved plan + tickets in PM |
-| **Execution** | implement → pr → validate | Build and ship | Merged code |
+| **Execution** | implement → pr → validate → report → review → release | Build, review, ship | Merged code + updated README |
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
@@ -22,28 +22,28 @@ The framework enforces a phase-based workflow divided into two major stages:
 │   │ Prime │ --> │ Discover │ --> │ PRD │ --> │ Plan │ --> │ Ticket │ ──────────────────────┐               │
 │   └───────┘     └──────────┘     └─────┘     └──────┘     └────────┘                       │               │
 │                                                                                             │               │
-│   Outputs: docs/discovery.md, docs/prds/*.md, docs/plans/*.md, tickets in PM               │               │
+│   Outputs: docs/discovery/*.md, docs/prds/*.md, docs/plans/*.md, tickets in PM             │               │
 │   Human approval required at: Discovery, PRD, Plan                                          │               │
 └─────────────────────────────────────────────────────────────────────────────────────────────│───────────────┘
                                                                                               │
                                                                                               ▼
 ┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │                                              EXECUTION                                                       │
-│                                          (Do & Ship)                                                         │
+│                                      (Build, Review & Ship)                                                  │
 │                                                                                                              │
-│                                        ┌───────────┐     ┌────┐     ┌──────────┐                            │
-│                                        │ Implement │ --> │ PR │ --> │ Validate │                            │
-│                                        └───────────┘     └────┘     └──────────┘                            │
-│                                                                            │                                 │
-│   Can be run autonomously (ralph) or human-managed (Boris-style sessions)  │                                 │
-│   Outputs: Feature branch, tests, code, merged PR                          │                                 │
-└────────────────────────────────────────────────────────────────────────────│─────────────────────────────────┘
-                                                                             │
-                                                                             ▼
-                                                              ┌──────────────────────────────┐
-                                                              │ Execution Report → System    │
-                                                              │ Review (Process Improvement) │
-                                                              └──────────────────────────────┘
+│   ┌───────────┐     ┌────┐     ┌──────────┐     ┌────────┐     ┌────────┐     ┌─────────┐                   │
+│   │ Implement │ --> │ PR │ --> │ Validate │ --> │ Report │ --> │ Review │ --> │ Release │                   │
+│   └───────────┘     └────┘     └──────────┘     └────────┘     └────────┘     └─────────┘                   │
+│                                                                                     │                        │
+│   Can be run autonomously (ralph) or human-managed                                  │                        │
+│   Outputs: Feature branch, tests, code, merged PR, updated README                   │                        │
+└─────────────────────────────────────────────────────────────────────────────────────│────────────────────────┘
+                                                                                      │
+                                                                                      ▼
+                                                                           ┌──────────────────┐
+                                                                           │  Next Iteration  │
+                                                                           │   /discover...   │
+                                                                           └──────────────────┘
 ```
 
 ### Key Boundary
@@ -64,17 +64,11 @@ context  interactive                    │
                               [Tickets ready in PM]
                                         ↓
 EXECUTION PHASES:
-                              /implement → /pr → /validate
-                                   │        │        │
-                                   ▼        ▼        ▼
-                               engineer  haiku  engineer
-
-POST-COMPLETION:
-                    /execution-report → /system-review
-                              │               │
-                              ▼               ▼
-                           (self)          (self)
-                         document     process improvement
+/implement → /pr → /validate → /execution-report → /system-review → /release
+     │        │        │              │                   │              │
+     ▼        ▼        ▼              ▼                   ▼              ▼
+ engineer  haiku  engineer         (self)              (self)         (self)
+                                  document       process review    update README
 ```
 
 ### Bug Fix Workflows
@@ -124,36 +118,45 @@ ticket → branch → fix → /pr → /validate
 
 ## Document Hierarchy
 
-The framework uses a clear hierarchy from holistic vision down to individual tasks:
+The framework uses a clear hierarchy from iteration scope down to individual tasks:
 
 ### The Hierarchy Model
 
 ```
-docs/discovery.md              ← The whole app vision (living document)
-  ├── docs/prds/auth.md        ← Feature PRD
-  ├── docs/prds/sync-engine.md ← Feature PRD
-  └── docs/prds/cli.md         ← Feature PRD
+docs/discovery/
+├── YYYY-MM-DD-v1-initial.md       ← v1 scope and requirements
+├── YYYY-MM-DD-v1.1-oauth.md       ← v1.1 scope and requirements
+└── YYYY-MM-DD-v2-admin.md         ← v2 scope and requirements
+      ↓
+    docs/prds/YYYY-MM-DD-*.md      ← Feature PRDs for each iteration
+      ↓
+    docs/plans/YYYY-MM-DD-*.md     ← Technical plans
 ```
 
 | Document | Scope | Analogy | Status |
 |----------|-------|---------|--------|
-| **Discovery** | Whole application | "The book" | Living document (revised over time) |
-| **PRD** | One feature/epic | "A chapter" | Point-in-time (one per feature) |
+| **Discovery** | One iteration/version | "Volume" | Versioned (one per planning cycle) |
+| **PRD** | One feature/epic | "Chapter" | Point-in-time (one per feature) |
 | **Plan** | Technical approach for PRD | "Chapter outline" | Point-in-time (one per PRD) |
 | **Tickets** | Individual tasks | "Paragraphs" | Created from plan |
+| **README** | Current product state | "Cover summary" | Updated after each release |
 
 ### Key Principles
 
-1. **One Discovery per application** - This is your holistic vision document that evolves over time
-2. **Multiple PRDs per application** - Each PRD focuses on a single feature or epic
-3. **PRDs reference Discovery** - Each PRD connects back to the overall vision
+1. **One Discovery per iteration** - Each planning cycle (v1, v1.1, v2) has its own discovery
+2. **Multiple PRDs per discovery** - Each PRD focuses on a single feature within that iteration
+3. **PRDs reference Discovery** - Each PRD connects back to its iteration's discovery
 4. **Plans implement PRDs** - Each plan defines how to build what a PRD specified
+5. **README reflects reality** - After release, README is updated with what was shipped
 
 ### Document Flow
 
 ```
 docs/
-├── discovery.md                    # Living application vision (THE BOOK)
+├── discovery/
+│   ├── YYYY-MM-DD-v1-initial.md   # v1 scope (VOLUME 1)
+│   ├── YYYY-MM-DD-v1.1-oauth.md   # v1.1 scope (VOLUME 1.1)
+│   └── YYYY-MM-DD-v2-admin.md     # v2 scope (VOLUME 2)
 ├── prds/
 │   ├── YYYY-MM-DD-feature-1.md    # Feature PRD (CHAPTER 1)
 │   ├── YYYY-MM-DD-feature-2.md    # Feature PRD (CHAPTER 2)
@@ -179,19 +182,21 @@ docs/
 ### Document Relationships
 
 ```
-Discovery (whole app)
-    ↓
-   PRD 1 (Feature A - WHAT to build)      PRD 2 (Feature B)      PRD 3 (Feature C)
-    ├── Features                              ├── Features              ├── Features
-    ├── Acceptance Criteria                   ├── Acceptance Criteria   ├── Acceptance Criteria
-    └── Ticket Definitions                    └── Ticket Definitions    └── Ticket Definitions
-         ↓                                         ↓                         ↓
-        Plan 1 (HOW to build Feature A)         Plan 2                    Plan 3
+Discovery v1 (iteration scope)           Discovery v1.1 (next iteration)
+    ↓                                          ↓
+   PRD 1 (Feature A)     PRD 2 (Feature B)    PRD 3 (OAuth)
+    ├── Features              ├── Features         ├── Features
+    ├── Acceptance Criteria   ├── Acceptance       ├── Acceptance Criteria
+    └── Ticket Definitions    └── Tickets          └── Ticket Definitions
+         ↓                         ↓                    ↓
+        Plan 1                   Plan 2               Plan 3
          ├── Technical Architecture
          ├── Implementation Phases
-         └── Ticket Breakdown (with Asana IDs)
+         └── Ticket Breakdown (with IDs)
               ↓
              Implementation
+              ↓
+             Release → Update README
 ```
 
 ---
@@ -239,15 +244,20 @@ Discovery (whole app)
 
 ### 1. Discovery Phase (`/discover`)
 
-**Interactive requirements gathering conversation**
+**Interactive requirements gathering conversation for an iteration**
 
 - **Who runs it**: You (orchestrator) - interactive with user
-- **Input**: User's vision and needs
-- **Output**: `docs/discovery.md` - Living document capturing requirements
+- **Input**: User's vision and needs for this iteration/version
+- **Output**: `docs/discovery/YYYY-MM-DD-{version-or-scope}.md` - Versioned document capturing iteration requirements
 - **Status**: NOT STARTED → IN PROGRESS → READY FOR PLANNING
-- **Purpose**: Understand what the user wants to build and why
+- **Purpose**: Understand what the user wants to build in this iteration and why
 
 **Discovery is interactive** - you conduct it yourself as a conversation with the user. This is NOT delegated to an agent.
+
+**Each planning cycle gets its own discovery:**
+- `docs/discovery/2025-01-15-v1-core.md` - Initial v1 features
+- `docs/discovery/2025-02-20-v1.1-oauth.md` - OAuth enhancement
+- `docs/discovery/2025-04-10-v2-admin.md` - Admin dashboard
 
 **Discovery vs Research:**
 
@@ -256,8 +266,8 @@ Discovery (whole app)
 | **Interactive** conversation | **Autonomous** investigation |
 | You conduct it yourself | Delegate to general-purpose agent |
 | User explains their vision | Agent explores topic independently |
-| Output: `docs/discovery.md` | Output: `docs/research/YYYY-MM-DD-topic.md` |
-| Living document, revisable | Point-in-time findings |
+| Output: `docs/discovery/YYYY-MM-DD-*.md` | Output: `docs/research/YYYY-MM-DD-*.md` |
+| Versioned per iteration | Point-in-time findings |
 
 ---
 
@@ -381,10 +391,6 @@ Discovery (whole app)
 
 ---
 
-## Post-Completion Phases
-
-After merging a feature, complete the feedback loop:
-
 ### 8. Execution Report (`/execution-report`)
 
 **Document what was implemented versus what was planned**
@@ -429,6 +435,38 @@ After merging a feature, complete the feedback loop:
 
 ---
 
+### 10. Release Phase (`/release`)
+
+**Update README and finalize the release**
+
+- **Who runs it**: You (orchestrator) - self-executed
+- **Prerequisites**: System review complete (or skipped with approval)
+- **Input**: Discovery doc, PRD, execution report, what was actually shipped
+- **Output**: Updated README.md reflecting current product state
+- **Actions**:
+  1. Review what was shipped in this iteration
+  2. Update README.md with new features/changes
+  3. Update any other user-facing documentation
+  4. Tag the release in git (if applicable)
+  5. Mark iteration as complete
+
+**Why Release matters:**
+- README is the "source of truth" for what the software actually does
+- Discovery docs capture what was *planned* - README captures what *exists*
+- New users/contributors read README first, not discovery docs
+- Closes the loop: Plan → Build → Review → Document
+
+**README update should include:**
+- New features added
+- Changed behaviors
+- New configuration options
+- Updated prerequisites (if any)
+- Version bump (if using semver)
+
+**Key Principle**: The iteration isn't complete until the documentation reflects reality.
+
+---
+
 ## Prerequisites by Phase
 
 ### Utility Commands (No Prerequisites)
@@ -445,7 +483,7 @@ After merging a feature, complete the feedback loop:
 
 | Phase | Requires | Output |
 |-------|----------|--------|
-| `/discover` | None - can start anytime | `docs/discovery.md` |
+| `/discover` | None - can start anytime | `docs/discovery/YYYY-MM-DD-*.md` |
 | `/prd` | Discovery status = READY FOR PLANNING (or explicit skip) | `docs/prds/*.md` |
 | `/plan` | Approved PRD | `docs/plans/*.md` |
 | `/ticket` | Approved plan | Tickets in PM tool |
@@ -457,14 +495,10 @@ After merging a feature, complete the feedback loop:
 | `/implement` | Plan with ticket IDs | Code + tests on branch |
 | `/pr` | Passing tests, committed code | Pull request |
 | `/validate` | Open PR | Validation report |
-| `/ralph-prd` | Approved plan with ticket IDs + clean git state | Autonomous execution |
-
-### Post-Completion Phases
-
-| Phase | Requires | Output |
-|-------|----------|--------|
-| `/execution-report` | Completed implementation | `docs/execution-reports/*.md` |
+| `/execution-report` | All PRs merged, validation passed | `docs/execution-reports/*.md` |
 | `/system-review` | Execution report | `docs/system-reviews/*.md` |
+| `/release` | System review complete | Updated README.md |
+| `/ralph-prd` | Approved plan with ticket IDs + clean git state | Autonomous execution |
 
 **Check prerequisites before proceeding. If missing, guide user to correct phase.**
 
@@ -604,12 +638,13 @@ Workflow state persists in files, not context:
 
 | Phase | Artifact Location | Status Field | Scope |
 |-------|-------------------|--------------|-------|
-| Discovery | `docs/discovery.md` (living doc) | NOT STARTED → IN PROGRESS → READY FOR PLANNING | **Whole application vision** |
+| Discovery | `docs/discovery/YYYY-MM-DD-{version}.md` | NOT STARTED → IN PROGRESS → READY FOR PLANNING | **One iteration/version** |
 | Research | `docs/research/YYYY-MM-DD-{topic}.md` | (point-in-time) | Technical investigations |
 | RCA | `docs/rca/YYYY-MM-DD-{issue}.md` | ANALYZING → FIX PROPOSED → VERIFIED | Bug investigation |
 | PRD | `docs/prds/YYYY-MM-DD-{feature}.md` | DRAFT → APPROVED | **One feature/epic per PRD** |
 | Plan | `docs/plans/YYYY-MM-DD-{feature}.md` | DRAFT → APPROVED | Technical approach for one PRD |
 | Tickets | Updated in plan (ticket IDs added) | IDs populated | Individual tasks from plan |
+| Release | `README.md` (updated) | (current product state) | What the software actually does |
 | Execution Report | `docs/execution-reports/YYYY-MM-DD-{feature}.md` | COMPLETE / PARTIAL / BLOCKED | Implementation record |
 | System Review | `docs/system-reviews/YYYY-MM-DD-{feature}.md` | (point-in-time) | Process improvement |
 
@@ -683,11 +718,12 @@ Artifacts are the foundation of the entire workflow. Untracked files are NOT per
 
 | Phase | Creates | MUST Commit Before Proceeding |
 |-------|---------|-------------------------------|
-| `/discover` | `docs/discovery.md` | ✅ `git add docs/discovery.md && git commit` |
+| `/discover` | `docs/discovery/*.md` | ✅ `git add docs/discovery/ && git commit` |
 | `/prd` | `docs/prds/*.md` | ✅ `git add docs/prds/ && git commit` |
 | `/plan` | `docs/plans/*.md` | ✅ `git add docs/plans/ && git commit` |
 | `/research` | `docs/research/*.md` | ✅ `git add docs/research/ && git commit` |
 | `/rca` | `docs/rca/*.md` | ✅ `git add docs/rca/ && git commit` |
+| `/release` | `README.md` | ✅ `git add README.md && git commit` |
 
 ### Commit Message Format
 

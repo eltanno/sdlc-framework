@@ -101,14 +101,21 @@ Return a brief summary when complete.
 ### Quick Workflow Overview
 
 ```
-/discover → /prd → /plan → /ticket → /implement → /pr → /validate
-    │         │       │        │          │        │        │
-    ▼         ▼       ▼        ▼          ▼        ▼        ▼
- (self)  architect architect haiku   engineer  haiku  engineer
-interactive
+PLANNING:
+/discover → /prd → /plan → /ticket
+    │         │       │        │
+    ▼         ▼       ▼        ▼
+ (self)  architect architect haiku
+
+EXECUTION:
+/implement → /pr → /validate → /execution-report → /system-review → /release
+     │        │        │              │                   │              │
+     ▼        ▼        ▼              ▼                   ▼              ▼
+ engineer  haiku  engineer         (self)              (self)         (self)
 ```
 
 **Discovery is interactive** - you conduct it yourself as a conversation with the user.
+**Report/Review/Release are self-executed** - document, analyze, then update README.
 **All other phases delegate** to specialist agents.
 
 **Agent definitions**: See `.claude/agents/` for detailed agent responsibilities and standards.
@@ -155,10 +162,11 @@ Task({
 Workflow state persists in files, not context. See [WORKFLOW.md](WORKFLOW.md) for complete document hierarchy and locations.
 
 **Quick Reference:**
-- Discovery: `docs/discovery.md` (living doc - whole app vision)
+- Discovery: `docs/discovery/YYYY-MM-DD-{version}.md` (one per iteration - v1, v1.1, v2)
 - PRD: `docs/prds/YYYY-MM-DD-{feature}.md` (one feature per PRD)
 - Plan: `docs/plans/YYYY-MM-DD-{feature}.md` (technical approach)
 - Research: `docs/research/YYYY-MM-DD-{topic}.md` (investigations)
+- Release: `README.md` (current product state - updated after each release)
 
 **Reading artifacts gives you state. Writing artifacts persists state.**
 
@@ -176,6 +184,7 @@ See [WORKFLOW.md](WORKFLOW.md) for detailed prerequisites.
 - `/implement` - Requires plan with ticket IDs
 - `/pr` - Requires passing tests, committed code
 - `/validate` - Requires open PR
+- `/release` - Requires all PRs merged, validation passed
 
 **Check prerequisites before delegating. If missing, guide user to correct phase.**
 
@@ -191,10 +200,11 @@ See [WORKFLOW.md](WORKFLOW.md) for detailed phase documentation.
 | `/research` | general-purpose | Autonomous technical research |
 | `/prd` | architect | Generate PRD with acceptance criteria |
 | `/plan` | architect | Create implementation plan |
-| `/ticket` | (haiku) | Create Asana tasks from plan |
+| `/ticket` | (haiku) | Create tasks from plan |
 | `/implement` | engineer | TDD implementation |
 | `/pr` | (haiku) | Create GitHub pull request |
 | `/validate` | engineer | Pre-merge validation |
+| `/release` | **(self)** | Update README with shipped features |
 | `/status` | (self) | Check workflow status |
 | `/hotfix` | engineer | Emergency fix (abbreviated workflow) |
 

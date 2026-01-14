@@ -372,7 +372,7 @@ printf "\n"
 # LINE 4 - Workflow progress
 # Two-section workflow: Plan phases + Execute phases
 PLAN_PHASES="discover prd plan ticket"
-EXECUTE_PHASES="ralph report review"
+EXECUTE_PHASES="ralph report review release"
 
 # Helper to check if phase is completed
 is_completed() {
@@ -424,6 +424,7 @@ format_phase() {
     case "$phase" in
         prd) display_name="PRD" ;;
         ralph) display_name="Ralph" ;;
+        release) display_name="Release" ;;
         report) display_name="Report" ;;
         review) display_name="Review" ;;
         *) display_name=$(echo "$phase" | sed 's/\b\(.\)/\u\1/') ;;
