@@ -26,3 +26,10 @@ git:
 # Repository Provider
 repo:
   type: github                     # github | gitlab
+
+# Pull Request / Merge Request Settings
+pr:
+  target_branch: main              # Branch to create PRs against (main, develop, etc.)
+  auto_merge: false                # Auto-merge PRs when validation passes
+  delete_branch_after_merge: true  # Delete feature branch after PR merge
+  merge_method: squash             # merge | squash | rebase

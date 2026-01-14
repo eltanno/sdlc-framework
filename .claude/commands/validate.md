@@ -155,22 +155,73 @@ Next Steps:
 
 ## After Agent Returns
 
+### Read Merge Settings
+
+```bash
+# Auto-merge setting from config.yaml
+AUTO_MERGE=$(grep -E "^\s*auto_merge:" config.yaml 2>/dev/null | awk '{print $2}' || echo "false")
+
+# Merge method (merge | squash | rebase)
+MERGE_METHOD=$(grep -E "^\s*merge_method:" config.yaml 2>/dev/null | awk '{print $2}' || echo "squash")
+
+# Delete branch after merge
+DELETE_BRANCH=$(grep -E "^\s*delete_branch_after_merge:" config.yaml 2>/dev/null | awk '{print $2}' || echo "true")
+
+# Repository type
+REPO_TYPE=$(grep -E "^\s*type:" config.yaml 2>/dev/null | grep -E "github|gitlab" | awk '{print $2}' || echo "github")
+```
+
 ### If READY TO MERGE
 
-1. Confirm with user
-2. Merge the PR/MR:
+**If `auto_merge: true`:**
+- Proceed directly to merge without user confirmation
+- Report: "Validation passed. Auto-merging PR..."
 
-   **GitHub:**
-   ```bash
-   gh pr merge --squash --delete-branch
-   ```
+**If `auto_merge: false`:**
+- Confirm with user before merging
 
-   **GitLab:**
-   ```bash
-   glab mr merge --squash --remove-source-branch
-   ```
-3. Update Asana ticket to "Done"
-4. Celebrate!
+**Merge Commands:**
+
+**GitHub:**
+```bash
+# Build merge flags based on config
+MERGE_FLAGS=""
+if [ "$MERGE_METHOD" = "squash" ]; then
+  MERGE_FLAGS="--squash"
+elif [ "$MERGE_METHOD" = "rebase" ]; then
+  MERGE_FLAGS="--rebase"
+else
+  MERGE_FLAGS="--merge"
+fi
+
+if [ "$DELETE_BRANCH" = "true" ]; then
+  MERGE_FLAGS="$MERGE_FLAGS --delete-branch"
+fi
+
+gh pr merge $MERGE_FLAGS
+```
+
+**GitLab:**
+```bash
+# Build merge flags based on config
+MERGE_FLAGS=""
+if [ "$MERGE_METHOD" = "squash" ]; then
+  MERGE_FLAGS="--squash"
+elif [ "$MERGE_METHOD" = "rebase" ]; then
+  MERGE_FLAGS="--rebase"
+fi
+
+if [ "$DELETE_BRANCH" = "true" ]; then
+  MERGE_FLAGS="$MERGE_FLAGS --remove-source-branch"
+fi
+
+glab mr merge $MERGE_FLAGS
+```
+
+**After merge:**
+1. Update ticket to "Done"
+2. If more tickets: proceed to next `/implement`
+3. If all tickets done: proceed to `/execution-report`
 
 ### If NEEDS FIXES
 

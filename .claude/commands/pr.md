@@ -122,14 +122,25 @@ Create a PR (GitHub) or MR (GitLab) with proper documentation linking to the tic
 
 ## Steps
 
-### 1. Determine Provider
+### 1. Read Configuration
 
-Read `repo.type` from `config.yaml` (defaults to github):
+Read settings from `config.yaml`:
 
-```yaml
-# From config.yaml
-repo:
-  type: github    # github | gitlab
+```bash
+# Repository type (github | gitlab)
+REPO_TYPE=$(grep -E "^\s*type:" config.yaml 2>/dev/null | grep -E "github|gitlab" | awk '{print $2}' || echo "github")
+
+# Target branch for PRs (main, develop, etc.)
+TARGET_BRANCH=$(grep -E "^\s*target_branch:" config.yaml 2>/dev/null | awk '{print $2}' || echo "main")
+
+# Auto-merge setting
+AUTO_MERGE=$(grep -E "^\s*auto_merge:" config.yaml 2>/dev/null | awk '{print $2}' || echo "false")
+
+# Merge method (merge | squash | rebase)
+MERGE_METHOD=$(grep -E "^\s*merge_method:" config.yaml 2>/dev/null | awk '{print $2}' || echo "squash")
+
+# Delete branch after merge
+DELETE_BRANCH=$(grep -E "^\s*delete_branch_after_merge:" config.yaml 2>/dev/null | awk '{print $2}' || echo "true")
 ```
 
 Use `gh` for GitHub, `glab` for GitLab.
@@ -144,7 +155,7 @@ BRANCH=$(git branch --show-current)
 TICKET_ID=$(echo $BRANCH | grep -oP 'TASK-\d+')
 
 # Get commit log for this branch
-git log main..$BRANCH --oneline
+git log $TARGET_BRANCH..$BRANCH --oneline
 
 # Find PRD with this ticket
 grep -l "$TICKET_ID" docs/prds/*.md 2>/dev/null || echo "No PRD found"
@@ -152,10 +163,11 @@ grep -l "$TICKET_ID" docs/prds/*.md 2>/dev/null || echo "No PRD found"
 
 ### 3. Create PR/MR
 
-**For GitHub (REPO_TYPE=github):**
+**For GitHub (repo.type: github):**
 
 ```bash
 gh pr create \
+  --base $TARGET_BRANCH \
   --title "[$TICKET_ID] Description from ticket" \
   --body "$(cat <<'EOF'
 ## Summary
@@ -191,10 +203,11 @@ EOF
 )"
 ```
 
-**For GitLab (REPO_TYPE=gitlab):**
+**For GitLab (repo.type: gitlab):**
 
 ```bash
 glab mr create \
+  --target-branch $TARGET_BRANCH \
   --title "[$TICKET_ID] Description from ticket" \
   --description "$(cat <<'EOF'
 ## Summary
