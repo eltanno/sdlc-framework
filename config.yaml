@@ -33,3 +33,13 @@ pr:
   auto_merge: false                # Auto-merge PRs when validation passes
   delete_branch_after_merge: true  # Delete feature branch after PR merge
   merge_method: squash             # merge | squash | rebase
+
+# Ralph Orchestrator Settings
+ralph:
+  # Complexity threshold for model selection
+  # Tickets with complexity <= threshold use Sonnet (cheaper)
+  # Tickets with complexity > threshold use Opus (more capable)
+  # Values: 1-5 (default: 2 means 1-2 use Sonnet, 3-5 use Opus)
+  sonnet_threshold: 2
+  max_attempts: 3                  # Max attempts per ticket before marking blocked
+  validation_retries: 2            # Validation retry attempts before failing ticket

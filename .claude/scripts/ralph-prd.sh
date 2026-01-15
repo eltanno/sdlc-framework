@@ -25,12 +25,24 @@ set -e
 PRD_PATH="${1:-}"
 PLAN_PATH="${2:-}"
 DRY_RUN=false
-MAX_ATTEMPTS=3
-VALIDATION_RETRIES=2
 
-# Model selection threshold: complexity 1-N uses SONNET, above uses OPUS
-# Adjust based on performance metrics from /system-review
-SONNET_THRESHOLD=2
+# Read configuration from config.yaml (with defaults)
+read_config() {
+    local key="$1"
+    local default="$2"
+    local value
+    value=$(grep -E "^\s*${key}:" config.yaml 2>/dev/null | awk '{print $2}' | head -1)
+    if [ -z "$value" ]; then
+        echo "$default"
+    else
+        echo "$value"
+    fi
+}
+
+# Load ralph configuration from config.yaml
+MAX_ATTEMPTS=$(read_config "max_attempts" "3")
+VALIDATION_RETRIES=$(read_config "validation_retries" "2")
+SONNET_THRESHOLD=$(read_config "sonnet_threshold" "2")
 
 # Parse optional flags
 shift 2 2>/dev/null || true
@@ -624,7 +636,11 @@ main() {
 
     echo "PRD:  $PRD_PATH" | tee_log
     echo "Plan: $PLAN_PATH" | tee_log
-    echo "Max attempts per ticket: $MAX_ATTEMPTS" | tee_log
+    echo "" | tee_log
+    echo -e "${CYAN}Configuration (from config.yaml):${NC}" | tee_log
+    echo "  Sonnet threshold: $SONNET_THRESHOLD (complexity 1-$SONNET_THRESHOLD → Sonnet)" | tee_log
+    echo "  Max attempts: $MAX_ATTEMPTS" | tee_log
+    echo "  Validation retries: $VALIDATION_RETRIES" | tee_log
     [ "$DRY_RUN" = true ] && echo -e "${YELLOW}DRY RUN MODE${NC}" | tee_log
     echo "" | tee_log
     echo -e "${CYAN}Logs:${NC} $LOG_DIR" | tee_log

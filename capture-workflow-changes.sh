@@ -3,12 +3,33 @@
 # Capture Workflow Changes
 #
 # Syncs SDLC framework files back to the source framework project.
+# Uses CORE_SRC and CORE_DEST from .env file.
 #
 
 set -e
 
-SRC="/home/jim/projects/test-todo-claude"
-DEST="/home/jim/workspace/test-sdlc-project"
+# Load .env file if it exists
+if [ -f ".env" ]; then
+    # Export variables from .env, ignoring comments and empty lines
+    export $(grep -v '^#' .env | grep -v '^$' | xargs)
+fi
+
+# Use CORE_SRC and CORE_DEST from .env, with fallbacks
+SRC="${CORE_SRC:-}"
+DEST="${CORE_DEST:-}"
+
+# Validate required variables
+if [ -z "$SRC" ]; then
+    echo "Error: CORE_SRC not set in .env file"
+    echo "Add: CORE_SRC=/path/to/source/project"
+    exit 1
+fi
+
+if [ -z "$DEST" ]; then
+    echo "Error: CORE_DEST not set in .env file"
+    echo "Add: CORE_DEST=/path/to/destination/project"
+    exit 1
+fi
 
 echo "=== Capture Workflow Changes ==="
 echo "Source: $SRC"
