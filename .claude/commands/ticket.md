@@ -37,16 +37,28 @@ If no approved PRD exists:
 
 ## Read Configuration
 
-**Step 1: Check which PM tool is configured**
+**Step 1: Read ticket configuration**
 
 Read `config.yaml` from project root:
+
+```yaml
+tickets:
+  prefix: "SDLC"    # Project code prefix for all tickets
+  counter: 0        # Current ticket count
+```
+
+Store these values:
+- `TICKET_PREFIX` = tickets.prefix (e.g., "SDLC")
+- `TICKET_COUNTER` = tickets.counter (e.g., 0)
+
+**Step 2: Check which PM tool is configured**
 
 ```yaml
 pm:
   tool: asana    # asana | trello | github | linear | none
 ```
 
-**Step 2: Route to appropriate tool**
+**Step 3: Route to appropriate tool**
 
 Based on `pm.tool` value:
 
@@ -71,6 +83,15 @@ Read the PRD and extract the tickets table:
 | TBD | Ticket 2 | Description | P2 | S |
 ```
 
+**Generate Ticket IDs:**
+
+For each ticket in the table, generate an ID using the prefix and counter:
+- First ticket: `{TICKET_PREFIX}-{TICKET_COUNTER + 1}` (e.g., SDLC-0001)
+- Second ticket: `{TICKET_PREFIX}-{TICKET_COUNTER + 2}` (e.g., SDLC-0002)
+- Use zero-padded 4-digit numbers (0001, 0002, etc.)
+
+These IDs are used regardless of which PM tool is configured.
+
 ---
 
 ## Tool-Specific Instructions
@@ -88,7 +109,7 @@ mcp__asana__create_task({
 })
 ```
 
-Update PRD with: `ASANA-{gid}`
+Update PRD with: `{TICKET_PREFIX}-{N}` (e.g., SDLC-0001)
 
 ### If pm.tool = trello
 
@@ -102,7 +123,7 @@ mcp__trello__add_card_to_list({
 })
 ```
 
-Update PRD with: `TRELLO-{card-id}`
+Update PRD with: `{TICKET_PREFIX}-{N}` (e.g., SDLC-0001)
 
 ### If pm.tool = github
 
@@ -129,7 +150,7 @@ PRD: docs/prds/YYYY-MM-DD-feature.md
   --label "task"
 ```
 
-Update PRD with: `GH-{issue-number}`
+Update PRD with: `{TICKET_PREFIX}-{N}` (e.g., SDLC-0001)
 
 ### If pm.tool = linear
 
@@ -143,7 +164,7 @@ mcp__linear__create_issue({
 })
 ```
 
-Update PRD with: `LINEAR-{issue-id}`
+Update PRD with: `{TICKET_PREFIX}-{N}` (e.g., SDLC-0001)
 
 ### If pm.tool = none (Local Tracking Only)
 
@@ -162,25 +183,44 @@ Format:
 
 | ID | Title | Status | Branch |
 |----|-------|--------|--------|
-| LOCAL-001 | Ticket 1 | pending | - |
-| LOCAL-002 | Ticket 2 | pending | - |
+| {TICKET_PREFIX}-0001 | Ticket 1 | pending | - |
+| {TICKET_PREFIX}-0002 | Ticket 2 | pending | - |
 ```
 
-Update PRD with: `LOCAL-001`, `LOCAL-002`, etc.
+Update PRD with: `{TICKET_PREFIX}-{N}` (e.g., SDLC-0001, SDLC-0002)
 
 ---
 
 ## Update PRD with Task IDs
 
-For ALL pm.tool options, update the PRD's ticket table:
+For ALL pm.tool options, update the PRD's ticket table using the project prefix:
 
 ```
 Edit({
   file_path: "docs/prds/YYYY-MM-DD-feature.md",
   old_string: "| TBD | Ticket 1 |",
-  new_string: "| {TOOL}-{ID} | Ticket 1 |"
+  new_string: "| {TICKET_PREFIX}-0001 | Ticket 1 |"
 })
 ```
+
+## Update Ticket Counter
+
+**CRITICAL: After creating tickets, update the counter in config.yaml**
+
+Calculate the new counter value:
+- `NEW_COUNTER = TICKET_COUNTER + number_of_tickets_created`
+
+Update config.yaml:
+
+```
+Edit({
+  file_path: "config.yaml",
+  old_string: "counter: {TICKET_COUNTER}",
+  new_string: "counter: {NEW_COUNTER}"
+})
+```
+
+This ensures the next `/ticket` run starts from the correct number and avoids ID collisions.
 
 ---
 
@@ -207,21 +247,22 @@ TICKETS CREATED
 
 PM Tool: {pm.tool from config}
 PRD: docs/prds/YYYY-MM-DD-feature.md (updated with task IDs)
+Ticket Counter: {TICKET_COUNTER} → {NEW_COUNTER}
 
 ## Tasks Created
 
 | # | ID | Title | URL |
 |---|-----|-------|-----|
-| 1 | {TOOL}-001 | Ticket 1 | [link](...) |
-| 2 | {TOOL}-002 | Ticket 2 | [link](...) |
+| 1 | {TICKET_PREFIX}-0001 | Ticket 1 | [link](...) |
+| 2 | {TICKET_PREFIX}-0002 | Ticket 2 | [link](...) |
 
 Total: N tasks created
 
 ## Next Steps
 
 Ready to implement. Run:
-- `/implement {TOOL}-001` for Ticket 1
-- `/implement {TOOL}-002` for Ticket 2
+- `/implement {TICKET_PREFIX}-0001` for Ticket 1
+- `/implement {TICKET_PREFIX}-0002` for Ticket 2
 ```
 
 ---
