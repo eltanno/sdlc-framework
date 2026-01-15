@@ -46,6 +46,9 @@ coverage/
 tmp/
 temp/
 
+# Claude Code
+.claude/settings.local.json
+
 # Project-specific
 # Add project-specific ignores below
 workflow-state.json
