@@ -5,6 +5,20 @@
 
 **You are the orchestrator. This is a self-executed phase - you update the README and finalize the release.**
 
+---
+
+## ⚡ FIRST ACTION (MANDATORY)
+
+**Before doing ANYTHING else, update the workflow state:**
+
+```bash
+.claude/scripts/update-workflow-state.sh '.phase = "release"'
+```
+
+This updates the statusline to show the current phase. Do this NOW before proceeding.
+
+---
+
 ## Purpose
 
 The Release phase closes the loop between planning and execution:
@@ -133,23 +147,24 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 git push
 ```
 
-## Workflow State Update
+---
 
-At the **start** of this phase:
+## ✅ FINAL ACTION (MANDATORY)
 
-```bash
-.claude/scripts/update-workflow-state.sh '.phase = "release"'
-```
-
-At the **end** of this phase (after README is committed):
+**After README is committed, update the workflow state:**
 
 ```bash
-# Mark release as complete
 .claude/scripts/update-workflow-state.sh '.completed = (.completed + ["release"] | unique)'
-
-# Optionally reset for next iteration
-# .claude/scripts/update-workflow-state.sh '.phase = "idle" | .completed = []'
 ```
+
+Do NOT forget this step - it marks the phase as complete in the statusline.
+
+**Optional: Reset for next iteration:**
+```bash
+.claude/scripts/update-workflow-state.sh '.phase = "idle" | .completed = []'
+```
+
+---
 
 ## After Release
 

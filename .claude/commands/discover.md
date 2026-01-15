@@ -5,6 +5,20 @@
 
 **You ARE the agent for this phase. This is interactive - do NOT delegate.**
 
+---
+
+## ⚡ FIRST ACTION (MANDATORY)
+
+**Before doing ANYTHING else, update the workflow state:**
+
+```bash
+.claude/scripts/update-workflow-state.sh '.phase = "discover"'
+```
+
+This updates the statusline to show the current phase. Do this NOW before proceeding.
+
+---
+
 ## Template
 
 Use the template at `docs/templates/discovery-template.md` when creating discovery documents.
@@ -269,19 +283,19 @@ What's on your mind?
 - Rush through questions
 - Make decisions for them
 
-## Workflow State Update
+---
 
-At the **start** of this phase, update `workflow-state.json`:
+## ✅ FINAL ACTION (MANDATORY)
 
-```bash
-.claude/scripts/update-workflow-state.sh '.phase = "discover"'
-```
-
-At the **end** of this phase (when user marks discovery as complete), mark complete:
+**When user marks discovery as complete, update the workflow state:**
 
 ```bash
 .claude/scripts/update-workflow-state.sh '.completed = (.completed + ["discover"] | unique)'
 ```
+
+Do NOT forget this step - it marks the phase as complete in the statusline.
+
+---
 
 ## Topic/Context for Discovery
 

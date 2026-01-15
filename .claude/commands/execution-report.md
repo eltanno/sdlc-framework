@@ -5,6 +5,20 @@
 
 **Document what was implemented versus what was planned.**
 
+---
+
+## ⚡ FIRST ACTION (MANDATORY)
+
+**Before doing ANYTHING else, update the workflow state:**
+
+```bash
+.claude/scripts/update-workflow-state.sh '.phase = "report"'
+```
+
+This updates the statusline to show the current phase. Do this NOW before proceeding.
+
+---
+
 ## Purpose
 
 After completing a feature implementation, create an execution report that captures:
@@ -225,19 +239,19 @@ Create `docs/execution-reports/YYYY-MM-DD-{feature-slug}.md`:
 2. **Run `/system-review`** - Analyze process effectiveness
 3. **Update PROGRESS.md** - Mark tasks complete
 
-## Workflow State Update
+---
 
-At the **start** of this phase, update `workflow-state.json`:
+## ✅ FINAL ACTION (MANDATORY)
 
-```bash
-.claude/scripts/update-workflow-state.sh '.phase = "report"'
-```
-
-At the **end** of this phase (after report is created), mark complete:
+**After the report is created, update the workflow state:**
 
 ```bash
 .claude/scripts/update-workflow-state.sh '.completed = (.completed + ["report"] | unique)'
 ```
+
+Do NOT forget this step - it marks the phase as complete in the statusline.
+
+---
 
 ## Arguments
 

@@ -7,6 +7,20 @@
 
 **Agent definition**: See `.claude/agents/architect.md` for architect responsibilities.
 
+---
+
+## ⚡ FIRST ACTION (MANDATORY)
+
+**Before doing ANYTHING else, update the workflow state:**
+
+```bash
+.claude/scripts/update-workflow-state.sh '.phase = "plan"'
+```
+
+This updates the statusline to show the current phase. Do this NOW before proceeding.
+
+---
+
 ## Template
 
 Use the template at `docs/templates/plan-template.md` when creating plan documents at `docs/plans/YYYY-MM-DD-{feature}.md`.
@@ -134,19 +148,19 @@ Next: User should review and approve, then run /ralph-prd
 3. **Prompt** user to review and approve (change status to APPROVED)
 4. **Next step:** Once approved, user can run `/ralph-prd`
 
-## Workflow State Update
+---
 
-At the **start** of this phase, update `workflow-state.json`:
+## ✅ FINAL ACTION (MANDATORY)
 
-```bash
-.claude/scripts/update-workflow-state.sh '.phase = "plan"'
-```
-
-At the **end** of this phase (after plan is created and verified), mark complete:
+**After the plan is created and verified, update the workflow state:**
 
 ```bash
 .claude/scripts/update-workflow-state.sh '.completed = (.completed + ["plan"] | unique)'
 ```
+
+Do NOT forget this step - it marks the phase as complete in the statusline.
+
+---
 
 ## Feature for Planning
 

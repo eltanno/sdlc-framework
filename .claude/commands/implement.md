@@ -7,6 +7,23 @@
 
 **Agent definition**: See `.claude/agents/engineer.md` for engineer responsibilities and coding standards.
 
+---
+
+## ⚡ FIRST ACTION (MANDATORY)
+
+**Before doing ANYTHING else, update the workflow state (if not in ralph mode):**
+
+```bash
+current_phase=$(jq -r '.phase' workflow-state.json 2>/dev/null || echo "")
+if [ "$current_phase" != "ralph" ]; then
+    .claude/scripts/update-workflow-state.sh '.phase = "implement"'
+fi
+```
+
+This updates the statusline to show the current phase. Do this NOW before proceeding.
+
+---
+
 ## Prerequisites Check
 
 Before delegating, verify:
@@ -172,28 +189,22 @@ Next: Ready for /pr TASK-XXX
 4. **Summarize** implementation for user
 5. **Next step:** User can run `/pr TASK-XXX`
 
-## Workflow State Update
+---
 
-**Note:** If running as part of `/ralph-prd`, ralph manages the workflow state. Only update if NOT in ralph mode.
+## ✅ FINAL ACTION (MANDATORY)
 
-At the **start** of this phase (if not in ralph mode):
-
-```bash
-# Only set phase if not already in ralph mode
-current_phase=$(jq -r '.phase' workflow-state.json)
-if [ "$current_phase" != "ralph" ]; then
-    .claude/scripts/update-workflow-state.sh '.phase = "implement"'
-fi
-```
-
-At the **end** of this phase (after implementation is complete), mark complete (if not in ralph mode):
+**After implementation is complete, update the workflow state (if not in ralph mode):**
 
 ```bash
-current_phase=$(jq -r '.phase' workflow-state.json)
+current_phase=$(jq -r '.phase' workflow-state.json 2>/dev/null || echo "")
 if [ "$current_phase" != "ralph" ]; then
     .claude/scripts/update-workflow-state.sh '.completed = (.completed + ["implement"] | unique)'
 fi
 ```
+
+Do NOT forget this step - it marks the phase as complete in the statusline.
+
+---
 
 ## Ticket to Implement
 

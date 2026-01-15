@@ -5,6 +5,23 @@
 
 **You are the orchestrator. This is coordination - delegate to haiku or do directly.**
 
+---
+
+## ⚡ FIRST ACTION (MANDATORY)
+
+**Before doing ANYTHING else, update the workflow state (if not in ralph mode):**
+
+```bash
+current_phase=$(jq -r '.phase' workflow-state.json 2>/dev/null || echo "")
+if [ "$current_phase" != "ralph" ]; then
+    .claude/scripts/update-workflow-state.sh '.phase = "pr"'
+fi
+```
+
+This updates the statusline to show the current phase. Do this NOW before proceeding.
+
+---
+
 ## Prerequisites Check
 
 Before proceeding, verify:
@@ -276,28 +293,22 @@ Next: Wait for CI, get review, then /validate
 2. **Provide** PR/MR link to user
 3. **Next step:** Wait for CI checks and review, then `/validate`
 
-## Workflow State Update
+---
 
-**Note:** If running as part of `/ralph-prd`, ralph manages the workflow state. Only update if NOT in ralph mode.
+## ✅ FINAL ACTION (MANDATORY)
 
-At the **start** of this phase (if not in ralph mode):
-
-```bash
-# Only set phase if not already in ralph mode
-current_phase=$(jq -r '.phase' workflow-state.json)
-if [ "$current_phase" != "ralph" ]; then
-    .claude/scripts/update-workflow-state.sh '.phase = "pr"'
-fi
-```
-
-At the **end** of this phase (after PR/MR is created), mark complete (if not in ralph mode):
+**After PR/MR is created, update the workflow state (if not in ralph mode):**
 
 ```bash
-current_phase=$(jq -r '.phase' workflow-state.json)
+current_phase=$(jq -r '.phase' workflow-state.json 2>/dev/null || echo "")
 if [ "$current_phase" != "ralph" ]; then
     .claude/scripts/update-workflow-state.sh '.completed = (.completed + ["pr"] | unique)'
 fi
 ```
+
+Do NOT forget this step - it marks the phase as complete in the statusline.
+
+---
 
 ## Ticket for PR/MR
 

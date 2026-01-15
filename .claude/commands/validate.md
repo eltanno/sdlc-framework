@@ -5,6 +5,23 @@
 
 **You are the orchestrator. Delegate validation checks to the `engineer` agent.**
 
+---
+
+## ⚡ FIRST ACTION (MANDATORY)
+
+**Before doing ANYTHING else, update the workflow state (if not in ralph mode):**
+
+```bash
+current_phase=$(jq -r '.phase' workflow-state.json 2>/dev/null || echo "")
+if [ "$current_phase" != "ralph" ]; then
+    .claude/scripts/update-workflow-state.sh '.phase = "validate"'
+fi
+```
+
+This updates the statusline to show the current phase. Do this NOW before proceeding.
+
+---
+
 ## Prerequisites Check
 
 Before delegating, verify:
@@ -229,32 +246,22 @@ glab mr merge $MERGE_FLAGS
 2. Guide back to `/implement` to fix
 3. Re-run `/validate` after fixes
 
-## Workflow State Update
+---
 
-**Note:** If running as part of `/ralph-prd`, ralph manages the workflow state. Only update if NOT in ralph mode.
+## ✅ FINAL ACTION (MANDATORY)
 
-At the **start** of this phase (if not in ralph mode):
-
-```bash
-# Only set phase if not already in ralph mode
-current_phase=$(jq -r '.phase' workflow-state.json)
-if [ "$current_phase" != "ralph" ]; then
-    .claude/scripts/update-workflow-state.sh '.phase = "validate"'
-fi
-```
-
-At the **end** of this phase (after validation passes and PR is merged), mark complete (if not in ralph mode):
+**After validation passes and PR is merged, update the workflow state (if not in ralph mode):**
 
 ```bash
-current_phase=$(jq -r '.phase' workflow-state.json)
+current_phase=$(jq -r '.phase' workflow-state.json 2>/dev/null || echo "")
 if [ "$current_phase" != "ralph" ]; then
-    # Mark validate as complete
     .claude/scripts/update-workflow-state.sh '.completed = (.completed + ["validate"] | unique)'
-
-    # Reset for next feature (optional - keep completed as history or reset)
-    # To reset: .claude/scripts/update-workflow-state.sh '.phase = "idle" | .completed = []'
 fi
 ```
+
+Do NOT forget this step - it marks the phase as complete in the statusline.
+
+---
 
 ## PR to Validate
 

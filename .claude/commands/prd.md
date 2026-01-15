@@ -7,6 +7,20 @@
 
 **Agent definition**: See `.claude/agents/architect.md` for architect responsibilities.
 
+---
+
+## ⚡ FIRST ACTION (MANDATORY)
+
+**Before doing ANYTHING else, update the workflow state:**
+
+```bash
+.claude/scripts/update-workflow-state.sh '.phase = "prd"'
+```
+
+This updates the statusline to show the current phase. Do this NOW before proceeding.
+
+---
+
 ## Template
 
 Use the template at `docs/templates/prd-template.md` when creating PRD documents at `docs/prds/YYYY-MM-DD-{feature}.md`.
@@ -179,19 +193,19 @@ Next: User should review and approve, then run /plan
 4. **Prompt** user to review and approve
 5. **Next step:** Once approved, user can run `/plan`
 
-## Workflow State Update
+---
 
-At the **start** of this phase, update `workflow-state.json`:
+## ✅ FINAL ACTION (MANDATORY)
 
-```bash
-.claude/scripts/update-workflow-state.sh '.phase = "prd"'
-```
-
-At the **end** of this phase (after PRD is created and verified), mark complete:
+**After the PRD is created and verified, update the workflow state:**
 
 ```bash
 .claude/scripts/update-workflow-state.sh '.completed = (.completed + ["prd"] | unique)'
 ```
+
+Do NOT forget this step - it marks the phase as complete in the statusline.
+
+---
 
 ## Feature for PRD
 
