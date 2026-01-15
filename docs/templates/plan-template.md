@@ -124,17 +124,27 @@
 
 ## Tickets
 
-*These will be created in Asana after plan approval:*
+*These will be created after plan approval:*
 
-| # | Title | Description | Priority | Estimate | Phase |
-|---|-------|-------------|----------|----------|-------|
-| 1 | {Title} | Brief description | P1 | S/M/L | 1 |
-| 2 | {Title} | Brief description | P1 | S/M/L | 1 |
-| 3 | {Title} | Brief description | P2 | S/M/L | 2 |
-| 4 | {Title} | Brief description | P2 | S/M/L | 2 |
-| 5 | {Title} | Brief description | P3 | S/M/L | 3 |
+| # | Title | Description | Priority | Complexity | Phase |
+|---|-------|-------------|----------|------------|-------|
+| 1 | {Title} | Brief description | P1 | 1 | 1 |
+| 2 | {Title} | Brief description | P1 | 2 | 1 |
+| 3 | {Title} | Brief description | P2 | 3 | 2 |
+| 4 | {Title} | Brief description | P2 | 3 | 2 |
+| 5 | {Title} | Brief description | P3 | 4 | 3 |
 
-**Estimate Key:** S = Small (< 2 hours), M = Medium (2-8 hours), L = Large (1-3 days)
+**Complexity Score (1-5):** Determines which AI model handles implementation.
+
+| Score | Level | Examples | Model |
+|-------|-------|----------|-------|
+| 1 | Trivial | Config change, rename, add simple field | Sonnet |
+| 2 | Simple | Basic function, simple validation, minor UI tweak | Sonnet |
+| 3 | Moderate | New feature with tests, API endpoint, form with validation | Opus |
+| 4 | Complex | Multi-component feature, significant refactor, integrations | Opus |
+| 5 | Very Hard | Architectural change, complex algorithm, security-critical | Opus |
+
+*Current threshold: 1-2 → Sonnet, 3-5 → Opus. Threshold adjustable based on performance metrics.*
 
 ## Risks and Mitigations
 

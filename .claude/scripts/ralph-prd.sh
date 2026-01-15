@@ -28,6 +28,10 @@ DRY_RUN=false
 MAX_ATTEMPTS=3
 VALIDATION_RETRIES=2
 
+# Model selection threshold: complexity 1-N uses SONNET, above uses OPUS
+# Adjust based on performance metrics from /system-review
+SONNET_THRESHOLD=2
+
 # Parse optional flags
 shift 2 2>/dev/null || true
 while [[ $# -gt 0 ]]; do
@@ -206,6 +210,28 @@ get_json_value() {
     echo "$output" | sed -n '/---JSON_OUTPUT---/,$p' | tail -n +2 | jq -r "$key"
 }
 
+# Get ticket complexity from workflow-state.json
+get_ticket_complexity() {
+    local ticket_id="$1"
+    local complexity=$(jq -r --arg id "$ticket_id" '.ralph.tickets[] | select(.id == $id) | .complexity // 3' workflow-state.json 2>/dev/null)
+    # Default to 3 (moderate) if not found
+    if [ -z "$complexity" ] || [ "$complexity" = "null" ]; then
+        echo "3"
+    else
+        echo "$complexity"
+    fi
+}
+
+# Select model based on complexity threshold
+select_model_for_complexity() {
+    local complexity="$1"
+    if [ "$complexity" -le "$SONNET_THRESHOLD" ]; then
+        echo "sonnet"
+    else
+        echo "opus"
+    fi
+}
+
 # ============================================================================
 # Usage Tracking
 # ============================================================================
@@ -244,22 +270,26 @@ calculate_usage_delta() {
 }
 
 # Add invocation to metrics
+# Usage: add_invocation_metric ticket_id task duration delta model complexity
 add_invocation_metric() {
     local ticket_id="$1"
     local task="$2"
     local duration="$3"
     local delta="$4"
+    local model="${5:-opus}"
+    local complexity="${6:-3}"
 
     USAGE_INVOCATIONS=$(echo "$USAGE_INVOCATIONS" | jq -c --arg ticket "$ticket_id" \
         --arg task "$task" --argjson duration "$duration" --argjson delta "$delta" \
-        '. + [{ticket_id: $ticket, task: $task, duration_seconds: $duration, delta: $delta}]')
+        --arg model "$model" --argjson complexity "$complexity" \
+        '. + [{ticket_id: $ticket, task: $task, duration_seconds: $duration, delta: $delta, model: $model, complexity: $complexity}]')
 
     TOTAL_DURATION=$((TOTAL_DURATION + duration))
 }
 
 # Write final metrics file
 write_metrics_file() {
-    local model="$1"
+    local default_model="$1"
 
     # Ensure USAGE_INVOCATIONS is valid JSON array
     if [ -z "$USAGE_INVOCATIONS" ] || ! echo "$USAGE_INVOCATIONS" | jq empty 2>/dev/null; then
@@ -284,13 +314,40 @@ write_metrics_file() {
         totals='{"inputTokens":0,"outputTokens":0,"cacheCreationTokens":0,"cacheReadTokens":0,"totalTokens":0,"totalCost":0,"duration_seconds":0,"invocation_count":0}'
     fi
 
+    # Calculate breakdown by model
+    local by_model
+    by_model=$(echo "$USAGE_INVOCATIONS" | jq -c '
+        group_by(.model) | map({
+            model: .[0].model,
+            count: length,
+            total_duration: ([.[].duration_seconds] | add // 0),
+            total_cost: ([.[].delta.totalCost] | add // 0)
+        })
+    ' 2>/dev/null || echo "[]")
+
+    # Calculate breakdown by complexity
+    local by_complexity
+    by_complexity=$(echo "$USAGE_INVOCATIONS" | jq -c '
+        group_by(.complexity) | map({
+            complexity: .[0].complexity,
+            model: .[0].model,
+            count: length,
+            total_duration: ([.[].duration_seconds] | add // 0),
+            total_cost: ([.[].delta.totalCost] | add // 0)
+        }) | sort_by(.complexity)
+    ' 2>/dev/null || echo "[]")
+
     # Write metrics file
-    jq -n --arg run_id "$RUN_TIMESTAMP" --arg model "$model" \
-        --argjson invocations "$USAGE_INVOCATIONS" --argjson totals "$totals" '{
+    jq -n --arg run_id "$RUN_TIMESTAMP" --arg default_model "$default_model" \
+        --argjson threshold "$SONNET_THRESHOLD" \
+        --argjson invocations "$USAGE_INVOCATIONS" --argjson totals "$totals" \
+        --argjson by_model "$by_model" --argjson by_complexity "$by_complexity" '{
         run_id: $run_id,
-        model: $model,
+        sonnet_threshold: $threshold,
         invocations: $invocations,
-        totals: $totals
+        totals: $totals,
+        by_model: $by_model,
+        by_complexity: $by_complexity
     }' > "$METRICS_FILE"
 
     log_to_file "Usage metrics written to: $METRICS_FILE"
@@ -328,6 +385,44 @@ print_usage_summary() {
     printf "  Total cost:         \$%.2f\n" "$total_cost"
     printf "  Compute time:       %dm %ds\n" "$mins" "$secs"
     echo ""
+
+    # Print model breakdown
+    echo -e "${BOLD}${CYAN}  MODEL PERFORMANCE${NC}"
+    echo -e "${CYAN}  ─────────────────────────────────────────────────────────${NC}"
+    echo ""
+    printf "  %-10s │ %8s │ %10s │ %10s\n" "Model" "Count" "Time" "Cost"
+    echo "  ───────────┼──────────┼────────────┼───────────"
+
+    # Read by_model array and print each
+    local model_count=$(jq '.by_model | length' "$METRICS_FILE")
+    for ((i=0; i<model_count; i++)); do
+        local m_name=$(jq -r ".by_model[$i].model" "$METRICS_FILE")
+        local m_count=$(jq -r ".by_model[$i].count" "$METRICS_FILE")
+        local m_dur=$(jq -r ".by_model[$i].total_duration" "$METRICS_FILE")
+        local m_cost=$(jq -r ".by_model[$i].total_cost" "$METRICS_FILE")
+        local m_mins=$((m_dur / 60))
+        local m_secs=$((m_dur % 60))
+        printf "  %-10s │ %8d │ %6dm %2ds │ \$%8.2f\n" "$m_name" "$m_count" "$m_mins" "$m_secs" "$m_cost"
+    done
+    echo ""
+
+    # Print complexity breakdown
+    echo -e "${BOLD}${CYAN}  BY COMPLEXITY${NC}"
+    echo -e "${CYAN}  ─────────────────────────────────────────────────────────${NC}"
+    echo ""
+    printf "  %-6s │ %-10s │ %8s │ %10s\n" "Level" "Model" "Count" "Cost"
+    echo "  ───────┼────────────┼──────────┼───────────"
+
+    local complexity_count=$(jq '.by_complexity | length' "$METRICS_FILE")
+    for ((i=0; i<complexity_count; i++)); do
+        local c_level=$(jq -r ".by_complexity[$i].complexity" "$METRICS_FILE")
+        local c_model=$(jq -r ".by_complexity[$i].model" "$METRICS_FILE")
+        local c_count=$(jq -r ".by_complexity[$i].count" "$METRICS_FILE")
+        local c_cost=$(jq -r ".by_complexity[$i].total_cost" "$METRICS_FILE")
+        printf "  %-6s │ %-10s │ %8d │ \$%8.2f\n" "$c_level" "$c_model" "$c_count" "$c_cost"
+    done
+    echo ""
+
     echo -e "${BOLD}${CYAN}════════════════════════════════════════════════════════════${NC}"
     echo ""
 
@@ -344,6 +439,12 @@ print_usage_summary() {
         echo "Cache read: $cache_read"
         echo "Total cost: \$$total_cost"
         echo "Compute time: ${mins}m ${secs}s"
+        echo ""
+        echo "--- By Model ---"
+        jq -r '.by_model[] | "\(.model): \(.count) invocations, \(.total_duration)s, $\(.total_cost)"' "$METRICS_FILE" 2>/dev/null || true
+        echo ""
+        echo "--- By Complexity ---"
+        jq -r '.by_complexity[] | "Level \(.complexity) (\(.model)): \(.count) invocations, $\(.total_cost)"' "$METRICS_FILE" 2>/dev/null || true
         echo "========================================"
     } >> "$MAIN_LOG"
 }
@@ -387,12 +488,13 @@ cleanup_on_interrupt() {
 trap cleanup_on_interrupt SIGINT SIGTERM
 
 # Invoke Claude for LLM work
-# Usage: invoke_claude "prompt" [timeout_minutes] [model] [task_label]
+# Usage: invoke_claude "prompt" [timeout_minutes] [model] [task_label] [complexity]
 invoke_claude() {
     local prompt="$1"
     local timeout_mins="${2:-30}"
     local model="${3:-opus}"
     local task_label="${4:-claude}"
+    local complexity="${5:-3}"
 
     # Create ticket-specific log file
     local claude_log="$LOG_DIR/${CURRENT_TICKET:-unknown}-${task_label}-$(date +%H%M%S).log"
@@ -456,8 +558,8 @@ invoke_claude() {
 
     # Calculate delta and add to metrics
     local usage_delta=$(calculate_usage_delta "$usage_before" "$usage_after")
-    add_invocation_metric "${CURRENT_TICKET:-unknown}" "$task_label" "$duration" "$usage_delta"
-    log_to_file "Usage delta: $usage_delta"
+    add_invocation_metric "${CURRENT_TICKET:-unknown}" "$task_label" "$duration" "$usage_delta" "$model" "$complexity"
+    log_to_file "Usage delta: $usage_delta (model: $model, complexity: $complexity)"
 
     # Log completion info
     {
@@ -569,7 +671,12 @@ main() {
         log_to_file "=========================================="
         log_to_file "Starting ticket: $CURRENT_TICKET"
 
-        log_header "Ticket: $NEXT_TICKET"
+        # Get complexity and select model
+        TICKET_COMPLEXITY=$(get_ticket_complexity "$NEXT_TICKET")
+        TICKET_MODEL=$(select_model_for_complexity "$TICKET_COMPLEXITY")
+        log_to_file "Ticket complexity: $TICKET_COMPLEXITY, Model: $TICKET_MODEL"
+
+        log_header "Ticket: $NEXT_TICKET (complexity: $TICKET_COMPLEXITY → $TICKET_MODEL)"
 
         # Start ticket (No LLM)
         log_step "Marking ticket as in-progress..."
@@ -625,7 +732,7 @@ main() {
 ## When Done
 Output exactly: IMPLEMENTATION_COMPLETE"
 
-        if ! invoke_claude "$IMPL_PROMPT" 30 "opus" "implement"; then
+        if ! invoke_claude "$IMPL_PROMPT" 30 "$TICKET_MODEL" "implement" "$TICKET_COMPLEXITY"; then
             log_error "Claude failed during implementation"
             log_error_context "Implementation failed" "Ticket: $NEXT_TICKET, Attempt: $ATTEMPTS"
             save_state_snapshot "${NEXT_TICKET}-impl-failed"
@@ -688,7 +795,7 @@ $VALIDATION_OUTPUT
 
 When done, output exactly: FIXES_COMPLETE"
 
-                    invoke_claude "$FIX_PROMPT" 15 "opus" "fix-validation" || true
+                    invoke_claude "$FIX_PROMPT" 15 "$TICKET_MODEL" "fix-validation" "$TICKET_COMPLEXITY" || true
                 fi
             fi
         done

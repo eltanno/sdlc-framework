@@ -55,17 +55,45 @@ fi
 
 echo -e "${GREEN}Found $TICKET_COUNT tickets${NC}"
 
-# Build ticket array for JSON
+# Function to extract complexity for a ticket from markdown table
+# Looks for line containing ticket ID and extracts the Complexity column (5th field)
+get_ticket_complexity() {
+    local ticket_id="$1"
+    local file="$2"
+
+    # Find line with ticket ID, extract 5th pipe-delimited field (Complexity column)
+    # Table format: | ID | Title | Description | Priority | Complexity | ... |
+    local complexity=$(grep "$ticket_id" "$file" | head -1 | awk -F'|' '{gsub(/^[ \t]+|[ \t]+$/, "", $6); print $6}')
+
+    # Validate it's a number 1-5, default to 3 if not found or invalid
+    if [[ "$complexity" =~ ^[1-5]$ ]]; then
+        echo "$complexity"
+    else
+        echo "3"  # Default to moderate complexity
+    fi
+}
+
+# Build ticket array for JSON with complexity
 TICKET_JSON="["
 FIRST=true
 while IFS= read -r ticket; do
     if [ -n "$ticket" ]; then
+        # Get complexity from PRD first (has IDs filled in), fallback to plan
+        COMPLEXITY=$(get_ticket_complexity "$ticket" "$PRD_PATH")
+        if [ "$COMPLEXITY" = "3" ]; then
+            # Try plan as backup
+            PLAN_COMPLEXITY=$(get_ticket_complexity "$ticket" "$PLAN_PATH")
+            if [ "$PLAN_COMPLEXITY" != "3" ]; then
+                COMPLEXITY="$PLAN_COMPLEXITY"
+            fi
+        fi
+
         if [ "$FIRST" = true ]; then
             FIRST=false
         else
             TICKET_JSON+=","
         fi
-        TICKET_JSON+="{\"id\":\"$ticket\",\"status\":\"pending\",\"pr\":null,\"attempts\":0}"
+        TICKET_JSON+="{\"id\":\"$ticket\",\"status\":\"pending\",\"pr\":null,\"attempts\":0,\"complexity\":$COMPLEXITY}"
     fi
 done <<< "$TICKETS"
 TICKET_JSON+="]"

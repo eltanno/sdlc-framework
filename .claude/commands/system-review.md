@@ -110,6 +110,34 @@ Create specific, actionable recommendations:
 - **New automation** - Hooks or validations to add
 - **Reference docs** - Best practices to document
 
+## Model Performance Analysis
+
+As part of the system review, analyze how well the model selection strategy worked.
+
+### Step 1: Find Recent Metrics
+
+```bash
+# Find most recent ralph run metrics
+ls -t .logs/ralph/*/usage-metrics.json 2>/dev/null | head -5
+```
+
+### Step 2: Analyze Model Performance
+
+Read the metrics file and extract:
+- Invocations by model (sonnet vs opus)
+- Success rate by complexity level
+- Cost savings from using sonnet on simple tasks
+- Any patterns of sonnet failures that suggest threshold adjustment
+
+### Step 3: Generate Recommendations
+
+Based on the data:
+- If sonnet succeeded on all 1-2 complexity tasks: "Consider testing threshold=3"
+- If sonnet failed on complexity 2: "Consider lowering threshold to 1"
+- Note any complexity levels that struggled regardless of model
+
+---
+
 ## System Review Template
 
 Create `docs/system-reviews/YYYY-MM-DD-{feature-slug}.md`:
@@ -227,6 +255,37 @@ Create `docs/system-reviews/YYYY-MM-DD-{feature-slug}.md`:
 1. **[Learning 1]:** [Explanation and action]
 2. **[Learning 2]:** [Explanation and action]
 3. **[Learning 3]:** [Explanation and action]
+
+---
+
+## Model Performance Analysis
+
+*Data from `.logs/ralph/*/usage-metrics.json`*
+
+### By Model
+
+| Model | Invocations | Avg Time | Total Cost | First-Try Success |
+|-------|-------------|----------|------------|-------------------|
+| sonnet | [N] | [X]s | $[X.XX] | [Y/N] ([%]) |
+| opus | [N] | [X]s | $[X.XX] | [Y/N] ([%]) |
+
+### By Complexity
+
+| Level | Model | Invocations | Success Rate | Avg Attempts | Recommendation |
+|-------|-------|-------------|--------------|--------------|----------------|
+| 1 | sonnet | [N] | [%] | [X] | [Keep/Adjust] |
+| 2 | sonnet | [N] | [%] | [X] | [Keep/Adjust] |
+| 3 | opus | [N] | [%] | [X] | [Keep/Adjust] |
+| 4 | opus | [N] | [%] | [X] | [Keep/Adjust] |
+| 5 | opus | [N] | [%] | [X] | [Keep/Adjust] |
+
+### Threshold Recommendation
+
+**Current threshold:** [N] (complexity 1-N uses Sonnet)
+
+**Recommendation:** [Keep at N / Increase to N+1 / Decrease to N-1]
+
+**Rationale:** [Based on success rates and cost savings]
 
 ---
 

@@ -164,13 +164,23 @@ Fields:
 
 ## Tickets
 
-| ID | Title | Description | Priority | Estimate | Dependency |
-|----|-------|-------------|----------|----------|------------|
-| TBD | Ticket 1 | Brief description | P1 | M | - |
-| TBD | Ticket 2 | Brief description | P1 | S | Ticket 1 |
-| TBD | Ticket 3 | Brief description | P2 | L | - |
+| ID | Title | Description | Priority | Complexity | Dependency |
+|----|-------|-------------|----------|------------|------------|
+| TBD | Ticket 1 | Brief description | P1 | 3 | - |
+| TBD | Ticket 2 | Brief description | P1 | 2 | Ticket 1 |
+| TBD | Ticket 3 | Brief description | P2 | 4 | - |
 
-*Note: IDs will be filled in after Asana ticket creation via `/ticket`.*
+*Note: IDs will be filled in after ticket creation via `/ticket`.*
+
+**Complexity Score (1-5):** Determines which AI model handles implementation.
+
+| Score | Level | Model |
+|-------|-------|-------|
+| 1 | Trivial | Sonnet |
+| 2 | Simple | Sonnet |
+| 3 | Moderate | Opus |
+| 4 | Complex | Opus |
+| 5 | Very Hard | Opus |
 
 ---
 
