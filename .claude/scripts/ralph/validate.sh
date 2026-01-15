@@ -13,8 +13,23 @@
 set -e
 
 FIX_LINT=false
-if [ "$1" = "--fix-lint" ]; then
-    FIX_LINT=true
+NO_CACHE=false
+
+# Parse arguments
+for arg in "$@"; do
+    case $arg in
+        --fix-lint) FIX_LINT=true ;;
+        --no-cache) NO_CACHE=true ;;
+    esac
+done
+
+# Build cache flag for turbo/npm commands
+CACHE_FLAG=""
+if [ "$NO_CACHE" = true ]; then
+    # Check if using turbo (look for turbo.json)
+    if [ -f "turbo.json" ]; then
+        CACHE_FLAG="-- --force"
+    fi
 fi
 
 # Colors
@@ -49,7 +64,8 @@ fi
 # Run tests
 echo ""
 echo "--- Running Tests ---"
-if npm test 2>&1 | tee /tmp/ralph-test-output.txt; then
+[ "$NO_CACHE" = true ] && echo -e "${YELLOW}(cache disabled)${NC}"
+if npm test $CACHE_FLAG 2>&1 | tee /tmp/ralph-test-output.txt; then
     TESTS_PASS=true
     echo -e "${GREEN}Tests: PASS${NC}"
 else
@@ -60,16 +76,17 @@ TEST_OUTPUT=$(cat /tmp/ralph-test-output.txt | tail -20)
 # Run lint (if script exists)
 echo ""
 echo "--- Running Lint ---"
+[ "$NO_CACHE" = true ] && echo -e "${YELLOW}(cache disabled)${NC}"
 if grep -q '"lint"' package.json; then
     if [ "$FIX_LINT" = true ]; then
-        if npm run lint -- --fix 2>&1 | tee /tmp/ralph-lint-output.txt; then
+        if npm run lint $CACHE_FLAG -- --fix 2>&1 | tee /tmp/ralph-lint-output.txt; then
             LINT_PASS=true
             echo -e "${GREEN}Lint: PASS (with fixes)${NC}"
         else
             echo -e "${RED}Lint: FAIL${NC}"
         fi
     else
-        if npm run lint 2>&1 | tee /tmp/ralph-lint-output.txt; then
+        if npm run lint $CACHE_FLAG 2>&1 | tee /tmp/ralph-lint-output.txt; then
             LINT_PASS=true
             echo -e "${GREEN}Lint: PASS${NC}"
         else
@@ -86,8 +103,9 @@ fi
 # Run build (if script exists)
 echo ""
 echo "--- Running Build ---"
+[ "$NO_CACHE" = true ] && echo -e "${YELLOW}(cache disabled)${NC}"
 if grep -q '"build"' package.json; then
-    if npm run build 2>&1 | tee /tmp/ralph-build-output.txt; then
+    if npm run build $CACHE_FLAG 2>&1 | tee /tmp/ralph-build-output.txt; then
         BUILD_PASS=true
         echo -e "${GREEN}Build: PASS${NC}"
     else

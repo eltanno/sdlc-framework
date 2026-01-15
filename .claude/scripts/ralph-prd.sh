@@ -642,8 +642,8 @@ Output exactly: IMPLEMENTATION_COMPLETE"
         for ((retry=1; retry<=VALIDATION_RETRIES; retry++)); do
             log_to_file "Validation attempt $retry/$VALIDATION_RETRIES for $NEXT_TICKET"
 
-            # Capture validation output
-            VALIDATION_OUTPUT=$("$RALPH_SCRIPTS/validate.sh" 2>&1) && VALIDATION_PASSED=true || VALIDATION_PASSED=false
+            # Capture validation output (--no-cache ensures fresh results, not cached)
+            VALIDATION_OUTPUT=$("$RALPH_SCRIPTS/validate.sh" --no-cache 2>&1) && VALIDATION_PASSED=true || VALIDATION_PASSED=false
 
             # Save validation output to log
             local validation_log="$LOG_DIR/${NEXT_TICKET}-validation-${retry}.log"
@@ -710,10 +710,22 @@ When done, output exactly: FIXES_COMPLETE"
 
         PR_ARGS=("$NEXT_TICKET" "[$NEXT_TICKET] Implementation complete")
         [ "$DRY_RUN" = true ] && PR_ARGS+=("--dry-run")
-        PR_OUTPUT=$("$RALPH_SCRIPTS/pr-flow.sh" "${PR_ARGS[@]}" 2>&1)
+
+        # Run PR flow, capturing exit code (don't let set -e kill us)
+        PR_OUTPUT=$("$RALPH_SCRIPTS/pr-flow.sh" "${PR_ARGS[@]}" 2>&1) || {
+            PR_EXIT_CODE=$?
+            log_error "PR flow failed with exit code $PR_EXIT_CODE"
+            log_to_file "PR flow output: $PR_OUTPUT"
+            # Continue anyway - the work is done, just PR creation failed
+            log_step "Continuing despite PR flow failure..."
+        }
         echo "$PR_OUTPUT" | grep -v "JSON_OUTPUT" | tee_log
 
         PR_NUMBER=$(get_json_value "$PR_OUTPUT" ".pr_number")
+        # If PR number is empty, try to find existing PR
+        if [ -z "$PR_NUMBER" ] || [ "$PR_NUMBER" = "null" ]; then
+            PR_NUMBER=$(gh pr list --head "feature/${NEXT_TICKET}-implementation" --json number --jq '.[0].number' 2>/dev/null || echo "")
+        fi
         log_to_file "PR created/updated: #$PR_NUMBER"
 
         # ====================================================================

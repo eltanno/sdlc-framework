@@ -44,7 +44,7 @@ fi
 
 # Extract tickets from plan (look for LOCAL-XXX, TASK-XXX, TRELLO-XXX, etc.)
 echo "Parsing tickets from plan..."
-TICKETS=$(grep -oE '(LOCAL|TASK|TRELLO|GH|ASANA|LINEAR)-[0-9]+' "$PLAN_PATH" | sort -u)
+TICKETS=$(grep -oE '(LOCAL|TASK|TRELLO|GH|ASANA|LINEAR)-[0-9]+' "$PLAN_PATH" | sort -u -t'-' -k2 -n)
 TICKET_COUNT=$(echo "$TICKETS" | grep -c . || echo "0")
 
 if [ "$TICKET_COUNT" -eq 0 ]; then

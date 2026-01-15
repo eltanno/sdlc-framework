@@ -126,9 +126,15 @@ if [ "$HAS_REMOTE" = true ]; then
         else
             # Create PR
             echo "Creating PR..."
+
+            # Extract issue number from ticket ID (e.g., GH-123 -> 123)
+            ISSUE_NUMBER=$(echo "$TICKET_ID" | grep -oE '[0-9]+$' || echo "")
+
             PR_BODY="## Summary
 
 Implementation for $TICKET_ID
+
+$([ -n "$ISSUE_NUMBER" ] && echo "Closes #$ISSUE_NUMBER")
 
 ## Changes
 
@@ -167,10 +173,20 @@ See commit history for details.
             if gh pr merge "$PR_NUMBER" --squash --delete-branch 2>&1; then
                 echo -e "${GREEN}Merged and branch deleted${NC}"
 
-                # Switch back to main
-                DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || echo "main")
-                git checkout "$DEFAULT_BRANCH"
-                git pull origin "$DEFAULT_BRANCH"
+                # Switch back to default branch (use config.yaml as source of truth)
+                DEFAULT_BRANCH=""
+                if [ -f "config.yaml" ]; then
+                    DEFAULT_BRANCH=$(grep "default_branch:" config.yaml 2>/dev/null | sed 's/.*: //' | tr -d ' ')
+                fi
+
+                # Only auto-detect if not configured
+                if [ -z "$DEFAULT_BRANCH" ]; then
+                    echo -e "${YELLOW}Warning: default_branch not set in config.yaml, auto-detecting...${NC}"
+                    DEFAULT_BRANCH=$(git remote show origin 2>/dev/null | grep "HEAD branch" | sed 's/.*: //')
+                    [ -z "$DEFAULT_BRANCH" ] && DEFAULT_BRANCH="master"
+                fi
+                git checkout "$DEFAULT_BRANCH" || { echo -e "${RED}Failed to checkout $DEFAULT_BRANCH${NC}"; }
+                git pull origin "$DEFAULT_BRANCH" || { echo -e "${YELLOW}Failed to pull, continuing...${NC}"; }
             else
                 echo -e "${YELLOW}Could not auto-merge. May need manual review.${NC}"
             fi
