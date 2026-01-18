@@ -587,8 +587,9 @@ build_prompt() {
     done
 
     # Substitute REPO_ROOT with the project root (absolute path)
+    # Script is at .claude/scripts/ralph/ so go up 3 levels to reach project root
     local repo_root
-    repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+    repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
     content=$(echo "$content" | sed "s|{REPO_ROOT}|$repo_root|g")
 
     # Auto-substitute common commands from config.yaml if not already provided
