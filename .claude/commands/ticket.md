@@ -55,8 +55,27 @@ Store these values:
 
 ```yaml
 pm:
-  tool: asana    # asana | trello | github | linear | none
+  tool: github    # asana | trello | github | linear | none
 ```
+
+**⚠️ MANDATORY: If pm.tool is "none" or not set, STOP and prompt the user:**
+
+```
+PM tool not configured. Before creating tickets, please choose a tool:
+
+1. **GitHub Issues** - Recommended if using GitHub (no extra setup)
+2. **Trello** - Visual boards (requires Trello MCP + API credentials)
+3. **Asana** - Full project management (requires Asana MCP + credentials)
+4. **Linear** - Modern dev tool (requires Linear MCP + credentials)
+
+Update config.yaml with your choice:
+  pm:
+    tool: github  # or trello, asana, linear
+
+Then run /ticket again.
+```
+
+**Do NOT proceed with `pm.tool: none`** - tickets must be tracked in an external tool.
 
 **Step 3: Route to appropriate tool**
 
@@ -64,11 +83,10 @@ Based on `pm.tool` value:
 
 | pm.tool | Connection Required (.env) | MCP/Tool |
 |---------|---------------------------|----------|
-| `asana` | ASANA_ACCESS_TOKEN, ASANA_WORKSPACE_ID, ASANA_PROJECT_ID | Asana MCP |
-| `trello` | TRELLO_API_KEY, TRELLO_TOKEN, TRELLO_BOARD_ID | Trello MCP |
 | `github` | gh CLI authenticated | `gh issue create` |
+| `trello` | TRELLO_API_KEY, TRELLO_TOKEN, TRELLO_BOARD_ID | Trello MCP |
+| `asana` | ASANA_ACCESS_TOKEN, ASANA_WORKSPACE_ID, ASANA_PROJECT_ID | Asana MCP |
 | `linear` | LINEAR_API_KEY, LINEAR_TEAM_ID | Linear MCP |
-| `none` | (none) | Local tracking only |
 
 ---
 
@@ -166,29 +184,6 @@ mcp__linear__create_issue({
 
 Update PRD with: `{TICKET_PREFIX}-{N}` (e.g., SDLC-0001)
 
-### If pm.tool = none (Local Tracking Only)
-
-Create tickets in local tracking file:
-
-```bash
-# Create or update docs/plans/PROGRESS.md
-```
-
-Format:
-
-```markdown
-# Implementation Progress
-
-## Tickets
-
-| ID | Title | Status | Branch |
-|----|-------|--------|--------|
-| {TICKET_PREFIX}-0001 | Ticket 1 | pending | - |
-| {TICKET_PREFIX}-0002 | Ticket 2 | pending | - |
-```
-
-Update PRD with: `{TICKET_PREFIX}-{N}` (e.g., SDLC-0001, SDLC-0002)
-
 ---
 
 ## Update PRD with Task IDs
@@ -230,11 +225,10 @@ If there are 3 or more tickets:
 
 | pm.tool | Action |
 |---------|--------|
-| asana | Create parent task with subtasks |
-| trello | Add checklist to a summary card |
 | github | Create milestone or project |
+| trello | Add checklist to a summary card |
+| asana | Create parent task with subtasks |
 | linear | Create parent issue |
-| none | Group in PROGRESS.md under epic heading |
 
 ---
 
@@ -272,18 +266,16 @@ Ready to implement. Run:
 ### If PM tool not configured:
 
 ```
-WARNING: No PM tool configured in config.yaml
+ERROR: PM tool not configured in config.yaml
 
-Options:
-1. Configure a PM tool:
-   - Edit config.yaml: pm.tool: asana (or trello, github, linear)
-   - Add credentials to .env
+A PM tool is REQUIRED for ticket tracking. Please configure one:
 
-2. Use local tracking:
-   - Edit config.yaml: pm.tool: none
-   - Tickets tracked in docs/plans/PROGRESS.md
+1. GitHub Issues (recommended): pm.tool: github
+2. Trello: pm.tool: trello (+ Trello MCP credentials)
+3. Asana: pm.tool: asana (+ Asana MCP credentials)
+4. Linear: pm.tool: linear (+ Linear MCP credentials)
 
-See README.md for setup instructions.
+Update config.yaml and run /ticket again.
 ```
 
 ### If connection fails:

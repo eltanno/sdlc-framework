@@ -5,7 +5,7 @@ Scripts to optimize the `/ralph-prd` loop by handling non-LLM work.
 ## Purpose
 
 These scripts handle the mechanical parts of the ralph loop that don't require LLM intelligence:
-- State management (workflow-state.json)
+- State management (GitHub Issues or workflow-state.json)
 - Status line updates
 - Git operations
 - PR creation/merging
@@ -16,6 +16,35 @@ The LLM only needs to focus on:
 - Writing code
 - Fixing failures
 - Validating acceptance criteria
+
+## Source of Truth
+
+Scripts check `config.yaml` for the PM tool setting:
+
+```yaml
+pm:
+  tool: github  # github | asana | trello | none
+```
+
+### GitHub Mode (pm.tool: github)
+
+When `pm.tool` is `github`, **GitHub Issues are the source of truth**:
+
+- `setup.sh` - Fetches open issues from GitHub
+- `get-next-ticket.sh` - Queries GitHub for unassigned issues
+- `ticket-start.sh` - Assigns issue to current user (atomic - prevents race conditions)
+- `ticket-done.sh` - Closes the GitHub issue
+- `mark-blocked.sh` - Adds 'blocked' label and comment
+
+**Benefits:**
+- Multiple Ralph instances can run concurrently without conflicts
+- Issue assignment is atomic (no race conditions)
+- Ticket status is visible in GitHub Issues UI
+- Any machine can resume work (not tied to local state)
+
+### Local Mode (pm.tool: not github)
+
+Falls back to `workflow-state.json` as source of truth (original behavior).
 
 ## Scripts
 
@@ -33,8 +62,34 @@ The LLM only needs to focus on:
 
 ## Usage
 
+### GitHub Mode
+
 ```bash
-# Setup (once at start)
+# Setup (fetches issues from GitHub)
+.claude/scripts/ralph/setup.sh
+
+# Or filter by label
+.claude/scripts/ralph/setup.sh --label "offline-first"
+
+# Get next ticket (queries GitHub for unassigned issues)
+.claude/scripts/ralph/get-next-ticket.sh
+# Returns: AUCT-0133 (GitHub #51)
+
+# Start ticket (assigns issue to you - prevents others from picking it)
+.claude/scripts/ralph/ticket-start.sh AUCT-0133 --issue 51
+# ... LLM implements ticket ...
+
+# Done (closes the issue)
+.claude/scripts/ralph/ticket-done.sh AUCT-0133 42 --issue 51  # 42 = PR number
+
+# Mark blocked (adds label, unassigns, adds comment)
+.claude/scripts/ralph/mark-blocked.sh AUCT-0133 "Tests failing" --issue 51
+```
+
+### Local Mode (Original Behavior)
+
+```bash
+# Setup (parses PRD/Plan for tickets)
 .claude/scripts/ralph/setup.sh docs/prds/2026-01-10-feature.md docs/plans/2026-01-10-feature.md
 
 # Per-ticket loop
@@ -57,6 +112,30 @@ The LLM only needs to focus on:
 .claude/scripts/ralph/status.sh
 ```
 
+## Ticket ID Format
+
+GitHub issues must have ticket IDs in their titles:
+
+```
+[AUCT-0133] Implement user authentication
+```
+
+The scripts extract the ticket ID from the `[PREFIX-NNNN]` format.
+The prefix is configured in `config.yaml`:
+
+```yaml
+tickets:
+  prefix: "AUCT"
+```
+
+## Concurrency Safety
+
+When using GitHub mode, multiple Ralph instances can run safely:
+
+1. **Issue assignment is atomic** - When Ralph A assigns issue #51 to itself, GitHub ensures no race condition
+2. **Unassigned query excludes assigned issues** - Ralph B won't see #51 after Ralph A claims it
+3. **No local state conflicts** - Each Ralph works from GitHub's real-time state
+
 ## Output Format
 
 All scripts output:
@@ -66,56 +145,62 @@ All scripts output:
 
 Example parsing in bash:
 ```bash
-OUTPUT=$(.claude/scripts/ralph/status.sh)
+OUTPUT=$(.claude/scripts/ralph/get-next-ticket.sh)
 JSON=$(echo "$OUTPUT" | sed -n '/---JSON_OUTPUT---/,$p' | tail -n +2)
-CURRENT=$(echo "$JSON" | jq -r '.current')
+TICKET=$(echo "$JSON" | jq -r '.next_ticket')
+ISSUE=$(echo "$JSON" | jq -r '.issue_number')
 ```
 
 ## State File
 
-Scripts maintain `workflow-state.json`:
+Scripts maintain `workflow-state.json` as a backup/cache:
 
 ```json
 {
   "phase": "ralph",
   "ralph": {
+    "source": "github",
     "current": 3,
-    "total": 10,
-    "current_ticket": "LOCAL-004",
+    "total": 21,
+    "current_ticket": "AUCT-0136",
     "tickets": [
-      {"id": "LOCAL-001", "status": "done", "pr": "12", "attempts": 1},
-      {"id": "LOCAL-002", "status": "done", "pr": "13", "attempts": 1},
-      {"id": "LOCAL-003", "status": "blocked", "pr": null, "attempts": 4},
-      {"id": "LOCAL-004", "status": "in_progress", "pr": null, "attempts": 1}
+      {"id": "AUCT-0133", "issue_number": 51, "status": "done", "pr": "12", "attempts": 1},
+      {"id": "AUCT-0134", "issue_number": 52, "status": "done", "pr": "13", "attempts": 1},
+      {"id": "AUCT-0135", "issue_number": 53, "status": "blocked", "pr": null, "attempts": 4},
+      {"id": "AUCT-0136", "issue_number": 54, "status": "in_progress", "pr": null, "attempts": 1}
     ],
     "blocked": [
-      {"id": "LOCAL-003", "reason": "Dependency issue", "timestamp": "..."}
+      {"id": "AUCT-0135", "issue_number": 53, "reason": "Dependency issue", "timestamp": "..."}
     ],
-    "tickets_done": ["LOCAL-001", "LOCAL-002"]
+    "tickets_done": ["AUCT-0133", "AUCT-0134"]
   }
 }
 ```
+
+**Note:** In GitHub mode, `workflow-state.json` is a cache. GitHub Issues are the source of truth.
 
 ## Integration with ralph-prd
 
 The updated `/ralph-prd` command should call these scripts:
 
 ```
-1. setup.sh → Initialize
+1. setup.sh → Initialize (fetches from GitHub or parses PRD/Plan)
 2. Loop:
-   a. get-next-ticket.sh → Get ticket ID
-   b. ticket-start.sh $TICKET → Mark in-progress
+   a. get-next-ticket.sh → Get ticket ID and issue number
+   b. ticket-start.sh $TICKET --issue $ISSUE → Assign issue to self
    c. [LLM] Plan & implement
    d. validate.sh → Check tests/lint/build
    e. If fail && attempts > 3: mark-blocked.sh
    f. If pass: pr-flow.sh → Commit/push/PR
-   g. ticket-done.sh → Mark complete
+   g. ticket-done.sh → Close issue
 3. cleanup.sh → Finalize
 ```
 
-## PM Tool Integration
+## Requirements
 
-Note: These scripts handle LOCAL state only. Moving tickets in Trello/Asana/etc should still be done via MCP calls. The scripts update `workflow-state.json` which is the source of truth for ralph's cursor position.
+- `gh` CLI - For GitHub mode (must be authenticated: `gh auth login`)
+- `jq` - For JSON parsing
+- `config.yaml` - Must have `pm.tool` and `tickets.prefix` configured
 
 ---
 

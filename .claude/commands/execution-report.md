@@ -47,6 +47,24 @@ Identify:
 - The commits made (`git log --oneline` since branch creation)
 - The files changed (`git diff --stat main...HEAD`)
 
+### Step 1b: Check PM Tool for Ticket Status
+
+**If `pm.tool: github` in config.yaml:**
+
+```bash
+# Get ticket counts from GitHub Issues
+OPEN=$(gh issue list --state open --json number | jq 'length')
+CLOSED=$(gh issue list --state closed --json number | jq 'length')
+BLOCKED=$(gh issue list --state open --label blocked --json number | jq 'length')
+
+echo "Tickets: $CLOSED closed, $OPEN open ($BLOCKED blocked)"
+
+# List blocked tickets with reasons
+gh issue list --state open --label blocked --json number,title,body --jq '.[] | "- #\(.number): \(.title)"'
+```
+
+Include this summary in the report.
+
 ### Step 2: Assess Completion
 
 For each planned task:
@@ -104,6 +122,22 @@ Create `docs/execution-reports/YYYY-MM-DD-{feature-slug}.md`:
 **Commits:** [number]
 **Files Changed:** [number]
 **Lines:** +[added] / -[removed]
+
+---
+
+## Ticket Status (from PM Tool)
+
+| Status | Count | Details |
+|--------|-------|---------|
+| Closed (Done) | [N] | Completed tickets |
+| Open (Remaining) | [N] | Still to be implemented |
+| Blocked | [N] | Requires investigation |
+
+### Blocked Tickets
+
+| Ticket | Issue | Reason |
+|--------|-------|--------|
+| [AUCT-XXXX] | [#NN] | [Reason from comment/label] |
 
 ---
 

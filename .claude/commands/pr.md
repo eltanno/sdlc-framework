@@ -26,21 +26,29 @@ This updates the statusline to show the current phase. Do this NOW before procee
 
 Before proceeding, verify:
 1. Feature branch exists with commits
-2. All tests pass
-3. Branch is pushed to remote (unless local-only repo)
+2. Branch is pushed to remote (unless local-only repo)
 
 ```bash
 # Check current branch
 git branch --show-current
 
-# Check test status (use command from config.yaml dev.test_command)
-npm test
-
 # Check for remote
 git remote -v
 ```
 
-If tests fail: "Tests are failing. Please fix before creating PR/MR."
+---
+
+## Quick Sanity Check
+
+The engineer should have already verified all checks pass. Run the commands from `config.yaml` (`dev.typecheck_command`, `dev.lint_command`, `dev.test_command`, `dev.build_command`) as a sanity check.
+
+**If any check fails:**
+- STOP - Do not create PR
+- Something went wrong during implementation
+- Report the failure to the user
+- They need to fix it before PR can be created
+
+Note: These checks SHOULD pass since the engineer is required to verify them before marking implementation complete. A failure here indicates the engineer didn't follow the process.
 
 ---
 
@@ -280,9 +288,9 @@ Linked:
 - Ticket: TASK-XXX (updated with PR/MR link)
 - PRD: docs/prds/YYYY-MM-DD-feature.md
 
-CI Status: [pending/running]
+Local Checks: ✅ Passed (typecheck, lint, tests, build)
 
-Next: Wait for CI, get review, then /validate
+Next: Get review, then /validate
 ```
 
 ---
@@ -291,7 +299,7 @@ Next: Wait for CI, get review, then /validate
 
 1. **Verify** PR/MR was created
 2. **Provide** PR/MR link to user
-3. **Next step:** Wait for CI checks and review, then `/validate`
+3. **Next step:** Get review, then `/validate`
 
 ---
 

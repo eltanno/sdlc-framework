@@ -19,50 +19,18 @@
 set -e
 
 # ============================================================================
-# Signal Handling - ensure Ctrl+C kills child processes
-# ============================================================================
-
-cleanup() {
-    echo ""
-    echo "Interrupted - cleaning up..."
-    # Kill all child processes in our process group
-    pkill -P $$ 2>/dev/null || true
-    # Kill any timeout/claude processes we spawned
-    jobs -p | xargs -r kill 2>/dev/null || true
-    exit 130
-}
-
-trap cleanup SIGINT SIGTERM
-
-# ============================================================================
 # Configuration
 # ============================================================================
 
 PRD_PATH="${1:-}"
 PLAN_PATH="${2:-}"
 DRY_RUN=false
+MAX_ATTEMPTS=3
+VALIDATION_RETRIES=2
 
-# Read configuration from config.yaml (with defaults)
-read_config() {
-    local key="$1"
-    local default="$2"
-    local value
-    # Extract value and strip surrounding quotes (YAML strings may be quoted)
-    value=$(grep -E "^\s*${key}:" config.yaml 2>/dev/null | awk '{print $2}' | tr -d '"' | head -1)
-    if [ -z "$value" ]; then
-        echo "$default"
-    else
-        echo "$value"
-    fi
-}
-
-# Load ralph configuration from config.yaml
-MAX_ATTEMPTS=$(read_config "max_attempts" "3")
-SONNET_THRESHOLD=$(read_config "sonnet_threshold" "2")
-STATE_DIRECTORY=$(read_config "state_directory" "docs/state")
-VALIDATOR_MODEL=$(read_config "validator_model" "haiku")
-ENGINEER_TIMEOUT=$(read_config "engineer_timeout" "30")
-VALIDATOR_TIMEOUT=$(read_config "validator_timeout" "10")
+# Model selection threshold: complexity 1-N uses SONNET, above uses OPUS
+# Adjust based on performance metrics from /system-review
+SONNET_THRESHOLD=2
 
 # Parse optional flags
 shift 2 2>/dev/null || true
@@ -96,9 +64,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 RALPH_SCRIPTS="$SCRIPT_DIR/ralph"
 cd "$PROJECT_ROOT"
-
-# Source state utilities (for prompt building and state management)
-source "$RALPH_SCRIPTS/state-utils.sh"
 
 # ============================================================================
 # Logging Setup
@@ -162,39 +127,6 @@ log_environment() {
         echo "========================================"
         echo ""
     } >> "$MAIN_LOG"
-}
-
-# Validate config settings
-validate_config() {
-    local errors=0
-
-    # Check if target_branch exists on remote
-    local target_branch=$(read_config "target_branch" "main")
-    if [ -n "$target_branch" ]; then
-        if ! git ls-remote --heads origin "$target_branch" 2>/dev/null | grep -q "$target_branch"; then
-            log_error "Config error: pr.target_branch '$target_branch' does not exist on remote"
-            log_step "Available branches on remote:"
-            git ls-remote --heads origin 2>/dev/null | awk '{print "  - " $2}' | sed 's|refs/heads/||'
-            errors=$((errors + 1))
-        fi
-    fi
-
-    # Check if default_branch exists on remote
-    local default_branch=$(read_config "default_branch" "main")
-    if [ -n "$default_branch" ]; then
-        if ! git ls-remote --heads origin "$default_branch" 2>/dev/null | grep -q "$default_branch"; then
-            log_error "Config error: git.default_branch '$default_branch' does not exist on remote"
-            errors=$((errors + 1))
-        fi
-    fi
-
-    if [ $errors -gt 0 ]; then
-        log_error "Config validation failed with $errors error(s)"
-        log_step "Fix config.yaml and try again"
-        exit 1
-    fi
-
-    log_success "Config validation passed"
 }
 
 # Save workflow state snapshot
@@ -305,10 +237,7 @@ select_model_for_complexity() {
 # ============================================================================
 
 # Initialize usage tracking variables (METRICS_FILE set earlier in Logging Setup)
-# NOTE: We use a temp file for invocations because invoke_claude runs in subshells
-# (command substitution) which would lose variable changes
-INVOCATIONS_FILE="$LOG_DIR/invocations.jsonl"
-touch "$INVOCATIONS_FILE"
+USAGE_INVOCATIONS="[]"
 TOTAL_DURATION=0
 
 # Capture current usage from ccusage (gets latest daily data)
@@ -340,7 +269,7 @@ calculate_usage_delta() {
     }'
 }
 
-# Add invocation to metrics (writes to file to survive subshells)
+# Add invocation to metrics
 # Usage: add_invocation_metric ticket_id task duration delta model complexity
 add_invocation_metric() {
     local ticket_id="$1"
@@ -350,53 +279,21 @@ add_invocation_metric() {
     local model="${5:-opus}"
     local complexity="${6:-3}"
 
-    # Write as JSON line to file (survives subshell)
-    jq -n -c --arg ticket "$ticket_id" \
+    USAGE_INVOCATIONS=$(echo "$USAGE_INVOCATIONS" | jq -c --arg ticket "$ticket_id" \
         --arg task "$task" --argjson duration "$duration" --argjson delta "$delta" \
         --arg model "$model" --argjson complexity "$complexity" \
-        '{ticket_id: $ticket, task: $task, duration_seconds: $duration, delta: $delta, model: $model, complexity: $complexity}' \
-        >> "$INVOCATIONS_FILE"
-}
+        '. + [{ticket_id: $ticket, task: $task, duration_seconds: $duration, delta: $delta, model: $model, complexity: $complexity}]')
 
-# Get usage metrics for a specific ticket (for summary files)
-# Usage: get_ticket_usage <ticket_id>
-# Returns: JSON object with aggregated usage for this ticket
-get_ticket_usage() {
-    local ticket_id="$1"
-
-    if [ ! -s "$INVOCATIONS_FILE" ]; then
-        echo "{}"
-        return
-    fi
-
-    # Filter invocations for this ticket and aggregate
-    jq -s --arg ticket "$ticket_id" '
-        map(select(.ticket_id == $ticket)) |
-        if length == 0 then {}
-        else {
-            invocation_count: length,
-            duration_seconds: ([.[].duration_seconds] | add // 0),
-            input_tokens: ([.[].delta.inputTokens] | add // 0),
-            output_tokens: ([.[].delta.outputTokens] | add // 0),
-            cache_read_tokens: ([.[].delta.cacheReadTokens] | add // 0),
-            cache_creation_tokens: ([.[].delta.cacheCreationTokens] | add // 0),
-            total_cost: ([.[].delta.totalCost] | add // 0),
-            model: (.[0].model // "unknown"),
-            complexity: (.[0].complexity // 0)
-        }
-        end
-    ' "$INVOCATIONS_FILE" 2>/dev/null || echo "{}"
+    TOTAL_DURATION=$((TOTAL_DURATION + duration))
 }
 
 # Write final metrics file
 write_metrics_file() {
     local default_model="$1"
 
-    # Read invocations from JSONL file (one JSON object per line)
-    local USAGE_INVOCATIONS="[]"
-    if [ -s "$INVOCATIONS_FILE" ]; then
-        # Convert JSONL to JSON array
-        USAGE_INVOCATIONS=$(jq -s '.' "$INVOCATIONS_FILE" 2>/dev/null || echo "[]")
+    # Ensure USAGE_INVOCATIONS is valid JSON array
+    if [ -z "$USAGE_INVOCATIONS" ] || ! echo "$USAGE_INVOCATIONS" | jq empty 2>/dev/null; then
+        USAGE_INVOCATIONS="[]"
     fi
 
     # Calculate totals from invocations
@@ -564,13 +461,6 @@ cleanup_on_interrupt() {
     log_warn "Interrupted by user (Ctrl+C)"
     log_to_file "INTERRUPTED: User sent SIGINT/SIGTERM"
 
-    # CRITICAL: Kill all child processes first
-    echo "Killing child processes..."
-    pkill -P $$ 2>/dev/null || true
-    jobs -p | xargs -r kill 2>/dev/null || true
-    # Also kill any claude processes we might have spawned
-    pkill -f "claude -p" 2>/dev/null || true
-
     # Save state snapshot
     save_state_snapshot "interrupted"
 
@@ -734,20 +624,11 @@ main() {
 
     echo "PRD:  $PRD_PATH" | tee_log
     echo "Plan: $PLAN_PATH" | tee_log
-    echo "" | tee_log
-    echo -e "${CYAN}Configuration (from config.yaml):${NC}" | tee_log
-    echo "  Sonnet threshold: $SONNET_THRESHOLD (complexity 1-$SONNET_THRESHOLD → Sonnet)" | tee_log
-    echo "  Max attempts: $MAX_ATTEMPTS" | tee_log
-    echo "  Validator model: $VALIDATOR_MODEL" | tee_log
-    echo "  State directory: $STATE_DIRECTORY" | tee_log
+    echo "Max attempts per ticket: $MAX_ATTEMPTS" | tee_log
     [ "$DRY_RUN" = true ] && echo -e "${YELLOW}DRY RUN MODE${NC}" | tee_log
     echo "" | tee_log
     echo -e "${CYAN}Logs:${NC} $LOG_DIR" | tee_log
     echo "" | tee_log
-
-    # Validate configuration
-    log_step "Validating configuration..."
-    validate_config
 
     # ========================================================================
     # PHASE 1: Setup (No LLM)
@@ -759,21 +640,14 @@ main() {
     SETUP_OUTPUT=$("$RALPH_SCRIPTS/setup.sh" "$PRD_PATH" "$PLAN_PATH" 2>&1)
     echo "$SETUP_OUTPUT" | grep -v "JSON_OUTPUT" | tee_log
 
-    # Get initial counts (for display only - loop is purely reactive)
-    SETUP_SOURCE=$(get_json_value "$SETUP_OUTPUT" ".source")
-    INITIAL_OPEN=$(get_json_value "$SETUP_OUTPUT" ".open")
-    if [ "$INITIAL_OPEN" = "null" ] || [ -z "$INITIAL_OPEN" ]; then
-        # Fallback for local mode
-        INITIAL_OPEN=$(get_json_value "$SETUP_OUTPUT" ".total")
-    fi
-    log_success "Ready to process tickets (${INITIAL_OPEN:-unknown} open)"
-    log_to_file "Setup source: $SETUP_SOURCE, Initial open: $INITIAL_OPEN"
+    TOTAL_TICKETS=$(get_json_value "$SETUP_OUTPUT" ".total")
+    log_success "Initialized with $TOTAL_TICKETS tickets"
 
     # Save initial state snapshot
     save_state_snapshot "initial"
 
     # ========================================================================
-    # PHASE 2: Ticket Loop (V2 - Single Attempt Loop)
+    # PHASE 2: Ticket Loop
     # ========================================================================
 
     log_header "PHASE 2: Implementation Loop"
@@ -781,38 +655,11 @@ main() {
     TICKETS_DONE=0
     TICKETS_BLOCKED=0
 
-    # Outer loop: iterate through tickets
-    WAIT_RETRY_COUNT=0
-    MAX_WAIT_RETRIES=60  # Max 60 retries (30 minutes at 30s intervals)
-    WAIT_INTERVAL=30     # Seconds to wait when dependencies not met
-
     while true; do
         # Get next ticket (No LLM)
         NEXT_OUTPUT=$("$RALPH_SCRIPTS/get-next-ticket.sh" 2>&1)
         NEXT_TICKET=$(get_json_value "$NEXT_OUTPUT" ".next_ticket")
         HAS_MORE=$(get_json_value "$NEXT_OUTPUT" ".has_more")
-        TICKET_STATUS=$(get_json_value "$NEXT_OUTPUT" ".status")
-
-        # Handle waiting_on_dependencies status
-        if [ "$TICKET_STATUS" = "waiting_on_dependencies" ]; then
-            WAIT_RETRY_COUNT=$((WAIT_RETRY_COUNT + 1))
-            SKIPPED_COUNT=$(get_json_value "$NEXT_OUTPUT" ".skipped_for_deps")
-
-            if [ "$WAIT_RETRY_COUNT" -ge "$MAX_WAIT_RETRIES" ]; then
-                log_warn "Max wait retries ($MAX_WAIT_RETRIES) reached"
-                log_warn "Tickets are still waiting on dependencies from other instances"
-                break
-            fi
-
-            log_step "Waiting on dependencies ($SKIPPED_COUNT tickets blocked)"
-            log_step "Retry $WAIT_RETRY_COUNT/$MAX_WAIT_RETRIES - sleeping ${WAIT_INTERVAL}s..."
-            log_to_file "Waiting on dependencies: $SKIPPED_COUNT tickets, retry $WAIT_RETRY_COUNT"
-            sleep "$WAIT_INTERVAL"
-            continue
-        fi
-
-        # Reset wait counter when we get a ticket
-        WAIT_RETRY_COUNT=0
 
         if [ "$HAS_MORE" != "true" ] || [ "$NEXT_TICKET" = "null" ] || [ -z "$NEXT_TICKET" ]; then
             log_success "No more pending tickets"
@@ -831,335 +678,178 @@ main() {
 
         log_header "Ticket: $NEXT_TICKET (complexity: $TICKET_COMPLEXITY → $TICKET_MODEL)"
 
-        # Get current attempt number for this ticket
-        local CURRENT_ATTEMPT=$(get_latest_attempt "$NEXT_TICKET")
-        CURRENT_ATTEMPT=$((CURRENT_ATTEMPT + 1))
+        # Start ticket (No LLM)
+        log_step "Marking ticket as in-progress..."
+        START_OUTPUT=$("$RALPH_SCRIPTS/ticket-start.sh" "$NEXT_TICKET" 2>&1)
+        ATTEMPTS=$(get_json_value "$START_OUTPUT" ".attempts")
 
-        # Track the branch name for this ticket
-        local TICKET_BRANCH="feature/${NEXT_TICKET}-implementation"
+        echo "Attempt: $ATTEMPTS / $MAX_ATTEMPTS" | tee_log
+
+        if [ "$ATTEMPTS" -gt "$MAX_ATTEMPTS" ]; then
+            log_warn "Max attempts exceeded, marking as blocked"
+            BLOCK_OUTPUT=$("$RALPH_SCRIPTS/mark-blocked.sh" "$NEXT_TICKET" "Exceeded $MAX_ATTEMPTS attempts" 2>&1)
+            echo "$BLOCK_OUTPUT" | grep -v "JSON_OUTPUT" | tee_log
+            log_error_context "Ticket blocked: max attempts" "Ticket: $NEXT_TICKET, Attempts: $ATTEMPTS"
+            save_state_snapshot "${NEXT_TICKET}-blocked"
+            TICKETS_BLOCKED=$((TICKETS_BLOCKED + 1))
+            continue
+        fi
 
         # ====================================================================
-        # ATTEMPT LOOP (V2 - single loop, engineer validates itself)
+        # LLM WORK: Implementation
         # ====================================================================
 
-        local TICKET_COMPLETE=false
+        log_step "Invoking Claude for implementation..."
 
-        while [ "$CURRENT_ATTEMPT" -le "$MAX_ATTEMPTS" ]; do
-            log_step "Attempt $CURRENT_ATTEMPT of $MAX_ATTEMPTS"
-            log_to_file "Starting attempt $CURRENT_ATTEMPT for $NEXT_TICKET"
+        IMPL_PROMPT="## Engineer Task: Implement $NEXT_TICKET
 
-            # Create attempt directory
-            local ATTEMPT_DIR=$(ensure_state_dir "$NEXT_TICKET" "$CURRENT_ATTEMPT")
-            log_to_file "State directory: $ATTEMPT_DIR"
+## Context
+- PRD: $PRD_PATH
+- Plan: $PLAN_PATH
+- Coding Standards: docs/coding-standards.md
+- This is attempt $ATTEMPTS of $MAX_ATTEMPTS
 
-            # Write initial "in_progress" state file
-            local INITIAL_STATE_FILE="$STATE_DIRECTORY/$NEXT_TICKET/attempt-$CURRENT_ATTEMPT/engineer-state.json"
-            cat > "$INITIAL_STATE_FILE" << ENDJSON
-{
-  "ticket_id": "$NEXT_TICKET",
-  "attempt": $CURRENT_ATTEMPT,
-  "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "status": "in_progress",
-  "branch": "$TICKET_BRANCH",
-  "work_completed": [],
-  "files_modified": [],
-  "known_issues": [],
-  "next_steps": ["Engineer invocation started"]
-}
-ENDJSON
-            log_step "Created initial state file: $INITIAL_STATE_FILE"
+## Required Reading (do this first)
+1. Read docs/coding-standards.md and follow all standards
+2. Read the PRD for acceptance criteria for $NEXT_TICKET
+3. Read the Plan for technical approach for $NEXT_TICKET
 
-            # ================================================================
-            # Build prompt (initial or resume based on attempt)
-            # ================================================================
+## Implementation Steps
+1. Create feature branch: feature/${NEXT_TICKET}-implementation
+2. Implement using TDD:
+   - Write failing tests first (cover acceptance criteria)
+   - Implement minimum code to pass tests
+   - Refactor while keeping tests green
+3. Commit with message: [$NEXT_TICKET] <description>
 
-            local IMPL_PROMPT=""
+## Important Rules
+- Follow coding standards strictly
+- Do NOT run validation (tests/lint/build) - orchestrator handles this
+- Do NOT create PRs - orchestrator handles this
+- Do NOT skip TDD - tests must exist before implementation
+- Commit your work before finishing
 
-            if [ "$CURRENT_ATTEMPT" -eq 1 ]; then
-                # First attempt - use initial prompt
-                log_step "Building initial implementation prompt..."
-                IMPL_PROMPT=$(build_engineer_initial_prompt \
-                    "$NEXT_TICKET" \
-                    "$PRD_PATH" \
-                    "$PLAN_PATH" \
-                    "$MAX_ATTEMPTS" 2>/dev/null)
-            else
-                # Subsequent attempt - use resume prompt with previous context
-                log_step "Building resume prompt with previous state context..."
-                local PREV_ATTEMPT=$((CURRENT_ATTEMPT - 1))
-                local PREV_STATE=$(get_previous_state "$NEXT_TICKET" "$PREV_ATTEMPT")
-                local PREV_VALIDATION=$(get_previous_validation "$NEXT_TICKET" "$PREV_ATTEMPT")
+## When Done
+Output exactly: IMPLEMENTATION_COMPLETE"
 
-                # Extract priority and fixes from validation report if exists
-                local PRIORITY_ORDER=""
-                local SUGGESTED_FIXES=""
-                local validation_json="$STATE_DIRECTORY/$NEXT_TICKET/attempt-$PREV_ATTEMPT/validation.json"
-                if [ -f "$validation_json" ]; then
-                    PRIORITY_ORDER=$(jq -r '(.priority_order // []) | to_entries | .[] | "\(.key + 1). \(.value)"' "$validation_json" 2>/dev/null | head -5)
-                    SUGGESTED_FIXES=$(jq -r '(.suggested_fixes // []) | to_entries | .[] | "\(.key + 1). \(.value)"' "$validation_json" 2>/dev/null | head -5)
-                fi
+        if ! invoke_claude "$IMPL_PROMPT" 30 "$TICKET_MODEL" "implement" "$TICKET_COMPLEXITY"; then
+            log_error "Claude failed during implementation"
+            log_error_context "Implementation failed" "Ticket: $NEXT_TICKET, Attempt: $ATTEMPTS"
+            save_state_snapshot "${NEXT_TICKET}-impl-failed"
+            continue  # Will retry on next loop with incremented attempts
+        fi
 
-                IMPL_PROMPT=$(build_engineer_resume_prompt \
-                    "$NEXT_TICKET" \
-                    "$CURRENT_ATTEMPT" \
-                    "$MAX_ATTEMPTS" \
-                    "$TICKET_BRANCH" \
-                    "$PREV_STATE" \
-                    "$PREV_VALIDATION" \
-                    "$PRIORITY_ORDER" \
-                    "$SUGGESTED_FIXES" 2>/dev/null)
-            fi
+        # ====================================================================
+        # Validation (No LLM)
+        # ====================================================================
 
-            # ================================================================
-            # LLM WORK: Engineer (implements + validates + commits)
-            # ================================================================
+        log_step "Running validation..."
 
-            log_step "Invoking Claude engineer (model: $TICKET_MODEL, timeout: ${ENGINEER_TIMEOUT}m)..."
+        VALIDATION_PASSED=false
+        for ((retry=1; retry<=VALIDATION_RETRIES; retry++)); do
+            log_to_file "Validation attempt $retry/$VALIDATION_RETRIES for $NEXT_TICKET"
 
-            local ENGINEER_OUTPUT=""
-            local ENGINEER_EXIT=0
+            # Capture validation output (--no-cache ensures fresh results, not cached)
+            VALIDATION_OUTPUT=$("$RALPH_SCRIPTS/validate.sh" --no-cache 2>&1) && VALIDATION_PASSED=true || VALIDATION_PASSED=false
 
-            # Capture engineer output
-            ENGINEER_OUTPUT=$(invoke_claude "$IMPL_PROMPT" "$ENGINEER_TIMEOUT" "$TICKET_MODEL" "engineer-attempt-$CURRENT_ATTEMPT" "$TICKET_COMPLEXITY" 2>&1) || ENGINEER_EXIT=$?
-
-            # Save engineer output to log
-            local engineer_log="$LOG_DIR/${NEXT_TICKET}-engineer-attempt-${CURRENT_ATTEMPT}.log"
+            # Save validation output to log
+            local validation_log="$LOG_DIR/${NEXT_TICKET}-validation-${retry}.log"
             {
                 echo "========================================"
-                echo "ENGINEER ATTEMPT $CURRENT_ATTEMPT"
+                echo "VALIDATION ATTEMPT $retry"
                 echo "========================================"
                 echo "Timestamp: $(date -Iseconds)"
                 echo "Ticket: $NEXT_TICKET"
-                echo "Model: $TICKET_MODEL"
-                echo "Timeout: ${ENGINEER_TIMEOUT}m"
-                echo "Exit code: $ENGINEER_EXIT"
                 echo ""
-                echo "$ENGINEER_OUTPUT"
+                echo "$VALIDATION_OUTPUT"
+                echo ""
+                echo "Result: $([ "$VALIDATION_PASSED" = true ] && echo 'PASSED' || echo 'FAILED')"
                 echo "========================================"
-            } > "$engineer_log"
+            } > "$validation_log"
 
-            # Check if engineer timed out or failed critically
-            if [ "$ENGINEER_EXIT" -eq 124 ]; then
-                log_error "Engineer timed out after ${ENGINEER_TIMEOUT} minutes"
-                log_to_file "Engineer TIMEOUT, log: $engineer_log"
-
-                # Handle timeout: check for uncommitted changes
-                local uncommitted=$(git status --porcelain 2>/dev/null | wc -l)
-                if [ "$uncommitted" -gt 0 ]; then
-                    log_warn "Found $uncommitted uncommitted changes, committing as WIP..."
-                    git add -A
-                    git commit -m "[$NEXT_TICKET] WIP - engineer timeout
-
-Co-Authored-By: Claude <noreply@anthropic.com>" || true
-                fi
-
-                CURRENT_ATTEMPT=$((CURRENT_ATTEMPT + 1))
-                continue
-            fi
-
-            # ================================================================
-            # Check engineer result: VALIDATION_PASSED or VALIDATION_FAILED
-            # ================================================================
-
-            if echo "$ENGINEER_OUTPUT" | grep -q "VALIDATION_PASSED"; then
-                log_success "Engineer reported: VALIDATION_PASSED"
-                TICKET_COMPLETE=true
+            if [ "$VALIDATION_PASSED" = true ]; then
+                log_to_file "Validation PASSED on attempt $retry"
                 break
-
-            elif echo "$ENGINEER_OUTPUT" | grep -q "VALIDATION_FAILED"; then
-                log_warn "Engineer reported: VALIDATION_FAILED"
-                log_to_file "Engineer validation failed on attempt $CURRENT_ATTEMPT"
-
-                # ============================================================
-                # LLM WORK: Validator (analyzes failures, writes report)
-                # ============================================================
-
-                if [ "$CURRENT_ATTEMPT" -lt "$MAX_ATTEMPTS" ]; then
-                    log_step "Invoking validator (model: $VALIDATOR_MODEL, timeout: ${VALIDATOR_TIMEOUT}m)..."
-
-                    local VALIDATOR_PROMPT=$(build_validator_prompt \
-                        "$NEXT_TICKET" \
-                        "$CURRENT_ATTEMPT" \
-                        "$TICKET_BRANCH" 2>/dev/null)
-
-                    local VALIDATOR_OUTPUT=""
-                    VALIDATOR_OUTPUT=$(invoke_claude "$VALIDATOR_PROMPT" "$VALIDATOR_TIMEOUT" "$VALIDATOR_MODEL" "validator-attempt-$CURRENT_ATTEMPT" "1" 2>&1) || true
-
-                    # Save validator output to log
-                    local validator_log="$LOG_DIR/${NEXT_TICKET}-validator-attempt-${CURRENT_ATTEMPT}.log"
-                    {
-                        echo "========================================"
-                        echo "VALIDATOR ATTEMPT $CURRENT_ATTEMPT"
-                        echo "========================================"
-                        echo "Timestamp: $(date -Iseconds)"
-                        echo "Ticket: $NEXT_TICKET"
-                        echo "Model: $VALIDATOR_MODEL"
-                        echo ""
-                        echo "$VALIDATOR_OUTPUT"
-                        echo "========================================"
-                    } > "$validator_log"
-
-                    if echo "$VALIDATOR_OUTPUT" | grep -q "VALIDATION_REPORT_COMPLETE"; then
-                        log_success "Validator report created"
-                    else
-                        log_warn "Validator did not complete report (will continue anyway)"
-                    fi
-
-                    # Commit validator state files so they're available for next attempt
-                    local validator_uncommitted=$(git status --porcelain 2>/dev/null | wc -l)
-                    if [ "$validator_uncommitted" -gt 0 ]; then
-                        log_step "Committing validator state files..."
-                        git add -A
-                        git commit -m "[$NEXT_TICKET] Validation report - attempt $CURRENT_ATTEMPT
-
-Co-Authored-By: Claude <noreply@anthropic.com>" || true
-                    fi
-                fi
-
-                CURRENT_ATTEMPT=$((CURRENT_ATTEMPT + 1))
-                continue
-
             else
-                # Engineer didn't report a clear result - CHECK STATE FILE AS FALLBACK
-                log_warn "Engineer did not report clear VALIDATION_PASSED or VALIDATION_FAILED"
-                log_step "Checking state file for status fallback..."
+                log_warn "Validation failed (attempt $retry/$VALIDATION_RETRIES)"
+                log_to_file "Validation FAILED, log: $validation_log"
 
-                local STATE_FILE="$STATE_DIRECTORY/$NEXT_TICKET/attempt-$CURRENT_ATTEMPT/engineer-state.json"
-                if [ -f "$STATE_FILE" ]; then
-                    local FILE_STATUS=$(jq -r '.status // "unknown"' "$STATE_FILE" 2>/dev/null)
-                    log_step "State file status: $FILE_STATUS"
+                if [ $retry -lt $VALIDATION_RETRIES ]; then
+                    # ========================================================
+                    # LLM WORK: Fix failures
+                    # ========================================================
 
-                    if [ "$FILE_STATUS" = "validation_passed" ]; then
-                        log_success "State file indicates validation_passed - proceeding to PR"
-                        TICKET_COMPLETE=true
-                        break
-                    fi
-                else
-                    log_warn "No state file found at: $STATE_FILE"
+                    log_step "Invoking Claude to fix failures..."
+
+                    FIX_PROMPT="The validation for $NEXT_TICKET failed.
+
+## Validation Output
+\`\`\`
+$VALIDATION_OUTPUT
+\`\`\`
+
+## Instructions
+1. Analyze the failures above
+2. Fix the issues in the code
+3. Commit your fixes with message: [$NEXT_TICKET] Fix validation issues
+
+When done, output exactly: FIXES_COMPLETE"
+
+                    invoke_claude "$FIX_PROMPT" 15 "$TICKET_MODEL" "fix-validation" "$TICKET_COMPLEXITY" || true
                 fi
-
-                # If we get here, still treat as failure
-                local uncommitted=$(git status --porcelain 2>/dev/null | wc -l)
-                if [ "$uncommitted" -gt 0 ]; then
-                    log_warn "Found $uncommitted uncommitted changes, committing as WIP..."
-                    git add -A
-                    git commit -m "[$NEXT_TICKET] WIP - unclear result
-
-Co-Authored-By: Claude <noreply@anthropic.com>" || true
-                fi
-
-                CURRENT_ATTEMPT=$((CURRENT_ATTEMPT + 1))
-                continue
             fi
         done
 
-        # ====================================================================
-        # Post-attempt handling: success or blocked
-        # ====================================================================
-
-        if [ "$TICKET_COMPLETE" = true ]; then
-            # ================================================================
-            # PR Flow (Only when validation passes)
-            # ================================================================
-
-            log_step "Running PR flow..."
-
-            PR_ARGS=("$NEXT_TICKET" "[$NEXT_TICKET] Implementation complete")
-            [ "$DRY_RUN" = true ] && PR_ARGS+=("--dry-run")
-
-            # Run PR flow, capturing exit code
-            PR_OUTPUT=$("$RALPH_SCRIPTS/pr-flow.sh" "${PR_ARGS[@]}" 2>&1) || {
-                PR_EXIT_CODE=$?
-                log_error "PR flow failed with exit code $PR_EXIT_CODE"
-                log_to_file "PR flow output: $PR_OUTPUT"
-                log_step "Continuing despite PR flow failure..."
-            }
-            echo "$PR_OUTPUT" | grep -v "JSON_OUTPUT" | tee_log
-
-            # Check if ticket was already done (PR already merged)
-            ALREADY_DONE=$(get_json_value "$PR_OUTPUT" ".already_done")
-            if [ "$ALREADY_DONE" = "true" ]; then
-                PR_NUMBER=$(get_json_value "$PR_OUTPUT" ".pr_number")
-                log_success "Ticket $NEXT_TICKET already completed (PR #$PR_NUMBER)"
-                write_summary "$NEXT_TICKET" "SUCCESS" "$CURRENT_ATTEMPT" "$PR_NUMBER" "$(get_ticket_usage "$NEXT_TICKET")"
-                TICKETS_DONE=$((TICKETS_DONE + 1))
-                continue
-            fi
-
-            PR_NUMBER=$(get_json_value "$PR_OUTPUT" ".pr_number")
-            if [ -z "$PR_NUMBER" ] || [ "$PR_NUMBER" = "null" ]; then
-                PR_NUMBER=$(gh pr list --head "$TICKET_BRANCH" --json number --jq '.[0].number' 2>/dev/null || echo "")
-            fi
-            log_to_file "PR created/updated: #$PR_NUMBER"
-
-            # Write success summary
-            write_summary "$NEXT_TICKET" "SUCCESS" "$((CURRENT_ATTEMPT))" "$PR_NUMBER" "$(get_ticket_usage "$NEXT_TICKET")"
-
-            # Mark ticket complete
-            log_step "Marking ticket complete..."
-            DONE_OUTPUT=$("$RALPH_SCRIPTS/ticket-done.sh" "$NEXT_TICKET" "$PR_NUMBER" 2>&1)
-            echo "$DONE_OUTPUT" | grep -v "JSON_OUTPUT" | tee_log
-
-            save_state_snapshot "${NEXT_TICKET}-complete"
-            TICKETS_DONE=$((TICKETS_DONE + 1))
-            log_success "Ticket $NEXT_TICKET complete!"
-            log_to_file "Ticket $NEXT_TICKET completed successfully (PR #$PR_NUMBER)"
-
-        else
-            # ================================================================
-            # Check if final attempt actually passed before marking blocked
-            # ================================================================
-
-            local FINAL_ATTEMPT=$MAX_ATTEMPTS
-            local FINAL_STATE_FILE="$STATE_DIRECTORY/$NEXT_TICKET/attempt-$FINAL_ATTEMPT/engineer-state.json"
-
-            if [ -f "$FINAL_STATE_FILE" ]; then
-                local FINAL_STATUS=$(jq -r '.status // "unknown"' "$FINAL_STATE_FILE" 2>/dev/null)
-                log_step "Final attempt state file status: $FINAL_STATUS"
-
-                if [ "$FINAL_STATUS" = "validation_passed" ]; then
-                    log_success "Final attempt passed validation! Proceeding to PR flow..."
-
-                    # Run PR flow
-                    PR_ARGS=("$NEXT_TICKET" "[$NEXT_TICKET] Implementation complete")
-                    [ "$DRY_RUN" = true ] && PR_ARGS+=("--dry-run")
-
-                    PR_OUTPUT=$("$RALPH_SCRIPTS/pr-flow.sh" "${PR_ARGS[@]}" 2>&1) || {
-                        PR_EXIT_CODE=$?
-                        log_error "PR flow failed with exit code $PR_EXIT_CODE"
-                    }
-                    echo "$PR_OUTPUT" | grep -v "JSON_OUTPUT" | tee_log
-
-                    PR_NUMBER=$(get_json_value "$PR_OUTPUT" ".pr_number")
-                    if [ -z "$PR_NUMBER" ] || [ "$PR_NUMBER" = "null" ]; then
-                        PR_NUMBER=$(gh pr list --head "$TICKET_BRANCH" --json number --jq '.[0].number' 2>/dev/null || echo "")
-                    fi
-
-                    if [ -n "$PR_NUMBER" ] && [ "$PR_NUMBER" != "null" ]; then
-                        # PR created successfully
-                        write_summary "$NEXT_TICKET" "SUCCESS" "$FINAL_ATTEMPT" "$PR_NUMBER" "$(get_ticket_usage "$NEXT_TICKET")"
-                        DONE_OUTPUT=$("$RALPH_SCRIPTS/ticket-done.sh" "$NEXT_TICKET" "$PR_NUMBER" 2>&1)
-                        echo "$DONE_OUTPUT" | grep -v "JSON_OUTPUT" | tee_log
-                        TICKETS_DONE=$((TICKETS_DONE + 1))
-                        log_success "Ticket $NEXT_TICKET complete (recovered from unclear status)!"
-                        continue  # Skip the BLOCKED logic below
-                    else
-                        log_warn "PR creation failed, marking as blocked"
-                    fi
-                fi
-            fi
-
-            # If we get here, truly blocked
-            log_warn "Max attempts exceeded, marking as blocked"
-            write_summary "$NEXT_TICKET" "BLOCKED" "$MAX_ATTEMPTS" "" "$(get_ticket_usage "$NEXT_TICKET")"
-
-            BLOCK_OUTPUT=$("$RALPH_SCRIPTS/mark-blocked.sh" "$NEXT_TICKET" "Exceeded $MAX_ATTEMPTS attempts" 2>&1)
-            echo "$BLOCK_OUTPUT" | grep -v "JSON_OUTPUT" | tee_log
-
-            log_error_context "Ticket blocked: max attempts" "Ticket: $NEXT_TICKET, Attempts: $MAX_ATTEMPTS"
-            save_state_snapshot "${NEXT_TICKET}-blocked"
-            TICKETS_BLOCKED=$((TICKETS_BLOCKED + 1))
+        if [ "$VALIDATION_PASSED" != true ]; then
+            log_error "Validation failed after $VALIDATION_RETRIES attempts"
+            log_error_context "Validation failed" "Ticket: $NEXT_TICKET, Attempts: $VALIDATION_RETRIES, Last output: $validation_log"
+            save_state_snapshot "${NEXT_TICKET}-validation-failed"
+            continue  # Will retry whole ticket on next loop
         fi
+
+        log_success "Validation passed"
+
+        # ====================================================================
+        # PR Flow (No LLM)
+        # ====================================================================
+
+        log_step "Running PR flow..."
+
+        PR_ARGS=("$NEXT_TICKET" "[$NEXT_TICKET] Implementation complete")
+        [ "$DRY_RUN" = true ] && PR_ARGS+=("--dry-run")
+
+        # Run PR flow, capturing exit code (don't let set -e kill us)
+        PR_OUTPUT=$("$RALPH_SCRIPTS/pr-flow.sh" "${PR_ARGS[@]}" 2>&1) || {
+            PR_EXIT_CODE=$?
+            log_error "PR flow failed with exit code $PR_EXIT_CODE"
+            log_to_file "PR flow output: $PR_OUTPUT"
+            # Continue anyway - the work is done, just PR creation failed
+            log_step "Continuing despite PR flow failure..."
+        }
+        echo "$PR_OUTPUT" | grep -v "JSON_OUTPUT" | tee_log
+
+        PR_NUMBER=$(get_json_value "$PR_OUTPUT" ".pr_number")
+        # If PR number is empty, try to find existing PR
+        if [ -z "$PR_NUMBER" ] || [ "$PR_NUMBER" = "null" ]; then
+            PR_NUMBER=$(gh pr list --head "feature/${NEXT_TICKET}-implementation" --json number --jq '.[0].number' 2>/dev/null || echo "")
+        fi
+        log_to_file "PR created/updated: #$PR_NUMBER"
+
+        # ====================================================================
+        # Complete Ticket (No LLM)
+        # ====================================================================
+
+        log_step "Marking ticket complete..."
+
+        DONE_OUTPUT=$("$RALPH_SCRIPTS/ticket-done.sh" "$NEXT_TICKET" "$PR_NUMBER" 2>&1)
+        echo "$DONE_OUTPUT" | grep -v "JSON_OUTPUT" | tee_log
+
+        # Save state snapshot after ticket completion
+        save_state_snapshot "${NEXT_TICKET}-complete"
+
+        TICKETS_DONE=$((TICKETS_DONE + 1))
+        log_success "Ticket $NEXT_TICKET complete!"
+        log_to_file "Ticket $NEXT_TICKET completed successfully (PR #$PR_NUMBER)"
 
     done
 
@@ -1184,33 +874,10 @@ Co-Authored-By: Claude <noreply@anthropic.com>" || true
 
     log_header "ORCHESTRATION COMPLETE"
 
-    # Get current counts from GitHub (source of truth)
-    local FINAL_OPEN=0
-    local FINAL_CLOSED=0
-    local FINAL_TOTAL=0
-    local FINAL_BLOCKED=0
-
-    if [ "$SETUP_SOURCE" = "github" ]; then
-        FINAL_OPEN=$(gh issue list --state open --json number --limit 1000 2>/dev/null | jq 'length' || echo "0")
-        FINAL_CLOSED=$(gh issue list --state closed --json number --limit 1000 2>/dev/null | jq 'length' || echo "0")
-        FINAL_BLOCKED=$(gh issue list --state open --label blocked --json number --limit 1000 2>/dev/null | jq 'length' 2>/dev/null || echo "0")
-        FINAL_TOTAL=$((FINAL_OPEN + FINAL_CLOSED))
-    fi
-
-    # Show instance stats
-    echo -e "${BOLD}This Instance:${NC}" | tee_log
-    echo -e "  Completed:    ${GREEN}$TICKETS_DONE${NC}" | tee_log
-    echo -e "  Blocked:      ${YELLOW}$TICKETS_BLOCKED${NC}" | tee_log
+    echo -e "Total tickets:  ${CYAN}$TOTAL_TICKETS${NC}" | tee_log
+    echo -e "Completed:      ${GREEN}$TICKETS_DONE${NC}" | tee_log
+    echo -e "Blocked:        ${YELLOW}$TICKETS_BLOCKED${NC}" | tee_log
     echo "" | tee_log
-
-    # Show overall progress (from GitHub)
-    if [ "$SETUP_SOURCE" = "github" ] && [ "$FINAL_TOTAL" -gt 0 ]; then
-        echo -e "${BOLD}GitHub Status:${NC}" | tee_log
-        echo -e "  Closed:       ${GREEN}$FINAL_CLOSED${NC} / ${CYAN}$FINAL_TOTAL${NC}" | tee_log
-        echo -e "  Open:         ${CYAN}$FINAL_OPEN${NC}" | tee_log
-        echo -e "  Blocked:      ${YELLOW}$FINAL_BLOCKED${NC}" | tee_log
-        echo "" | tee_log
-    fi
 
     if [ $TICKETS_BLOCKED -gt 0 ]; then
         echo -e "${YELLOW}Some tickets were blocked and need manual review.${NC}" | tee_log
@@ -1227,8 +894,9 @@ Co-Authored-By: Claude <noreply@anthropic.com>" || true
         echo "RUN COMPLETE"
         echo "========================================"
         echo "End time: $(date -Iseconds)"
-        echo "This instance - Completed: $TICKETS_DONE, Blocked: $TICKETS_BLOCKED"
-        [ "$SETUP_SOURCE" = "github" ] && echo "GitHub - Closed: $FINAL_CLOSED/$FINAL_TOTAL, Open: $FINAL_OPEN, Blocked: $FINAL_BLOCKED"
+        echo "Total tickets: $TOTAL_TICKETS"
+        echo "Completed: $TICKETS_DONE"
+        echo "Blocked: $TICKETS_BLOCKED"
         echo ""
         echo "Log files in: $LOG_DIR"
         echo "========================================"
@@ -1238,28 +906,14 @@ Co-Authored-By: Claude <noreply@anthropic.com>" || true
     echo -e "${CYAN}Full logs:${NC} $LOG_DIR" | tee_log
     echo "" | tee_log
 
-    # Determine if all work is done
-    if [ "$SETUP_SOURCE" = "github" ]; then
-        if [ "$FINAL_OPEN" -eq 0 ] || [ "$FINAL_OPEN" -eq "$FINAL_BLOCKED" ]; then
-            echo -e "${GREEN}${BOLD}PRD_COMPLETE${NC}" | tee_log
-            log_to_file "RESULT: PRD_COMPLETE"
-            exit 0
-        else
-            echo -e "${YELLOW}PRD_INCOMPLETE${NC} (${FINAL_OPEN} tickets remaining)" | tee_log
-            log_to_file "RESULT: PRD_INCOMPLETE"
-            exit 1
-        fi
+    if [ $TICKETS_DONE -eq $TOTAL_TICKETS ]; then
+        echo -e "${GREEN}${BOLD}PRD_COMPLETE${NC}" | tee_log
+        log_to_file "RESULT: PRD_COMPLETE"
+        exit 0
     else
-        # Local mode - use local counts
-        if [ $TICKETS_DONE -gt 0 ] && [ $TICKETS_BLOCKED -eq 0 ]; then
-            echo -e "${GREEN}${BOLD}PRD_COMPLETE${NC}" | tee_log
-            log_to_file "RESULT: PRD_COMPLETE"
-            exit 0
-        else
-            echo -e "${YELLOW}PRD_INCOMPLETE${NC}" | tee_log
-            log_to_file "RESULT: PRD_INCOMPLETE"
-            exit 1
-        fi
+        echo -e "${YELLOW}PRD_INCOMPLETE${NC}" | tee_log
+        log_to_file "RESULT: PRD_INCOMPLETE"
+        exit 1
     fi
 }
 

@@ -4,15 +4,40 @@
 
 # Project Management Tool
 pm:
-  tool: asana                      # asana | trello | github | linear | none
+  tool: github                    # asana | trello | github | linear | none (must be set before /ticket)
 
 # Development Commands
+# For single-codebase repos: use the top-level commands directly
+# For monorepos: define codebases (see below) and the top-level commands are ignored
 dev:
+  # Default commands for single-codebase repos (ignored if codebases defined)
   runtime: node                    # node | bun | deno | python
   package_manager: npm             # npm | bun | yarn | pnpm | uv
-  test_command: "npm test"
+  typecheck_command: "npm run typecheck"
   lint_command: "npm run lint"
+  test_command: "npm test"
   build_command: "npm run build"
+
+  # Monorepo: define named codebases (optional)
+  # Each codebase has its own path, runtime, and commands
+  # Engineer runs commands for ALL codebases before committing
+  codebases:
+    mobile:
+      path: "mobile"
+      runtime: node
+      package_manager: npm
+      typecheck_command: "npm run typecheck"
+      lint_command: "npm run lint"
+      test_command: "npm test"
+      build_command: "echo 'Expo build skipped in dev'"
+    backend:
+      path: "backend"
+      runtime: python
+      package_manager: pip
+      typecheck_command: "echo 'Python typecheck skipped'"
+      lint_command: "echo 'Python lint skipped'"
+      test_command: "pytest"
+      build_command: "python manage.py check"
 
 # Git Conventions
 git:
@@ -36,10 +61,10 @@ pr:
 
 # Ticket Configuration
 tickets:
-  prefix: "SDLC"                    # Project code prefix for all tickets (e.g., SDLC-0001)
-  counter: 0                        # Current ticket count - auto-incremented when tickets created
+  prefix: "AUCT"                    # Project code prefix for all tickets (e.g., AUCT-0001)
+  counter: 184                       # Current ticket count - auto-incremented when tickets created
 
-# Ralph Orchestrator Settings
+# Ralph Orchestrator Settings (V2)
 ralph:
   # Complexity threshold for model selection
   # Tickets with complexity <= threshold use Sonnet (cheaper)
@@ -47,4 +72,18 @@ ralph:
   # Values: 1-5 (default: 2 means 1-2 use Sonnet, 3-5 use Opus)
   sonnet_threshold: 2
   max_attempts: 3                  # Max attempts per ticket before marking blocked
-  validation_retries: 2            # Validation retry attempts before failing ticket
+
+  # V2: State file settings
+  state_directory: "docs/state"    # Directory for engineer state and validation reports
+  keep_state_files: true           # Always keep state files (audit trail)
+
+  # V2: Model and timeout settings
+  validator_model: "haiku"         # Model for validation analysis (sonnet | haiku)
+  engineer_timeout: 30             # Minutes for engineer invocation
+  validator_timeout: 10            # Minutes for validator invocation
+
+  # V2: Multi-instance concurrency control (label-based)
+  # For running multiple Ralph instances under same GitHub user
+  # instance_label is now in .env (RALPH_LABEL) to prevent commit conflicts
+  instance_label_prefix: "ralph-"  # Prefix for all instance labels (used to skip other instances' tickets)
+  use_assignee: false               # Also assign issues to user (set false for multi-instance with same user)

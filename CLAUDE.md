@@ -29,6 +29,7 @@ Every delegated task:
 | Verify artifacts were created | Make architectural decisions yourself |
 | Summarize results for user | Accumulate context by doing everything |
 | Coordinate between phases | Skip delegation "to save time" |
+| Install/uninstall local project level things i.e. npm install | Install/Uninstall system level things i.e. apt install |
 
 ### The Only Exceptions
 

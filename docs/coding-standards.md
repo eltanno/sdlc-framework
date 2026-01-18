@@ -224,6 +224,7 @@ npm test -- --coverage
 
 ## File Structure Convention
 
+### Single-Codebase Projects
 ```
 project/
 ├── src/              # Application code only (no tests)
@@ -246,7 +247,71 @@ project/
 └── tmp/              # Temporary files (gitignored)
 ```
 
+### Monorepo Projects
+
+When a project has multiple codebases (e.g., mobile + backend), each codebase lives in its own directory:
+
+```
+project/
+├── mobile/           # React Native / Expo app
+│   ├── src/
+│   ├── test/
+│   └── package.json
+├── backend/          # Django / Node API
+│   ├── apps/
+│   ├── config/
+│   └── requirements/
+├── docs/             # Shared documentation
+└── config.yaml       # Defines all codebases
+```
+
 **Key principle:** Source code and tests are separated. Tests never live alongside source files.
+
+---
+
+## Monorepo Configuration (IMPORTANT)
+
+**Check `config.yaml` before running quality commands.**
+
+### Single-Codebase (default)
+If `config.yaml` has NO `dev.codebases` section, run commands from project root:
+```bash
+npm run typecheck
+npm run lint
+npm test
+```
+
+### Monorepo (multiple codebases)
+If `config.yaml` has a `dev.codebases` section, you MUST run commands for EACH codebase:
+
+```yaml
+# Example config.yaml
+dev:
+  codebases:
+    mobile:
+      path: "mobile"
+      test_command: "npm test"
+    backend:
+      path: "backend"
+      test_command: "pytest"
+```
+
+**How to run:**
+```bash
+# For each codebase, cd into its path and run its commands
+cd mobile && npm test && cd ..
+cd backend && pytest && cd ..
+```
+
+**ALL codebases must pass before committing.** A failure in any codebase blocks the commit.
+
+### Interpreting config.yaml
+
+1. Read `config.yaml` at project root
+2. Check if `dev.codebases` exists:
+   - **Yes**: Iterate each codebase, `cd` into `path`, run its commands
+   - **No**: Run top-level `dev.*` commands from project root
+3. All checks (typecheck, lint, test, build) must pass for ALL codebases
 
 ---
 

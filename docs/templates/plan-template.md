@@ -126,13 +126,13 @@
 
 *These will be created after plan approval:*
 
-| # | Title | Description | Priority | Complexity | Phase |
-|---|-------|-------------|----------|------------|-------|
-| 1 | {Title} | Brief description | P1 | 1 | 1 |
-| 2 | {Title} | Brief description | P1 | 2 | 1 |
-| 3 | {Title} | Brief description | P2 | 3 | 2 |
-| 4 | {Title} | Brief description | P2 | 3 | 2 |
-| 5 | {Title} | Brief description | P3 | 4 | 3 |
+| # | Title | Description | Priority | Complexity | Phase | Dependencies |
+|---|-------|-------------|----------|------------|-------|--------------|
+| 1 | {Title} | Brief description | P1 | 1 | 1 | - |
+| 2 | {Title} | Brief description | P1 | 2 | 1 | - |
+| 3 | {Title} | Brief description | P2 | 3 | 2 | 1, 2 |
+| 4 | {Title} | Brief description | P2 | 3 | 2 | 1, 2 |
+| 5 | {Title} | Brief description | P3 | 4 | 3 | 3, 4 |
 
 **Complexity Score (1-5):** Determines which AI model handles implementation.
 

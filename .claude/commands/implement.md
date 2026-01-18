@@ -117,18 +117,18 @@ npm test
 - Remove duplication
 - Improve naming
 
-### 3. Verify Quality
+### 3. Verify Quality (ALL MUST PASS)
 
-```bash
-# All tests pass
-npm test
+Read commands from `config.yaml` under `dev:` section and run them in order:
 
-# Linting passes
-npm run lint
+1. **Typecheck** - `dev.typecheck_command` - Must pass with no errors
+2. **Lint** - `dev.lint_command` - Must pass with no errors
+3. **Test** - `dev.test_command` - All tests must pass
+4. **Build** - `dev.build_command` - Must succeed
 
-# No console.logs in production code
-grep -r "console.log" src/ --include="*.ts" --include="*.js"
-```
+Also check for debug statements (console.log, print, debugger, etc.) in production code.
+
+**Do NOT proceed to commit if any check fails. Fix issues first.**
 
 ### 4. Commit Changes
 
@@ -164,8 +164,10 @@ Acceptance Criteria Status:
 - [x] Criterion 2 - covered by test_xxx
 
 Verification:
-- Tests: PASS
+- Typecheck: PASS
 - Lint: PASS
+- Tests: PASS
+- Build: PASS
 
 Commits: [N] commits on branch
 
@@ -176,7 +178,7 @@ Next: Ready for /pr TASK-XXX
 
 1. **Tests FIRST** - Write failing tests before implementation
 2. **Small commits** - Commit logical chunks, not everything at once
-3. **No broken tests** - Never commit if tests are failing
+3. **All checks pass** - Never commit if typecheck, lint, tests, or build fail
 4. **Match acceptance criteria** - Every criterion should have a test
 
 ---

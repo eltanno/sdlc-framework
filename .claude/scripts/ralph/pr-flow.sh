@@ -65,6 +65,44 @@ fi
 CURRENT_BRANCH=$(git branch --show-current)
 echo "Current branch: $CURRENT_BRANCH"
 
+# Check if we're on main with no changes - ticket might already be done
+if [ "$CURRENT_BRANCH" = "main" ] || [ "$CURRENT_BRANCH" = "master" ]; then
+    # Check if a PR already exists for this ticket
+    if [ -n "$TICKET_ID" ]; then
+        EXISTING_PR=$(gh pr list --search "$TICKET_ID in:title" --state merged --json number,title --jq '.[0].number' 2>/dev/null)
+        if [ -n "$EXISTING_PR" ] && [ "$EXISTING_PR" != "null" ]; then
+            echo "PR #$EXISTING_PR already merged for $TICKET_ID"
+            echo ""
+            echo "=== PR Flow Complete (Already Merged) ==="
+            echo "Ticket: $TICKET_ID"
+            echo "Status: Already merged as PR #$EXISTING_PR"
+            echo ""
+            # Output JSON for orchestrator
+            cat << ENDJSON
+{
+  "ticket": "$TICKET_ID",
+  "branch": "$CURRENT_BRANCH",
+  "commit": false,
+  "has_remote": true,
+  "pr_number": $EXISTING_PR,
+  "pr_url": null,
+  "merged": true,
+  "already_done": true
+}
+ENDJSON
+            exit 0
+        fi
+    fi
+
+    # If no existing PR and on main, this is an error
+    uncommitted=$(git status --porcelain 2>/dev/null | wc -l)
+    if [ "$uncommitted" -eq 0 ]; then
+        echo "Error: On $CURRENT_BRANCH branch with no changes and no existing PR"
+        echo "Cannot create PR from default branch"
+        exit 1
+    fi
+fi
+
 # Check if there are changes to commit
 if git diff --quiet && git diff --staged --quiet; then
     echo -e "${YELLOW}No changes to commit${NC}"
@@ -140,11 +178,15 @@ $([ -n "$ISSUE_NUMBER" ] && echo "Closes #$ISSUE_NUMBER")
 
 See commit history for details.
 
-## Testing
+## Validation
 
-- [x] All tests pass
-- [x] Lint passes
-- [x] Build succeeds
+All validation checks passed:
+- TypeScript typecheck
+- Lint
+- Tests
+- Build
+
+_Note: Branch may contain WIP commits from implementation attempts. Squash merge will consolidate._
 "
 
             if PR_OUTPUT=$(gh pr create \

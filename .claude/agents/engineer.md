@@ -79,18 +79,54 @@ Never write implementation code without a failing test first.
 - **Clean Code**: Meaningful names, small functions, single responsibility
 - **No Magic**: No hardcoded values, use constants/config
 - **Error Handling**: Handle errors explicitly, no silent failures
-- **Types**: Use TypeScript types fully, avoid `any`
+- **Type Safety**: Use the language's type system fully (avoid `any` in TS, use type hints in Python, etc.)
 - **Security**: Follow OWASP guidelines, validate inputs, encode outputs
 
-### Linting & Formatting
+### Quality Checks (ALL MUST PASS)
 
-Before committing:
+Before committing, run ALL checks from `config.yaml`:
+
+1. **Typecheck** - No type errors
+2. **Lint** - No lint errors
+3. **Test** - All tests pass
+4. **Build** - Build succeeds
+
+**These are not optional.** If any check fails, fix it before committing. Never commit broken code.
+
+#### How to Read config.yaml
+
+**IMPORTANT:** Check if `config.yaml` has a `dev.codebases` section:
+
+**Single-codebase (no codebases section):**
 ```bash
-npm run lint      # Must pass with no errors
-npm run test      # All tests must pass
+# Run top-level commands from project root
+npm run typecheck   # dev.typecheck_command
+npm run lint        # dev.lint_command
+npm test            # dev.test_command
+npm run build       # dev.build_command
 ```
 
-Fix lint errors immediately - don't commit with warnings.
+**Monorepo (has codebases section):**
+```yaml
+dev:
+  codebases:
+    mobile:
+      path: "mobile"
+      test_command: "npm test"
+    backend:
+      path: "backend"
+      test_command: "pytest"
+```
+
+```bash
+# Run commands for EACH codebase (cd into path first)
+cd mobile && npm run typecheck && npm run lint && npm test && cd ..
+cd backend && pytest && python manage.py check && cd ..
+```
+
+**ALL codebases must pass.** A failure in any codebase blocks the commit.
+
+See `docs/coding-standards.md` for detailed monorepo documentation.
 
 ### Git Practices
 
@@ -123,12 +159,14 @@ For complete coding standards including detailed git practices, error handling, 
 
 ### Code Review Readiness
 
-Before submitting PR:
-- [ ] All tests pass
-- [ ] No lint errors
+Before marking implementation complete:
+- [ ] Typecheck passes (`dev.typecheck_command` from config.yaml)
+- [ ] Lint passes (`dev.lint_command` from config.yaml)
+- [ ] Tests pass (`dev.test_command` from config.yaml)
+- [ ] Build passes (`dev.build_command` from config.yaml)
 - [ ] Self-reviewed the diff
 - [ ] Commit messages reference ticket
-- [ ] No console.logs or debug code
+- [ ] No debug statements in production code
 - [ ] No commented-out code
 - [ ] Security checklist verified
 
@@ -149,16 +187,18 @@ Ticket: TASK-{id}
 Branch: feature/TASK-{id}-{description}
 
 ## Changes
-- file1.ts: Added X
-- file2.ts: Modified Y
+- [file]: Added X
+- [file]: Modified Y
 
 ## Tests
-- test1.spec.ts: Tests for X (3 tests)
-- test2.spec.ts: Tests for Y (2 tests)
+- [test file]: Tests for X (N tests)
+- [test file]: Tests for Y (N tests)
 
 ## Verification
-- [x] All tests pass
+- [x] Typecheck passes
 - [x] Lint passes
+- [x] All tests pass
+- [x] Build passes
 - [x] Commits reference ticket
 - [x] Security checklist verified
 
