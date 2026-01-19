@@ -1,0 +1,39 @@
+{
+  "ticket_id": "SDLC-0025",
+  "final_status": "SUCCESS",
+  "total_attempts": 1,
+  "completed": "2026-01-19T20:16:33+00:00",
+  "outcome": "Ticket completed successfully after 1 attempt(s). PR #61 merged.",
+  "attempt_history": [
+    {
+      "attempt": 1,
+      "status": "validation_passed",
+      "key_issues": "None"
+    }
+  ],
+  "branch": "",
+  "last_commit": "ada2a7e",
+  "pr_number": "61",
+  "files_changed": [
+    ".claude/ralph/commands/__pycache__/ticket_reset.cpython-310.pyc",
+    ".claude/ralph/commands/ticket_reset.py",
+    ".claude/ralph/tests/unit/__pycache__/test_ticket_reset.cpython-310-pytest-8.4.2.pyc",
+    ".claude/ralph/tests/unit/test_ticket_reset.py",
+    "docs/state/SDLC-0023/summary.json",
+    "docs/state/SDLC-0023/summary.md",
+    "docs/state/SDLC-0025/attempt-1/engineer-state.json",
+    "docs/state/SDLC-0025/attempt-1/engineer-state.md"
+  ],
+  "lessons_learned": [],
+  "usage": {
+    "invocation_count": 1,
+    "duration_seconds": 237,
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "cache_read_tokens": 0,
+    "cache_creation_tokens": 0,
+    "total_cost": 0,
+    "model": "opus",
+    "complexity": 3
+  }
+}
