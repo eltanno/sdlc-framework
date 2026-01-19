@@ -455,9 +455,87 @@ Analyze the directory organization and file structure of this codebase.
 
 ### How to Analyze
 
-- Use `ls -la` or `Glob` to map directory structure
-- Identify patterns in file organization
-- Look for README files explaining structure
+Use these tools to gather information:
+- `Bash` with `ls -la` to list root directory contents
+- `Glob` for file patterns: `**/src/**`, `**/lib/**`, `**/app/**`
+- `Read` to examine README files and configuration
+- `Grep` to find import patterns revealing module structure
+
+**Organization Pattern Detection:**
+
+| Pattern | Detection Indicators |
+|---------|---------------------|
+| Feature-based | Directories named after features: `auth/`, `users/`, `billing/`, `products/` with each containing full stack (components, services, tests) |
+| Layer-based | Directories named after layers: `controllers/`, `services/`, `models/`, `views/`, `repositories/` |
+| Domain-Driven | `domain/`, `application/`, `infrastructure/` directories; bounded context separation |
+| Modular Monolith | `modules/` or `packages/` with self-contained modules; clear module boundaries |
+| Flat | Most files at root or single `src/` with no sub-organization |
+| Hybrid | Mix of feature and layer patterns; common in evolved codebases |
+
+**Common Directory Purposes:**
+
+| Directory | Common Purposes |
+|-----------|-----------------|
+| `src/`, `lib/`, `app/` | Main application source code |
+| `test/`, `tests/`, `__tests__/`, `spec/` | Test files |
+| `config/`, `conf/` | Configuration files |
+| `scripts/`, `bin/` | Build/deploy/utility scripts |
+| `docs/`, `documentation/` | Documentation |
+| `public/`, `static/`, `assets/` | Static files served directly |
+| `dist/`, `build/`, `out/` | Build output (usually gitignored) |
+| `vendor/`, `third_party/` | Vendored dependencies |
+| `migrations/`, `db/` | Database migrations |
+| `templates/`, `views/` | Template files for rendering |
+| `.github/`, `.gitlab/` | CI/CD configuration |
+| `cmd/` | Go command entry points |
+| `internal/`, `pkg/` | Go internal/public packages |
+| `apps/`, `packages/` | Monorepo sub-projects |
+
+**Entry Point Detection by Ecosystem:**
+
+| Ecosystem | Common Entry Points |
+|-----------|-------------------|
+| Node.js/TypeScript | Check `package.json` "main", "module", "exports"; look for `src/index.ts`, `src/main.ts`, `app.ts`, `server.ts` |
+| Python | `main.py`, `app.py`, `__main__.py`, `manage.py` (Django), `wsgi.py`, `asgi.py`; check `pyproject.toml` [tool.poetry.scripts] |
+| Go | `main.go` at root, `cmd/*/main.go` for multi-binary projects |
+| Java | `*Application.java`, `Main.java`; check `pom.xml` or `build.gradle` for main class |
+| Ruby | `config.ru`, `app.rb`, `Rakefile`; Rails: `config/application.rb` |
+| Rust | `src/main.rs` (binary), `src/lib.rs` (library) |
+| .NET | `Program.cs`, `Startup.cs`; check `.csproj` for entry point |
+
+**Configuration File Detection:**
+
+| File | Purpose | Ecosystem |
+|------|---------|-----------|
+| `package.json` | Dependencies, scripts, metadata | Node.js |
+| `tsconfig.json` | TypeScript compiler options | TypeScript |
+| `pyproject.toml`, `setup.py`, `setup.cfg` | Python package config | Python |
+| `requirements.txt`, `Pipfile` | Python dependencies | Python |
+| `go.mod`, `go.sum` | Go module definition | Go |
+| `Cargo.toml` | Rust package config | Rust |
+| `pom.xml`, `build.gradle` | Java build config | Java |
+| `Gemfile` | Ruby dependencies | Ruby |
+| `Makefile` | Build automation | Cross-platform |
+| `docker-compose.yml`, `Dockerfile` | Container config | Docker |
+| `.env`, `.env.example` | Environment variables | Cross-platform |
+| `.eslintrc*`, `.prettierrc*` | Linting/formatting | JavaScript/TypeScript |
+| `jest.config.*`, `vitest.config.*` | Test framework config | JavaScript/TypeScript |
+| `pytest.ini`, `pyproject.toml [tool.pytest]` | Test config | Python |
+| `.github/workflows/*.yml` | CI/CD pipelines | GitHub Actions |
+| `.gitlab-ci.yml` | CI/CD pipeline | GitLab CI |
+| `vercel.json`, `netlify.toml` | Deployment config | Serverless/JAMstack |
+
+**Monorepo Detection:**
+
+| Indicator | Tool/Pattern |
+|-----------|-------------|
+| `workspaces` in package.json | npm/yarn workspaces |
+| `pnpm-workspace.yaml` | pnpm workspaces |
+| `lerna.json` | Lerna monorepo |
+| `nx.json`, `project.json` files | Nx monorepo |
+| `turbo.json` | Turborepo |
+| Multiple `package.json` in subdirs | Generic monorepo |
+| `apps/` and `packages/` structure | Common monorepo layout |
 
 ### Output
 
@@ -484,26 +562,49 @@ project/
 ```
 
 ### Source Organization
-- Pattern: [feature-based/layer-based/etc]
-- Description: [how code is organized]
+| Attribute | Value | Evidence |
+|-----------|-------|----------|
+| Pattern | [feature-based/layer-based/domain-driven/etc] | [what indicates this] |
+| Main Source Directory | [path] | [e.g., src/, lib/, app/] |
+| Shared Code Location | [path or "none"] | [utils/, common/, shared/] |
+| Module Boundaries | [clear/unclear/none] | [how modules are separated] |
+
+**Directory Purpose Map:**
+| Directory | Purpose | Key Contents |
+|-----------|---------|--------------|
+| [dir/] | [purpose] | [notable files or subdirectories] |
 
 ### Entry Points
-- Main: [file path]
-- CLI: [file path if applicable]
-- Tests: [test entry approach]
+| Type | Path | Purpose |
+|------|------|---------|
+| Main Application | [file path] | [what it starts] |
+| CLI | [file path or "N/A"] | [command-line interface] |
+| Tests | [entry approach] | [how tests are run] |
+| Build | [entry approach] | [how builds are triggered] |
 
 ### Configuration Files
-| File | Purpose |
-|------|---------|
-| [file] | [purpose] |
+| File | Purpose | Key Settings |
+|------|---------|--------------|
+| [file] | [purpose] | [notable configuration] |
+
+### Monorepo Structure
+[If applicable - otherwise state "Not a monorepo"]
+| Package/App | Path | Purpose |
+|-------------|------|---------|
+| [name] | [path] | [purpose] |
 
 ### Documentation
-- Location: [where docs live]
-- Coverage: [what's documented]
+| Location | Type | Coverage |
+|----------|------|----------|
+| [path] | [README/API docs/guides] | [what's documented] |
+
+### Notable Patterns
+- [Pattern 1]: [description of any unique structural choices]
+- [Pattern 2]: [description]
 
 ## Recommendations
 
-- [Structure recommendations]
+- [Structure recommendations based on findings]
 
 ---
 *Generated by `/analyze-codebase`*
