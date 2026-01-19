@@ -269,10 +269,63 @@ Analyze the architectural patterns and data flow of this codebase.
 
 ### How to Analyze
 
-- Look for entry points (main files, index files, app files)
-- Trace data flow from routes/handlers to database
-- Identify service boundaries
-- Look for configuration that indicates architecture
+Use these tools to gather information:
+- `Glob` for file patterns: `**/routes/**`, `**/controllers/**`, `**/models/**`, `**/services/**`
+- `Read` to examine entry points, config files, and key modules
+- `Grep` to find patterns like imports, decorators, and API definitions
+
+**Architecture Detection Patterns:**
+
+| Architecture | Detection Indicators |
+|--------------|---------------------|
+| Monolith | Single entry point, all code in one repo, shared database |
+| Microservices | Multiple entry points, docker-compose with multiple services, separate package files |
+| Serverless | Lambda handlers, `serverless.yml`, Vercel/Netlify configs |
+| Monorepo | Multiple `package.json` files, workspaces config, Nx/Turborepo config |
+| Frontend/Backend Split | Separate `client`/`server` or `frontend`/`backend` directories |
+
+**Design Pattern Detection:**
+
+| Pattern | Detection Indicators |
+|---------|---------------------|
+| MVC | `controllers/`, `models/`, `views/` directories; Rails/Django/Express patterns |
+| Clean Architecture | `domain/`, `usecases/`, `infrastructure/` directories; dependency inversion |
+| Repository Pattern | `*Repository` classes, `repositories/` directory |
+| Service Layer | `*Service` classes, `services/` directory |
+| Event-Driven | Event emitters, message queue imports (RabbitMQ, Kafka, Redis pub/sub) |
+| CQRS | Separate read/write models, `commands/`, `queries/` directories |
+
+**Data Layer Detection:**
+
+| ORM/Database | Detection Patterns |
+|--------------|-------------------|
+| Prisma | `prisma/schema.prisma`, `@prisma/client` imports |
+| TypeORM | `@Entity`, `@Column` decorators, `ormconfig.json` |
+| Sequelize | `sequelize` imports, `models/index.js` pattern |
+| SQLAlchemy | `from sqlalchemy` imports, `models.py` with Base class |
+| Django ORM | `models.py` with `models.Model`, migrations directory |
+| Mongoose | `mongoose.Schema`, `mongoose.model` patterns |
+| Drizzle | `drizzle.config.ts`, `@drizzle-orm` imports |
+| Raw SQL | Direct `pg`, `mysql2`, `sqlite3` imports without ORM |
+
+**API Structure Detection:**
+
+| API Style | Detection Patterns |
+|-----------|-------------------|
+| REST | Route files with HTTP methods (GET, POST, PUT, DELETE), `/api/` paths |
+| GraphQL | `typeDefs`, `resolvers`, `.graphql` files, Apollo/Yoga/Mercurius |
+| gRPC | `.proto` files, gRPC package imports |
+| tRPC | `trpc` imports, router definitions |
+| WebSocket | `socket.io`, `ws` imports, WebSocket handlers |
+
+**Entry Point Detection:**
+
+| Ecosystem | Common Entry Points |
+|-----------|-------------------|
+| Node.js | `src/index.ts`, `app.ts`, `server.ts`, `main.ts` (check `package.json` "main") |
+| Python | `main.py`, `app.py`, `manage.py`, `wsgi.py`, `asgi.py` |
+| Go | `main.go`, `cmd/*/main.go` |
+| Java | `Application.java`, `Main.java`, `*Application.java` |
 
 ### Output
 
@@ -291,30 +344,59 @@ Create `docs/legacy/ARCHITECTURE.md` with this structure:
 ## Findings
 
 ### System Type
-[Description of overall architecture]
+| Aspect | Value | Evidence |
+|--------|-------|----------|
+| Architecture Style | [Monolith/Microservices/Serverless/etc] | [what indicates this] |
+| Frontend/Backend | [Split/Unified/N/A] | [directory structure or config] |
+| Entry Point(s) | [file path(s)] | [how determined] |
 
 ### Design Patterns
-- [Pattern]: [where/how used]
+| Pattern | Location | Description |
+|---------|----------|-------------|
+| [Pattern name] | [directories/files] | [how it's implemented] |
 
 ### Data Flow
 ```
-[Simple text diagram or description]
+[Request] → [Entry Point] → [Handler/Controller] → [Service] → [Data Layer] → [Response]
 ```
 
+**Data Flow Description:**
+1. **Input:** [How data enters - HTTP, events, CLI, etc.]
+2. **Processing:** [Key transformation/business logic layers]
+3. **Output:** [How data exits - responses, events, files, etc.]
+
 ### Data Layer
-- Database: [type and details]
-- ORM/Data Access: [approach]
+| Component | Technology | Details |
+|-----------|------------|---------|
+| Database | [PostgreSQL/MongoDB/etc] | [connection string location, schema files] |
+| ORM/Query | [Prisma/TypeORM/etc or "Raw SQL"] | [config file, model locations] |
+| Migrations | [Tool or "None"] | [migration directory if present] |
+| Caching | [Redis/Memcached/None] | [if applicable] |
 
 ### API Structure
-- Style: [REST/GraphQL/etc]
-- Organization: [how endpoints are organized]
+| Attribute | Value | Notes |
+|-----------|-------|-------|
+| Style | [REST/GraphQL/gRPC/etc] | [library used] |
+| Base Path | [/api, /graphql, etc] | [where defined] |
+| Auth Pattern | [JWT/Session/OAuth/None] | [middleware location] |
+
+**Endpoint Organization:**
+- [Description of how routes/endpoints are organized]
+- [Key route files and their responsibilities]
 
 ### Component Communication
-[How parts of the system interact]
+| Communication Type | Where Used | Pattern |
+|-------------------|------------|---------|
+| [Direct calls/Events/Queue/etc] | [between what components] | [sync/async, library used] |
+
+### Module Boundaries
+| Module/Service | Responsibility | Dependencies |
+|----------------|---------------|--------------|
+| [module name] | [what it does] | [what it depends on] |
 
 ## Recommendations
 
-- [Architectural recommendations]
+- [Architectural recommendations based on findings]
 
 ---
 *Generated by `/analyze-codebase`*
