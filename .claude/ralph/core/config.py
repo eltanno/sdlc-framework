@@ -46,6 +46,27 @@ class ConfigError(Exception):
 
 
 @dataclass
+class Codebase:
+    """Configuration for a single codebase in a monorepo.
+
+    Attributes:
+        name: Name identifier for the codebase (e.g., "mobile", "backend")
+        path: Relative path from project root to codebase directory
+        typecheck_command: Command to run type checking (empty string if not configured)
+        lint_command: Command to run linting (empty string if not configured)
+        test_command: Command to run tests (empty string if not configured)
+        build_command: Command to run build (empty string if not configured)
+    """
+
+    name: str
+    path: str
+    typecheck_command: str = ""
+    lint_command: str = ""
+    test_command: str = ""
+    build_command: str = ""
+
+
+@dataclass
 class RalphConfig:
     """Configuration settings for the Ralph orchestrator.
 
@@ -76,11 +97,26 @@ class RalphConfig:
 class Config:
     """Top-level configuration container.
 
+    Supports both Ralph orchestrator settings and validation configuration.
+    For validation, supports both single-codebase and monorepo configurations.
+
     Attributes:
         ralph: Ralph-specific configuration settings.
+        typecheck_command: Type checking command (single-codebase mode).
+        lint_command: Linting command (single-codebase mode).
+        test_command: Test command (single-codebase mode).
+        build_command: Build command (single-codebase mode).
+        is_monorepo: True if dev.codebases section exists.
+        codebases: List of Codebase configs (empty for single-codebase).
     """
 
     ralph: RalphConfig = field(default_factory=RalphConfig)
+    typecheck_command: str = ""
+    lint_command: str = ""
+    test_command: str = ""
+    build_command: str = ""
+    is_monorepo: bool = False
+    codebases: list[Codebase] = field(default_factory=list)
 
 
 def load_config(config_path: Union[str, Path]) -> Config:
@@ -124,6 +160,7 @@ def _parse_config(data: dict[str, Any]) -> Config:
     Returns:
         Config object with defaults applied for missing values.
     """
+    # Parse Ralph orchestrator settings
     ralph_data = data.get("ralph", {}) or {}
 
     ralph_config = RalphConfig(
@@ -138,7 +175,33 @@ def _parse_config(data: dict[str, Any]) -> Config:
         validator_timeout=ralph_data.get("validator_timeout", 10),
     )
 
-    return Config(ralph=ralph_config)
+    # Parse validation settings from dev section
+    dev_data = data.get("dev", {}) or {}
+
+    # Check for monorepo configuration
+    codebases_data = dev_data.get("codebases", []) or []
+    is_monorepo = len(codebases_data) > 0
+
+    codebases = []
+    for cb in codebases_data:
+        codebases.append(Codebase(
+            name=cb.get("name", ""),
+            path=cb.get("path", ""),
+            typecheck_command=cb.get("typecheck", ""),
+            lint_command=cb.get("lint", ""),
+            test_command=cb.get("test", ""),
+            build_command=cb.get("build", ""),
+        ))
+
+    return Config(
+        ralph=ralph_config,
+        typecheck_command=dev_data.get("typecheck", ""),
+        lint_command=dev_data.get("lint", ""),
+        test_command=dev_data.get("test", ""),
+        build_command=dev_data.get("build", ""),
+        is_monorepo=is_monorepo,
+        codebases=codebases,
+    )
 
 
 def get_instance_label_prefix(config_path: Union[str, Path]) -> str:
