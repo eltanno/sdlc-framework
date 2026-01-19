@@ -142,6 +142,22 @@ Use these tools to gather information:
 - `Read` to examine config files: package.json, pyproject.toml, go.mod, etc.
 - `Grep` to find import patterns and dependencies
 
+**Language-Specific Version Detection:**
+
+| Ecosystem | Version Sources |
+|-----------|-----------------|
+| TypeScript | `tsconfig.json` (target, lib), `package.json` (typescript version), `.nvmrc` or `engines.node` |
+| Python | `pyproject.toml` (requires-python), `.python-version`, `setup.py`, `runtime.txt` |
+| Go | `go.mod` (go directive), `Dockerfile` (FROM golang:version) |
+| Java | `pom.xml` (maven.compiler.source), `build.gradle` (sourceCompatibility) |
+| Rust | `Cargo.toml` (rust-version), `rust-toolchain.toml` |
+
+**Framework Detection Patterns:**
+- React: Look for `react` in package.json dependencies, `jsx`/`tsx` files
+- Express/Fastify: Look in package.json, trace from main entry point
+- Django/FastAPI: Look in pyproject.toml/requirements.txt, find main app module
+- Gin/Echo: Look in go.mod, find main.go imports
+
 ### Output
 
 Create `docs/legacy/STACK.md` with this structure:
@@ -159,19 +175,33 @@ Create `docs/legacy/STACK.md` with this structure:
 ## Findings
 
 ### Primary Languages
-- [Language]: [version] ([proportion if multi-language])
+| Language | Version | Proportion | Source |
+|----------|---------|------------|--------|
+| [Language] | [version] | [%] | [where version was found] |
 
 ### Frameworks
-- [Framework]: [version] - [purpose]
+| Framework | Version | Purpose |
+|-----------|---------|---------|
+| [Framework] | [version] | [purpose] |
 
 ### Runtime Environment
-- [Runtime details]
+| Runtime | Version | Notes |
+|---------|---------|-------|
+| [e.g., Node.js] | [version] | [requirements source] |
 
 ### Build Tools
-- [Tool]: [purpose]
+| Tool | Purpose |
+|------|---------|
+| [Tool] | [purpose] |
+
+### Package Manager
+- Primary: [npm/yarn/pip/poetry/go mod]
+- Lock file: [yes/no]
 
 ### Development Tools
-- [Tool]: [purpose]
+| Tool | Purpose | Configuration |
+|------|---------|---------------|
+| [Linter/Formatter] | [purpose] | [config file] |
 
 ## Recommendations
 
