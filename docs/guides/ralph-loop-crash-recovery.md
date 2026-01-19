@@ -200,12 +200,14 @@ Once everything is clean:
 ```bash
 # In ralph-1 terminal
 cd /home/jim/workspace/getstirrup.com/ralph-1
-.claude/scripts/ralph-prd.sh docs/prds/YYYY-MM-DD-feature.md docs/plans/YYYY-MM-DD-feature.md
+.claude/ralph/ralph run docs/prds/YYYY-MM-DD-feature.md docs/plans/YYYY-MM-DD-feature.md
 
 # In ralph-2 terminal
 cd /home/jim/workspace/getstirrup.com/ralph-2
-.claude/scripts/ralph-prd.sh docs/prds/YYYY-MM-DD-feature.md docs/plans/YYYY-MM-DD-feature.md
+.claude/ralph/ralph run docs/prds/YYYY-MM-DD-feature.md docs/plans/YYYY-MM-DD-feature.md
 ```
+
+**Prerequisites:** Python 3.10 or higher
 
 ---
 

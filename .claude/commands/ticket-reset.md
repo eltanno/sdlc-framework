@@ -10,26 +10,28 @@ When a ticket has been marked as blocked (exceeded max attempts, validation fail
 
 $ARGUMENTS
 
-The argument should be a ticket ID (e.g., `AUCT-0055`).
+The argument should be a ticket ID (e.g., `SDLC-0055`).
 
 ## Action
 
-Run the ticket reset script:
+Run the ticket reset command:
 
 ```bash
-.claude/scripts/ralph/ticket-reset.sh <ticket-id> --clean-state
+.claude/ralph/ralph reset <ticket-id>
 ```
 
 ### What This Does
 
-1. **Removes from blocked array** - The ticket is no longer considered blocked
+1. **Validates ticket is blocked** - Only blocked tickets can be reset
 2. **Sets status to pending** - Ready to be picked up by the Ralph loop
-3. **Resets attempts to 0** - Fresh start with full retry budget
-4. **Cleans state files** - Removes previous attempt directories (optional with `--clean-state`)
+3. **Clears block reason** - Previous failure reason is removed
+4. **Resets attempts to 0** - Fresh start with full retry budget
+5. **Updates blocked count** - Decrements the blocked ticket counter
 
-## Options
+## Prerequisites
 
-- `--clean-state` - Also delete the state files in `docs/state/<ticket>/` for a completely fresh start
+- Python 3.10 or higher
+- Valid `workflow-state.json` file in the project root
 
 ## When to Use
 
@@ -42,8 +44,8 @@ Use this command when:
 ## Example
 
 ```bash
-# Reset AUCT-0055 and clean its state files
-.claude/scripts/ralph/ticket-reset.sh AUCT-0055 --clean-state
+# Reset SDLC-0055 to pending status
+.claude/ralph/ralph reset SDLC-0055
 ```
 
 ## After Reset
@@ -51,7 +53,7 @@ Use this command when:
 After resetting, you can run the Ralph loop again:
 
 ```bash
-.claude/scripts/ralph-prd.sh <prd-path> <plan-path>
+.claude/ralph/ralph run <prd-path> <plan-path>
 ```
 
 The reset ticket will be picked up as the next pending ticket.
