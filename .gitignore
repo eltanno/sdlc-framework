@@ -39,6 +39,18 @@ yarn-error.log*
 coverage/
 .nyc_output/
 
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+*.egg-info/
+
 # Misc
 *.tgz
 *.tar.gz
