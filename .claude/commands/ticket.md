@@ -145,7 +145,30 @@ Update PRD with: `{TICKET_PREFIX}-{N}` (e.g., SDLC-0001)
 
 ### If pm.tool = github
 
-Create issues via gh CLI:
+**Step 1: Ensure required labels exist**
+
+Before creating any issues, ensure the required labels exist in the repository (uses gh api for compatibility with older gh versions):
+
+```bash
+# Get repo name
+REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner')
+
+# Create 'task' label if missing (green - work items for Ralph)
+gh api "repos/$REPO/labels" -f name="task" -f description="Work item for Ralph automation" -f color="0E8A16" 2>/dev/null || true
+
+# Create 'blocked' label if missing (red - tickets that need manual intervention)
+gh api "repos/$REPO/labels" -f name="blocked" -f description="Ticket is blocked and needs manual intervention" -f color="D93F0B" 2>/dev/null || true
+
+# Create Ralph instance labels for parallel execution
+# Read prefix from config.yaml (default: "ralph-")
+RALPH_PREFIX=$(grep -E '^\s*instance_label_prefix:' config.yaml 2>/dev/null | sed 's/.*instance_label_prefix:\s*"\?\([^"#]*\)"\?.*/\1/' | tr -d ' ' | head -1)
+RALPH_PREFIX="${RALPH_PREFIX:-ralph-}"
+for i in {0..5}; do
+    gh api "repos/$REPO/labels" -f name="${RALPH_PREFIX}$i" -f description="Ralph instance $i" -f color="0052CC" 2>/dev/null || true
+done
+```
+
+**Step 2: Create issues via gh CLI**
 
 ```bash
 gh issue create \
