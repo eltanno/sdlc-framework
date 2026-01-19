@@ -1711,49 +1711,232 @@ User context: [answers from Q&A, or "No user context provided"]
 User pain points: [if provided in Q&A]
 
 ### Objective
-Identify technical debt, code smells, and areas of concern in this codebase.
+Identify technical debt, code smells, and areas of concern in this codebase. Focus on actionable findings that impact maintainability, reliability, and developer productivity.
 
 ### Analysis Areas
 
 1. **Code Complexity**
    - Large files (>500 lines)
    - Complex functions (high cyclomatic complexity indicators)
-   - Deep nesting
-   - Long parameter lists
+   - Deep nesting (>4 levels)
+   - Long parameter lists (>5 parameters)
+   - Long functions (>50 lines)
 
 2. **Technical Debt Markers**
    - TODO comments
    - FIXME comments
    - HACK comments
-   - Deprecated usage
+   - XXX comments
+   - Deprecated usage warnings
+   - @deprecated annotations
 
 3. **Dependency Health**
-   - Outdated dependencies
+   - Outdated dependencies (major versions behind)
    - Security vulnerabilities (if detectable)
    - Unused dependencies
    - Duplicate dependencies
+   - Deprecated packages
 
 4. **Code Smells**
    - Duplicate code patterns
-   - Dead code
+   - Dead code (unused exports, unreachable code)
    - Inconsistent patterns
    - Magic numbers/strings
+   - Hardcoded values that should be config
 
 5. **Architectural Concerns**
    - Circular dependencies
    - Tight coupling indicators
    - Missing abstractions
-   - God classes/modules
+   - God classes/modules (doing too much)
+   - Leaky abstractions
 
 6. **User-Reported Issues**
    - If user provided pain points in Q&A, investigate those specifically
 
 ### How to Analyze
 
-- Find large files: `wc -l` or analyze file sizes
-- Search for TODO/FIXME/HACK: `Grep` for these patterns
-- Check dependency age: package.json, requirements.txt versions
-- Look for obvious code smells through sampling
+Use these tools to gather information:
+- `Bash` with `find . -name "*.ts" -exec wc -l {} \;` or similar for file sizes
+- `Grep` to search for TODO/FIXME/HACK patterns
+- `Read` to examine package.json, requirements.txt for dependency versions
+- `Glob` to find patterns indicating code smells
+- Sample problematic files to understand the nature of concerns
+
+**Code Complexity Detection:**
+
+| Metric | Threshold | How to Detect | Risk Level |
+|--------|-----------|---------------|------------|
+| File size | >500 lines | `wc -l` on source files | Medium |
+| File size | >1000 lines | `wc -l` on source files | High |
+| Function length | >50 lines | Manual inspection or linter output | Medium |
+| Function length | >100 lines | Manual inspection or linter output | High |
+| Nesting depth | >4 levels | Look for deeply nested if/for/while | Medium |
+| Parameter count | >5 params | Grep for function signatures | Medium |
+| Class size | >20 methods | Manual inspection of class files | Medium |
+
+**Finding Large Files by Ecosystem:**
+
+| Ecosystem | Command Pattern | File Extensions |
+|-----------|-----------------|-----------------|
+| TypeScript/JavaScript | `find . -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx"` then `wc -l` | `.ts`, `.tsx`, `.js`, `.jsx` |
+| Python | `find . -name "*.py"` then `wc -l` | `.py` |
+| Go | `find . -name "*.go"` then `wc -l` | `.go` |
+| Java | `find . -name "*.java"` then `wc -l` | `.java` |
+| Ruby | `find . -name "*.rb"` then `wc -l` | `.rb` |
+| Rust | `find . -name "*.rs"` then `wc -l` | `.rs` |
+| C#/.NET | `find . -name "*.cs"` then `wc -l` | `.cs` |
+
+**Technical Debt Marker Detection:**
+
+| Marker | Grep Pattern | Severity | Action Implied |
+|--------|--------------|----------|----------------|
+| TODO | `TODO:?\s*`, `@todo` | Low | Work to be done, not urgent |
+| FIXME | `FIXME:?\s*`, `@fixme` | Medium | Known bug or issue to fix |
+| HACK | `HACK:?\s*`, `@hack` | High | Workaround that needs proper solution |
+| XXX | `XXX:?\s*` | Medium | Attention needed |
+| BUG | `BUG:?\s*`, `@bug` | High | Known bug |
+| OPTIMIZE | `OPTIMIZE:?\s*` | Low | Performance improvement needed |
+| REFACTOR | `REFACTOR:?\s*` | Low | Code needs restructuring |
+| DEPRECATED | `@deprecated`, `# deprecated`, `// deprecated` | Medium | Code should be removed/replaced |
+| TEMP | `TEMP:?\s*`, `TEMPORARY` | High | Temporary code that should be removed |
+| REMOVEME | `REMOVEME`, `REMOVE_ME`, `DELETE_ME` | High | Code marked for deletion |
+
+**Deprecated Usage Detection:**
+
+| Ecosystem | Indicators | How to Find |
+|-----------|------------|-------------|
+| TypeScript/JavaScript | `@deprecated` JSDoc, console warnings | Grep for `@deprecated`, check linter output |
+| Python | `warnings.warn("deprecated")`, `@deprecated` decorator | Grep for deprecation patterns |
+| Java | `@Deprecated` annotation | Grep for `@Deprecated` |
+| Go | `// Deprecated:` comment convention | Grep for deprecation comments |
+| Ruby | `.warn` with deprecation message | Grep for deprecation warnings |
+
+**Dependency Health Detection:**
+
+| Ecosystem | How to Check | What to Look For |
+|-----------|--------------|------------------|
+| Node.js | `npm outdated`, check package.json vs npm registry | Major version differences, deprecated packages |
+| Python | `pip list --outdated`, compare pyproject.toml versions | Packages multiple major versions behind |
+| Go | `go list -m -u all`, check go.mod | Modules with available updates |
+| Ruby | `bundle outdated`, check Gemfile.lock | Gems with security advisories |
+| Rust | `cargo outdated`, check Cargo.toml | Crates with breaking changes available |
+
+**Dependency Age Indicators:**
+
+| Risk Level | Condition | Example |
+|------------|-----------|---------|
+| Critical | Security advisory exists | Known CVE in package version |
+| High | >2 major versions behind | Using React 16 when 18 is current |
+| Medium | >1 major version behind | Using Express 3 when 4 is current |
+| Low | Minor/patch updates available | Normal maintenance updates |
+
+**Unused Dependency Detection:**
+
+| Ecosystem | Detection Method | Tools/Patterns |
+|-----------|------------------|----------------|
+| Node.js | No imports found for package | `depcheck`, grep for package imports |
+| Python | No imports in codebase | `vulture`, grep for module imports |
+| Go | Compiler enforces (automatic) | `go mod tidy` shows removals |
+| Ruby | No require statements | `bundle-audit`, grep for requires |
+
+**Code Smell Detection Patterns:**
+
+| Smell | Detection Pattern | Risk |
+|-------|-------------------|------|
+| Magic numbers | Numeric literals in logic (not 0, 1, -1) | Medium |
+| Magic strings | Repeated string literals not in constants | Medium |
+| Hardcoded URLs | `http://`, `https://` in source code | Medium |
+| Hardcoded IPs | IP address patterns in source | High |
+| Hardcoded credentials | Password/key patterns in source | Critical |
+| Dead imports | Import statements for unused modules | Low |
+| Commented code blocks | Large sections of commented-out code | Low |
+| Console/print statements | Debug statements in production code | Low |
+| Empty catch blocks | `catch {}` or `except: pass` | Medium |
+| Identical code blocks | Repeated code across files | Medium |
+
+**Magic Number/String Detection:**
+
+| Type | Grep Patterns | Exceptions |
+|------|---------------|------------|
+| Magic numbers | `[^0-9][2-9][0-9]*[^0-9]` in logic | Array indices, common values (100, 1000), port numbers in config |
+| Hardcoded strings | Repeated identical strings in multiple files | Standard strings like "utf-8", HTTP methods |
+| Hardcoded URLs | `https?://[a-zA-Z]` in source (not config) | Docs, comments, tests |
+| Hardcoded paths | Absolute paths in source | Config files intended for paths |
+
+**Console/Debug Statement Detection:**
+
+| Ecosystem | Patterns to Find | Should Be |
+|-----------|------------------|-----------|
+| JavaScript/TypeScript | `console.log`, `console.debug`, `console.warn`, `debugger` | Removed or logger |
+| Python | `print(`, `pdb.set_trace()`, `breakpoint()` | Removed or logger |
+| Go | `fmt.Println`, `fmt.Printf` (in non-main) | `log` package |
+| Java | `System.out.println`, `e.printStackTrace()` | Logger |
+| Ruby | `puts`, `p`, `pp`, `binding.pry` | Logger |
+
+**Architectural Concern Detection:**
+
+| Concern | Detection Method | Indicators |
+|---------|------------------|------------|
+| Circular dependencies | Import analysis | A imports B imports A |
+| God class/module | File size + method count | >1000 lines, >20 methods/functions |
+| Tight coupling | Import frequency | One module imported by >50% of files |
+| Missing abstraction | Duplicate patterns | Same code structure in multiple places |
+| Leaky abstraction | Implementation details exposed | Internal types/functions in public API |
+| Feature envy | Cross-module data access | Module frequently accesses another's internals |
+| Shotgun surgery | Related changes scattered | Similar changes needed across many files |
+
+**Circular Dependency Detection:**
+
+| Ecosystem | Detection Method | Tools |
+|-----------|------------------|-------|
+| TypeScript/JavaScript | Import graph analysis | `madge --circular`, `dpdm` |
+| Python | Import tracing | `pydeps`, manual import analysis |
+| Go | Compiler catches (built-in) | Compiler errors on circular imports |
+| Java | Package dependency analysis | IDE tools, `jdeps` |
+
+**God Class/Module Indicators:**
+
+| Indicator | Threshold | Description |
+|-----------|-----------|-------------|
+| File lines | >500-1000 | Too much code in one place |
+| Method/function count | >15-20 | Class doing too many things |
+| Import count | >15-20 | Depends on too many things |
+| Public method count | >10 | API surface too large |
+| Mixed responsibilities | N/A | Unrelated functionality in same class |
+
+**Security Concern Detection:**
+
+| Concern | Patterns to Search | Risk Level |
+|---------|-------------------|------------|
+| Hardcoded secrets | `password`, `secret`, `api_key`, `token` in source | Critical |
+| SQL injection risk | String concatenation in SQL queries | Critical |
+| Unsafe deserialization | `pickle.loads`, `eval()`, `exec()` | Critical |
+| Path traversal risk | User input in file paths | High |
+| XSS risk | Unescaped user content in HTML | High |
+| Insecure randomness | `Math.random()` for security | Medium |
+| Missing input validation | Direct use of user input | Medium |
+
+**Hardcoded Secret Patterns:**
+
+| Pattern Type | Example Patterns |
+|--------------|------------------|
+| AWS Keys | `AKIA[0-9A-Z]{16}` |
+| Generic API Key | `api[_-]?key.*=.*['"][a-zA-Z0-9]{20,}` |
+| Generic Secret | `secret.*=.*['"][a-zA-Z0-9]{8,}` |
+| Generic Password | `password.*=.*['"].+['"]` |
+| Private Key | `-----BEGIN.*PRIVATE KEY-----` |
+| Generic Token | `token.*=.*['"][a-zA-Z0-9]{20,}` |
+| JWT | `eyJ[a-zA-Z0-9_-]*\.eyJ[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*` |
+| Connection strings | `(mysql|postgres|mongodb)://[^:]+:[^@]+@` |
+
+**How to Prioritize Findings:**
+
+| Priority | Criteria | Examples |
+|----------|----------|----------|
+| P1 Critical | Security risk, data loss risk, production impact | Hardcoded secrets, SQL injection, missing error handling in critical paths |
+| P2 Important | Maintainability, reliability, developer productivity | Large files, missing tests for critical code, circular dependencies |
+| P3 Nice-to-have | Code quality, consistency, minor cleanup | Magic numbers, console logs, minor code smells |
 
 ### Output
 
@@ -1767,65 +1950,199 @@ Create `docs/legacy/CONCERNS.md` with this structure:
 
 ## Summary
 
-[2-3 sentence overview of technical debt state]
+[2-3 sentence overview of technical debt state - include overall health assessment and most critical finding]
 
 ## Findings
 
 ### Code Complexity
-**Large Files (>500 lines):**
-| File | Lines | Concern |
-|------|-------|---------|
-| [file] | [lines] | [why it's concerning] |
 
-**Complex Areas:**
-- [area]: [concern]
+**Large Files (>500 lines):**
+| File | Lines | Why Concerning | Recommendation |
+|------|-------|----------------|----------------|
+| [file path] | [count] | [what makes it complex] | [suggested action] |
+
+**Complex Functions/Methods:**
+| Location | Lines | Issue | Risk |
+|----------|-------|-------|------|
+| [file:function] | [count] | [deep nesting/many params/etc] | [High/Medium] |
+
+**Complexity Summary:**
+- Total large files: [count]
+- Total complex functions: [count]
+- Hotspot areas: [directories or modules with most complexity]
 
 ### Technical Debt Markers
-**TODOs:** [count]
-| Location | Content |
-|----------|---------|
-| [file:line] | [TODO text] |
 
-**FIXMEs:** [count]
-| Location | Content |
-|----------|---------|
-| [file:line] | [FIXME text] |
+**Overview:**
+| Marker Type | Count | Severity | Oldest |
+|-------------|-------|----------|--------|
+| TODO | [count] | Low | [date if determinable or "Unknown"] |
+| FIXME | [count] | Medium | [date if determinable] |
+| HACK | [count] | High | [date if determinable] |
+| XXX | [count] | Medium | [date if determinable] |
+| DEPRECATED | [count] | Medium | [date if determinable] |
 
-**HACKs:** [count]
-| Location | Content |
-|----------|---------|
-| [file:line] | [HACK text] |
+**Critical Items (FIXME, HACK, BUG):**
+| Location | Type | Content | Age |
+|----------|------|---------|-----|
+| [file:line] | [FIXME/HACK] | [content] | [if determinable] |
+
+**TODOs by Category:**
+| Category | Count | Examples |
+|----------|-------|----------|
+| [feature/bug/refactor/etc] | [count] | [sample items] |
+
+**Notable Debt Patterns:**
+- [Pattern observed]: [description and locations]
 
 ### Dependency Health
-- Outdated: [count or "none detected"]
-- Security Concerns: [count or "none detected"]
-- Notable Issues:
-  - [package]: [issue]
+
+**Dependency Age Summary:**
+| Status | Count | Examples |
+|--------|-------|----------|
+| Up to date | [count] | [packages] |
+| Minor update available | [count] | [packages] |
+| Major update available | [count] | [packages with versions] |
+| Deprecated | [count] | [packages] |
+
+**Outdated Dependencies:**
+| Package | Current | Latest | Versions Behind | Risk |
+|---------|---------|--------|-----------------|------|
+| [package] | [current] | [latest] | [major.minor.patch] | [Low/Medium/High] |
+
+**Security Concerns:**
+| Package | Issue | Severity | Advisory |
+|---------|-------|----------|----------|
+| [package or "None detected"] | [vulnerability] | [Critical/High/Medium/Low] | [CVE or link if known] |
+
+**Unused Dependencies:**
+| Package | Evidence |
+|---------|----------|
+| [package or "None detected"] | [no imports found / 0 references] |
+
+**Dependency Health Score:** [Good/Fair/Poor]
 
 ### Code Smells
-- [smell]: [location and description]
+
+**Magic Numbers/Strings:**
+| Location | Value | Suggested Fix |
+|----------|-------|---------------|
+| [file:line] | [value] | [extract to constant] |
+
+**Debug/Console Statements:**
+| Location | Statement | Should Be |
+|----------|-----------|-----------|
+| [file:line] | [statement] | [removed/logger] |
+
+**Dead/Commented Code:**
+| Location | Lines | Description |
+|----------|-------|-------------|
+| [file:line-range] | [count] | [what the code appears to be] |
+
+**Empty Error Handling:**
+| Location | Pattern | Risk |
+|----------|---------|------|
+| [file:line] | [empty catch/except] | [what could go wrong] |
+
+**Duplicate Code Patterns:**
+| Pattern | Locations | Lines | Suggestion |
+|---------|-----------|-------|------------|
+| [description] | [files] | [total duplicated lines] | [extract to shared utility] |
 
 ### Architectural Concerns
-- [concern]: [description]
+
+**Circular Dependencies:**
+| Cycle | Files Involved | Impact |
+|-------|----------------|--------|
+| [cycle # or "None detected"] | [A → B → A] | [what breaks if changed] |
+
+**God Classes/Modules:**
+| File | Lines | Methods | Responsibilities |
+|------|-------|---------|------------------|
+| [file or "None detected"] | [count] | [count] | [what it does - too much] |
+
+**Tight Coupling:**
+| Module | Coupled To | Import Count | Concern |
+|--------|------------|--------------|---------|
+| [module] | [dependency] | [how many files import it] | [why concerning] |
+
+**Missing Abstractions:**
+| Pattern | Locations | Suggestion |
+|---------|-----------|------------|
+| [repeated pattern] | [where found] | [interface/class to extract] |
+
+### Security Concerns
+
+| Concern | Severity | Location | Description |
+|---------|----------|----------|-------------|
+| [type or "None detected"] | [Critical/High/Medium/Low] | [file:line] | [what the issue is] |
+
+**Note:** This is a surface-level scan. For comprehensive security analysis, use dedicated security scanning tools.
 
 ### User-Reported Pain Points
-[If user provided pain points, analyze those specifically]
-- [pain point]: [findings]
+
+[If user provided pain points in Q&A, analyze those specifically]
+
+| Pain Point | Findings | Validation |
+|------------|----------|------------|
+| [user-reported issue] | [what was found] | [confirmed/partially confirmed/not found] |
+
+**Analysis:**
+- [Detailed findings for each user-reported pain point]
 
 ## Priority Assessment
 
-### Critical (Address Immediately)
-- [issue]: [why critical]
+### Critical (P1) - Address Immediately
+Issues that pose security risks, cause production problems, or block development.
 
-### Important (Address Soon)
-- [issue]: [why important]
+| Issue | Location | Impact | Effort |
+|-------|----------|--------|--------|
+| [issue] | [where] | [what could happen] | [Low/Medium/High] |
 
-### Low Priority (When Time Permits)
-- [issue]: [why low priority]
+### Important (P2) - Address Soon
+Issues that significantly impact maintainability or developer productivity.
+
+| Issue | Location | Impact | Effort |
+|-------|----------|--------|--------|
+| [issue] | [where] | [why it matters] | [Low/Medium/High] |
+
+### Nice to Have (P3) - When Time Permits
+Issues that improve code quality but aren't urgent.
+
+| Issue | Location | Impact | Effort |
+|-------|----------|--------|--------|
+| [issue] | [where] | [benefit of fixing] | [Low/Medium/High] |
+
+## Technical Debt Metrics
+
+| Metric | Value | Assessment |
+|--------|-------|------------|
+| Large files (>500 lines) | [count] | [Good <5 / Fair 5-15 / Poor >15] |
+| Technical debt markers | [total count] | [Good <20 / Fair 20-50 / Poor >50] |
+| Outdated dependencies | [count] | [Good 0 / Fair 1-5 / Poor >5 major] |
+| Circular dependencies | [count] | [Good 0 / Fair 1-2 / Poor >2] |
+| Security concerns | [count] | [Good 0 / Poor >0] |
+
+**Overall Technical Debt Level:** [Low / Medium / High]
+
+**Debt Trend Indicators:**
+- [Observations about whether debt is growing or being managed]
 
 ## Recommendations
 
-- [Concern remediation recommendations]
+### Immediate Actions
+1. [Most critical action with specific steps]
+2. [Second most critical]
+3. [Third most critical]
+
+### Short-term Improvements (1-2 sprints)
+- [Improvement]: [why and how]
+
+### Long-term Refactoring
+- [Larger refactoring effort]: [scope and benefit]
+
+### Process Improvements
+- [Process change to prevent future debt]: [recommendation]
 
 ---
 *Generated by `/analyze-codebase`*
@@ -1837,9 +2154,30 @@ After creating the document, return:
 ```
 CONCERNS ANALYSIS COMPLETE
 Document: docs/legacy/CONCERNS.md
-Top Concern: [most critical issue]
+Top Concern: [most critical issue found]
 Tech Debt Level: [Low/Medium/High]
+Critical Issues: [count of P1 items]
+Technical Debt Markers: [total TODO/FIXME/HACK count]
+Large Files: [count of files >500 lines]
 ```
+
+**Special Cases:**
+
+**If no significant concerns found:**
+Create the document with this content in the Summary:
+```
+This codebase shows good technical health with minimal concerning patterns. No critical issues were identified. The code appears well-maintained with low technical debt.
+```
+
+Then populate the document with:
+- "None detected" for empty categories
+- Focus recommendations on maintaining current quality and preventing future debt
+
+**If user provided pain points:**
+- Give those areas special attention in analysis
+- Create a dedicated section addressing each pain point
+- Validate or refute user concerns with evidence
+- Even if no issues found in reported areas, document that finding
 ```
 
 ---
