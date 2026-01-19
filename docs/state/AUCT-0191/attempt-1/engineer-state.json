@@ -1,0 +1,48 @@
+{
+  "ticket_id": "AUCT-0191",
+  "attempt": 1,
+  "timestamp": "2026-01-19T18:18:08Z",
+  "status": "validation_passed",
+  "branch": "feature/AUCT-0191-implementation",
+  "last_commit": "6cc7bb0cbaf129b5e51ce13c6770352084a0ae8f",
+  "validation_result": {
+    "typecheck": "skip",
+    "lint": "skip",
+    "test": "skip",
+    "build": "skip",
+    "overall": "pass"
+  },
+  "work_completed": [
+    "Implemented comprehensive Integrations Analyzer agent prompt in .claude/commands/analyze-codebase.md",
+    "Added detailed Cloud Provider SDK Detection patterns (AWS, GCP, Azure, Firebase, Vercel, Netlify)",
+    "Added AWS Service Detection patterns (S3, DynamoDB, SQS, SNS, Lambda, SES, Cognito, CloudWatch, Secrets Manager, RDS)",
+    "Added GCP Service Detection patterns (Cloud Storage, Firestore, BigQuery, Pub/Sub, Cloud Functions, Cloud Run, Cloud SQL)",
+    "Added Database Driver Detection patterns (PostgreSQL, MySQL, MongoDB, Redis, SQLite, Elasticsearch)",
+    "Added Cache Service Detection patterns (Redis, Memcached, in-memory)",
+    "Added Message Queue Detection patterns (RabbitMQ, Kafka, AWS SQS, GCP Pub/Sub, Redis Streams, BullMQ)",
+    "Added Payment Processor Detection patterns (Stripe, PayPal, Braintree, Square, Adyen)",
+    "Added Auth Provider Detection patterns (Auth0, Okta, Clerk, Firebase Auth, Supabase Auth, NextAuth, Passport.js, JWT)",
+    "Added Analytics & Monitoring Detection patterns (Segment, Amplitude, Mixpanel, PostHog, Google Analytics, Datadog, New Relic, Sentry, LogRocket)",
+    "Added Email Service Detection patterns (SendGrid, AWS SES, Mailchimp, Postmark, Resend, Nodemailer)",
+    "Added SMS/Communication Detection patterns (Twilio, Vonage, AWS SNS, MessageBird)",
+    "Added Search Engine Detection patterns (Elasticsearch, Algolia, Meilisearch, Typesense)",
+    "Added Feature Flag Detection patterns (LaunchDarkly, Unleash, Split, Flagsmith, ConfigCat, PostHog)",
+    "Added Environment Variable Detection patterns for multiple ecosystems (Node.js, Python, Go, Ruby, .NET)",
+    "Added Configuration File Locations table",
+    "Added API Call Pattern Detection table (fetch, axios, got, requests, httpx, http.Client, RestSharp)",
+    "Enhanced Output template with comprehensive sections for all integration types",
+    "Added Integration Architecture diagram placeholder",
+    "Added Risk Assessment table",
+    "Added Security, Reliability, Cost Optimization, and Maintenance recommendations sections",
+    "Added special case handling for no integrations and database-only scenarios"
+  ],
+  "files_modified": [
+    ".claude/commands/analyze-codebase.md"
+  ],
+  "tests_written": [],
+  "known_issues": [],
+  "next_steps": [
+    "Commit changes to feature branch",
+    "Create PR for review"
+  ]
+}

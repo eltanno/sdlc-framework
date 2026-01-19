@@ -1279,42 +1279,233 @@ Project directory: [current working directory]
 User context: [answers from Q&A, or "No user context provided"]
 
 ### Objective
-Analyze external integrations, services, and third-party dependencies.
+Analyze external integrations, services, and third-party dependencies in this codebase.
 
 ### Analysis Areas
 
 1. **External APIs**
-   - Third-party APIs called
+   - Third-party APIs called (REST, GraphQL, SOAP)
    - API client libraries used
    - Authentication methods for external services
+   - Rate limiting and retry configurations
 
 2. **Cloud Services**
-   - AWS, GCP, Azure services
-   - Cloud SDK usage
-   - Infrastructure dependencies
+   - AWS, GCP, Azure services used
+   - Cloud SDK usage and configuration
+   - Infrastructure dependencies (compute, storage, messaging)
+   - Serverless function integrations
 
 3. **Databases & Storage**
-   - Database connections
+   - Database connections and drivers
    - Cache services (Redis, Memcached)
-   - File storage (S3, GCS, local)
+   - File storage (S3, GCS, Azure Blob, local)
+   - Search engines (Elasticsearch, Algolia)
+   - Message queues (RabbitMQ, Kafka, SQS)
 
 4. **Third-Party SDKs**
-   - Payment processors (Stripe, PayPal)
-   - Auth providers (Auth0, Okta)
-   - Analytics (Segment, Amplitude)
+   - Payment processors (Stripe, PayPal, Braintree)
+   - Auth providers (Auth0, Okta, Firebase Auth, Clerk)
+   - Analytics (Segment, Amplitude, Mixpanel, Google Analytics)
+   - Email services (SendGrid, Mailchimp, SES)
+   - SMS/Communication (Twilio, Vonage)
+   - Monitoring (Datadog, New Relic, Sentry)
    - Other SaaS integrations
 
 5. **Environment Dependencies**
    - Required environment variables
    - Configuration for external services
-   - Secrets management
+   - Secrets management approach
+   - Feature flags and remote config
 
 ### How to Analyze
 
-- Search for API client instantiation
-- Look for SDK imports
-- Examine environment variable usage
-- Check for service configuration files
+Use these tools to gather information:
+- `Glob` for config files: `**/.env*`, `**/docker-compose*`, `**/*config*`
+- `Read` to examine configuration files and SDK initialization
+- `Grep` to find SDK imports, API calls, and environment variable usage
+- Check package.json, requirements.txt, go.mod for service SDKs
+
+**Cloud Provider SDK Detection:**
+
+| Provider | SDK Packages | Config Files | Environment Indicators |
+|----------|--------------|--------------|------------------------|
+| AWS | `@aws-sdk/*`, `aws-sdk`, `boto3`, `aws-sdk-go` | `~/.aws/`, `aws.config.*` | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION` |
+| GCP | `@google-cloud/*`, `google-cloud-*`, `cloud.google.com/go` | `gcloud/`, `*.json` (service account) | `GOOGLE_APPLICATION_CREDENTIALS`, `GOOGLE_CLOUD_PROJECT` |
+| Azure | `@azure/*`, `azure-*`, `Azure.*` | `azure.config.*` | `AZURE_*` env vars |
+| Firebase | `firebase`, `firebase-admin`, `@firebase/*` | `firebase.json`, `firebaserc` | `FIREBASE_*` env vars |
+| Vercel | `@vercel/*`, `vercel` | `vercel.json` | `VERCEL_*` env vars |
+| Netlify | `netlify-*`, `@netlify/*` | `netlify.toml` | `NETLIFY_*` env vars |
+
+**AWS Service Detection:**
+
+| Service | SDK Imports/Patterns | Common Env Vars |
+|---------|---------------------|-----------------|
+| S3 | `S3Client`, `@aws-sdk/client-s3`, `boto3.client('s3')` | `AWS_S3_BUCKET`, `S3_BUCKET` |
+| DynamoDB | `DynamoDBClient`, `@aws-sdk/client-dynamodb` | `DYNAMODB_TABLE` |
+| SQS | `SQSClient`, `@aws-sdk/client-sqs`, `boto3.client('sqs')` | `SQS_QUEUE_URL` |
+| SNS | `SNSClient`, `@aws-sdk/client-sns` | `SNS_TOPIC_ARN` |
+| Lambda | `LambdaClient`, `@aws-sdk/client-lambda` | `LAMBDA_FUNCTION_NAME` |
+| SES | `SESClient`, `@aws-sdk/client-ses` | `SES_*` |
+| Cognito | `CognitoIdentityProviderClient` | `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID` |
+| CloudWatch | `CloudWatchClient`, `CloudWatchLogsClient` | N/A |
+| Secrets Manager | `SecretsManagerClient` | N/A |
+| RDS | Connection strings, `RDS.*` | `DATABASE_URL`, `RDS_*` |
+
+**GCP Service Detection:**
+
+| Service | SDK Imports/Patterns | Common Env Vars |
+|---------|---------------------|-----------------|
+| Cloud Storage | `@google-cloud/storage`, `google.cloud.storage` | `GCS_BUCKET`, `GOOGLE_CLOUD_BUCKET` |
+| Firestore | `@google-cloud/firestore`, `firebase-admin/firestore` | `FIRESTORE_*` |
+| BigQuery | `@google-cloud/bigquery` | `BIGQUERY_*` |
+| Pub/Sub | `@google-cloud/pubsub` | `PUBSUB_TOPIC` |
+| Cloud Functions | Function signatures, `@google-cloud/functions-framework` | `FUNCTION_*` |
+| Cloud Run | Container signatures | `CLOUD_RUN_*`, `K_SERVICE` |
+| Cloud SQL | Connection patterns | `CLOUD_SQL_CONNECTION_NAME` |
+
+**Database Driver Detection:**
+
+| Database | Packages | Connection Patterns | Common Env Vars |
+|----------|----------|---------------------|-----------------|
+| PostgreSQL | `pg`, `psycopg2`, `asyncpg`, `lib/pq` | `postgres://`, `postgresql://` | `DATABASE_URL`, `POSTGRES_*`, `PG_*` |
+| MySQL | `mysql2`, `mysqlclient`, `PyMySQL`, `go-sql-driver/mysql` | `mysql://` | `MYSQL_*`, `DATABASE_URL` |
+| MongoDB | `mongodb`, `mongoose`, `pymongo`, `mongo-go-driver` | `mongodb://`, `mongodb+srv://` | `MONGODB_URI`, `MONGO_URL` |
+| Redis | `redis`, `ioredis`, `redis-py`, `go-redis` | `redis://`, `rediss://` | `REDIS_URL`, `REDIS_HOST` |
+| SQLite | `better-sqlite3`, `sqlite3` | `.db`, `.sqlite` file paths | `DATABASE_PATH` |
+| Elasticsearch | `@elastic/elasticsearch`, `elasticsearch-py` | `http://localhost:9200` | `ELASTICSEARCH_URL`, `ES_*` |
+
+**Cache Service Detection:**
+
+| Service | Packages | Patterns |
+|---------|----------|----------|
+| Redis | `redis`, `ioredis`, `redis-py` | `createClient`, `Redis()` |
+| Memcached | `memcached`, `pylibmc`, `memcache` | `Memcached()` |
+| In-memory | `node-cache`, `lru-cache`, `cachetools` | `LRUCache`, `NodeCache` |
+
+**Message Queue Detection:**
+
+| Service | Packages | Patterns | Env Vars |
+|---------|----------|----------|----------|
+| RabbitMQ | `amqplib`, `pika`, `amqp` | `amqp://` | `RABBITMQ_URL`, `AMQP_URL` |
+| Kafka | `kafkajs`, `kafka-python`, `confluent-kafka` | Kafka client initialization | `KAFKA_BROKERS`, `KAFKA_*` |
+| AWS SQS | See AWS section | `SQSClient` | `SQS_QUEUE_URL` |
+| GCP Pub/Sub | See GCP section | `PubSub` | `PUBSUB_*` |
+| Redis Streams | `redis` with `XREAD`, `XADD` | Stream commands | See Redis |
+| BullMQ | `bullmq`, `bull` | `Queue`, `Worker` | `REDIS_URL` (uses Redis) |
+
+**Payment Processor Detection:**
+
+| Provider | Packages | Initialization Patterns | Env Vars |
+|----------|----------|------------------------|----------|
+| Stripe | `stripe`, `@stripe/stripe-js` | `Stripe(apiKey)`, `new Stripe()` | `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET` |
+| PayPal | `@paypal/checkout-server-sdk`, `paypal-rest-sdk` | PayPal client init | `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET` |
+| Braintree | `braintree` | `braintree.BraintreeGateway` | `BRAINTREE_*` |
+| Square | `square`, `@square/web-sdk` | `Client` initialization | `SQUARE_ACCESS_TOKEN` |
+| Adyen | `@adyen/api-library` | Adyen client | `ADYEN_*` |
+
+**Auth Provider Detection:**
+
+| Provider | Packages | Patterns | Env Vars |
+|----------|----------|----------|----------|
+| Auth0 | `auth0`, `@auth0/auth0-react`, `@auth0/nextjs-auth0` | `Auth0Provider`, `handleAuth` | `AUTH0_SECRET`, `AUTH0_ISSUER_BASE_URL`, `AUTH0_CLIENT_ID` |
+| Okta | `@okta/okta-sdk-nodejs`, `@okta/okta-react` | `OktaAuth` | `OKTA_*` |
+| Clerk | `@clerk/clerk-sdk-node`, `@clerk/nextjs` | `ClerkProvider` | `CLERK_SECRET_KEY`, `NEXT_PUBLIC_CLERK_*` |
+| Firebase Auth | `firebase/auth`, `firebase-admin` | `getAuth`, `signInWith*` | `FIREBASE_*` |
+| Supabase Auth | `@supabase/supabase-js` | `supabase.auth.*` | `SUPABASE_URL`, `SUPABASE_ANON_KEY` |
+| NextAuth | `next-auth`, `@auth/core` | `NextAuth()`, `getServerSession` | `NEXTAUTH_SECRET`, `NEXTAUTH_URL` |
+| Passport.js | `passport`, `passport-*` | `passport.use()`, strategy patterns | Provider-specific |
+| JWT/Custom | `jsonwebtoken`, `jose` | `jwt.sign`, `jwt.verify` | `JWT_SECRET` |
+
+**Analytics & Monitoring Detection:**
+
+| Service | Packages | Initialization | Env Vars |
+|---------|----------|---------------|----------|
+| Segment | `analytics-node`, `@segment/analytics-next` | `Analytics()` | `SEGMENT_WRITE_KEY` |
+| Amplitude | `@amplitude/analytics-node`, `amplitude-js` | `amplitude.init()` | `AMPLITUDE_API_KEY` |
+| Mixpanel | `mixpanel`, `mixpanel-browser` | `mixpanel.init()` | `MIXPANEL_TOKEN` |
+| PostHog | `posthog-node`, `posthog-js` | `posthog.init()` | `POSTHOG_API_KEY` |
+| Google Analytics | `@google-analytics/data`, gtag.js | `gtag()` | `GA_TRACKING_ID`, `GA_MEASUREMENT_ID` |
+| Datadog | `dd-trace`, `datadog-metrics` | `tracer.init()` | `DD_API_KEY`, `DD_APP_KEY` |
+| New Relic | `newrelic` | `require('newrelic')` | `NEW_RELIC_LICENSE_KEY` |
+| Sentry | `@sentry/node`, `@sentry/react`, `sentry-sdk` | `Sentry.init()` | `SENTRY_DSN` |
+| LogRocket | `logrocket` | `LogRocket.init()` | `LOGROCKET_APP_ID` |
+
+**Email Service Detection:**
+
+| Service | Packages | Patterns | Env Vars |
+|---------|----------|----------|----------|
+| SendGrid | `@sendgrid/mail`, `sendgrid` | `sgMail.send()` | `SENDGRID_API_KEY` |
+| AWS SES | See AWS section | `SESClient` | `SES_*` |
+| Mailchimp/Mandrill | `@mailchimp/mailchimp_transactional` | API calls | `MAILCHIMP_API_KEY` |
+| Postmark | `postmark` | `postmark.Client` | `POSTMARK_API_TOKEN` |
+| Resend | `resend` | `Resend()` | `RESEND_API_KEY` |
+| Nodemailer | `nodemailer` | `createTransport()` | `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS` |
+
+**SMS/Communication Detection:**
+
+| Service | Packages | Patterns | Env Vars |
+|---------|----------|----------|----------|
+| Twilio | `twilio` | `Twilio(accountSid, authToken)` | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` |
+| Vonage/Nexmo | `@vonage/server-sdk`, `nexmo` | `Vonage()` | `VONAGE_API_KEY`, `VONAGE_API_SECRET` |
+| AWS SNS | See AWS section | SMS via SNS | `SNS_*` |
+| MessageBird | `messagebird` | `messagebird()` | `MESSAGEBIRD_API_KEY` |
+
+**Search Engine Detection:**
+
+| Service | Packages | Patterns | Env Vars |
+|---------|----------|----------|----------|
+| Elasticsearch | `@elastic/elasticsearch`, `elasticsearch` | `Client({ node: ... })` | `ELASTICSEARCH_URL`, `ES_HOST` |
+| Algolia | `algoliasearch`, `@algolia/client-search` | `algoliasearch(appId, apiKey)` | `ALGOLIA_APP_ID`, `ALGOLIA_API_KEY` |
+| Meilisearch | `meilisearch` | `MeiliSearch({ host: ... })` | `MEILI_HOST`, `MEILI_MASTER_KEY` |
+| Typesense | `typesense` | `Typesense.Client` | `TYPESENSE_*` |
+
+**Feature Flag Detection:**
+
+| Service | Packages | Patterns | Env Vars |
+|---------|----------|----------|----------|
+| LaunchDarkly | `launchdarkly-node-server-sdk` | `LDClient.init()` | `LAUNCHDARKLY_SDK_KEY` |
+| Unleash | `unleash-client` | `Unleash.initialize()` | `UNLEASH_*` |
+| Split | `@splitsoftware/splitio` | `SplitFactory` | `SPLIT_API_KEY` |
+| Flagsmith | `flagsmith-nodejs` | `flagsmith.init()` | `FLAGSMITH_*` |
+| ConfigCat | `configcat-node` | `configcat.getClient()` | `CONFIGCAT_SDK_KEY` |
+| PostHog | See Analytics | Feature flag methods | See PostHog |
+
+**Environment Variable Detection:**
+
+Search for environment variable usage patterns:
+
+| Ecosystem | Patterns to Search |
+|-----------|-------------------|
+| Node.js | `process.env.VAR_NAME`, `process.env['VAR_NAME']` |
+| Python | `os.environ['VAR']`, `os.getenv('VAR')`, `environ.get('VAR')` |
+| Go | `os.Getenv("VAR")`, `os.LookupEnv("VAR")` |
+| Ruby | `ENV['VAR']`, `ENV.fetch('VAR')` |
+| .NET | `Environment.GetEnvironmentVariable("VAR")`, `Configuration["VAR"]` |
+
+**Configuration File Locations:**
+
+| File | Purpose | Common Integrations |
+|------|---------|---------------------|
+| `.env`, `.env.local`, `.env.production` | Environment variables | All services |
+| `docker-compose.yml` | Container services | Databases, Redis, etc. |
+| `config/*.json`, `config/*.yaml` | App configuration | Service URLs, API keys |
+| `serverless.yml` | Serverless config | AWS Lambda, API Gateway |
+| `vercel.json`, `netlify.toml` | Deployment config | Platform services |
+| `firebase.json` | Firebase config | Firebase services |
+
+**API Call Pattern Detection:**
+
+Search for HTTP client usage indicating external API calls:
+
+| Library | Patterns to Search |
+|---------|-------------------|
+| fetch | `fetch('https://api.`, `fetch(` with external URLs |
+| axios | `axios.get('https://`, `axios.create({ baseURL:` |
+| got | `got('https://`, `got.extend({ prefixUrl:` |
+| requests (Python) | `requests.get('https://`, `requests.post(` |
+| httpx (Python) | `httpx.get(`, `httpx.AsyncClient` |
+| http.Client (Go) | `http.Get(`, `http.NewRequest` |
+| RestSharp (.NET) | `RestClient`, `RestRequest` |
 
 ### Output
 
@@ -1328,38 +1519,152 @@ Create `docs/legacy/INTEGRATIONS.md` with this structure:
 
 ## Summary
 
-[2-3 sentence overview of external integrations]
+[2-3 sentence overview of external integrations - include count of integrations, primary cloud provider if any, and most critical dependencies]
 
 ## Findings
 
-### External APIs
-| Service | Purpose | Auth Method |
-|---------|---------|-------------|
-| [service] | [purpose] | [method] |
+### Cloud Provider
 
-### Cloud Services
-- Provider: [AWS/GCP/Azure/none]
-- Services Used:
-  - [service]: [purpose]
+| Attribute | Value | Evidence |
+|-----------|-------|----------|
+| Primary Provider | [AWS/GCP/Azure/Firebase/None] | [SDK packages, config files] |
+| Secondary Providers | [list or "None"] | [evidence] |
+| Deployment Platform | [Vercel/Netlify/Heroku/Self-hosted/etc] | [config files] |
+
+**Cloud Services Used:**
+| Service | Provider | Purpose | Configuration |
+|---------|----------|---------|---------------|
+| [e.g., S3] | [AWS] | [file storage] | [env vars, config location] |
+
+### External APIs
+
+| Service | Purpose | Auth Method | Client Library | Env Vars |
+|---------|---------|-------------|----------------|----------|
+| [service name] | [what it's used for] | [API Key/OAuth/JWT/etc] | [package name] | [env vars used] |
+
+**API Client Patterns:**
+- HTTP Client: [axios/fetch/got/requests/etc]
+- Retry/Circuit Breaker: [yes - library / no]
+- Rate Limiting: [implemented / not observed]
 
 ### Databases & Storage
-- Primary Database: [type and details]
-- Cache: [type or "none"]
-- File Storage: [type or "local"]
+
+**Primary Database:**
+| Attribute | Value | Evidence |
+|-----------|-------|----------|
+| Type | [PostgreSQL/MySQL/MongoDB/etc] | [driver package, connection string] |
+| Driver/ORM | [Prisma/TypeORM/mongoose/etc] | [package.json/requirements] |
+| Connection | [env var name] | [e.g., DATABASE_URL] |
+| Migrations | [yes - tool / no] | [migration directory or tool] |
+
+**Additional Data Stores:**
+| Store | Type | Purpose | Connection |
+|-------|------|---------|------------|
+| [e.g., Redis] | [Cache/Queue/etc] | [session storage/caching/etc] | [REDIS_URL] |
+
+**File Storage:**
+| Service | Purpose | Configuration |
+|---------|---------|---------------|
+| [S3/GCS/Local/etc] | [user uploads/assets/etc] | [env vars, bucket config] |
+
+### Message Queues & Event Systems
+
+| Service | Purpose | Configuration | Consumer/Producer |
+|---------|---------|---------------|-------------------|
+| [RabbitMQ/Kafka/SQS/etc or "None detected"] | [what it's used for] | [connection env vars] | [where in code] |
 
 ### Third-Party SDKs
-| SDK | Purpose | Version |
-|-----|---------|---------|
-| [sdk] | [purpose] | [version] |
+
+**Payment Processing:**
+| Provider | Purpose | SDK | Env Vars |
+|----------|---------|-----|----------|
+| [Stripe/PayPal/etc or "None"] | [payments/subscriptions] | [package] | [env vars] |
+
+**Authentication:**
+| Provider | Purpose | SDK | Env Vars |
+|----------|---------|-----|----------|
+| [Auth0/Clerk/Firebase/Custom or "Built-in"] | [user auth/SSO] | [package] | [env vars] |
+
+**Analytics & Monitoring:**
+| Service | Purpose | SDK | Env Vars |
+|---------|---------|-----|----------|
+| [Segment/Amplitude/Sentry/etc or "None"] | [tracking/errors/APM] | [package] | [env vars] |
+
+**Communication:**
+| Service | Purpose | SDK | Env Vars |
+|---------|---------|-----|----------|
+| [SendGrid/Twilio/etc or "None"] | [email/SMS] | [package] | [env vars] |
+
+**Search:**
+| Service | Purpose | SDK | Env Vars |
+|---------|---------|-----|----------|
+| [Elasticsearch/Algolia/etc or "None"] | [full-text search] | [package] | [env vars] |
+
+**Other Integrations:**
+| Service | Category | Purpose | SDK | Env Vars |
+|---------|----------|---------|-----|----------|
+| [any other services] | [category] | [purpose] | [package] | [env vars] |
 
 ### Environment Dependencies
-| Variable | Purpose | Required |
-|----------|---------|----------|
-| [var] | [purpose] | [yes/no] |
+
+**Required Environment Variables:**
+| Variable | Service | Required | Default | Notes |
+|----------|---------|----------|---------|-------|
+| [VAR_NAME] | [which service] | [yes/no] | [default if any] | [notes] |
+
+**Environment Files:**
+| File | Purpose | Gitignored |
+|------|---------|------------|
+| [.env, .env.local, etc] | [purpose] | [yes/no] |
+
+**Secrets Management:**
+- Approach: [env vars only / vault / AWS Secrets Manager / etc]
+- Notes: [any observations about secrets handling]
+
+### Feature Flags & Remote Config
+
+| Service | Purpose | Configuration |
+|---------|---------|---------------|
+| [LaunchDarkly/Unleash/etc or "None detected"] | [feature management] | [SDK and env vars] |
+
+## Integration Architecture
+
+```
+[ASCII diagram showing how integrations connect]
+
+Example:
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   Client    │────▶│   API       │────▶│  Database   │
+│   (React)   │     │  (Express)  │     │  (Postgres) │
+└─────────────┘     └──────┬──────┘     └─────────────┘
+                           │
+              ┌────────────┼────────────┐
+              ▼            ▼            ▼
+        ┌─────────┐  ┌─────────┐  ┌─────────┐
+        │  Redis  │  │ Stripe  │  │  S3     │
+        │ (cache) │  │(payment)│  │(storage)│
+        └─────────┘  └─────────┘  └─────────┘
+```
+
+## Risk Assessment
+
+| Integration | Criticality | Fallback | Notes |
+|-------------|-------------|----------|-------|
+| [service] | [Critical/Important/Nice-to-have] | [yes - how / no] | [single point of failure? rate limits?] |
 
 ## Recommendations
 
-- [Integration recommendations]
+### Security
+- [Security-related recommendations for integrations]
+
+### Reliability
+- [Reliability recommendations - circuit breakers, retries, fallbacks]
+
+### Cost Optimization
+- [If applicable - service tier recommendations]
+
+### Maintenance
+- [SDK version updates, deprecation notices]
 
 ---
 *Generated by `/analyze-codebase`*
@@ -1371,10 +1676,26 @@ After creating the document, return:
 ```
 INTEGRATIONS ANALYSIS COMPLETE
 Document: docs/legacy/INTEGRATIONS.md
-Integrations: [1-2 sentence summary]
+Integrations: [1-2 sentence summary including count and key services]
+Cloud Provider: [Primary provider or "None"]
+Critical Dependencies: [comma-separated list of most important integrations]
 ```
 
-**Note:** If no external integrations detected, state "No external integrations detected" clearly.
+**Special Cases:**
+
+**If no external integrations detected:**
+Create the document with this content in the Summary:
+```
+No external integrations were detected in this codebase. The application appears to be self-contained with no external API calls, cloud services, or third-party SDKs.
+```
+
+Then populate the document with:
+- "None detected" for all integration categories
+- Database section should still document any local database if present
+- Recommendations should focus on when/why to consider adding integrations
+
+**If only database integrations:**
+Note this explicitly - a database-only integration pattern is common and valid. Focus documentation on the database layer and note the absence of other external dependencies as a characteristic (not necessarily a problem).
 ```
 
 ---
