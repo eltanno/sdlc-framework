@@ -1,0 +1,17 @@
+#!/bin/bash
+# Ralph entry point - invokes Python CLI
+#
+# Usage: .claude/ralph/ralph <prd-path> <plan-path> [options]
+#
+# This is a thin wrapper that invokes the Python implementation.
+# Requires Python 3.10+ to be installed.
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Check Python version
+if ! python3 -c "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)" 2>/dev/null; then
+    echo "Error: Python 3.10 or higher is required" >&2
+    exit 1
+fi
+
+exec python3 "$SCRIPT_DIR/cli.py" "$@"
