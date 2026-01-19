@@ -223,12 +223,15 @@ The orchestrator eliminates this overhead by running all mechanical work directl
 # From project root (not inside a Claude session!)
 # Run /ralph-cmd in Claude to get the exact command
 
-.claude/scripts/ralph-prd.sh docs/prds/YYYY-MM-DD-feature.md docs/plans/YYYY-MM-DD-feature.md
+.claude/ralph/ralph run docs/prds/YYYY-MM-DD-feature.md docs/plans/YYYY-MM-DD-feature.md
 
 # Options
 --dry-run         # Show what would happen without invoking Claude
 --max-attempts N  # Max attempts per ticket before blocking (default: 3)
+--verbose         # Show debug output and stack traces
 ```
+
+**Prerequisites:** Python 3.10 or higher
 
 ### What It Does
 

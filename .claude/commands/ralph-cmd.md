@@ -33,21 +33,28 @@ If arguments provided, use those. Otherwise, identify the PRD/Plan from the file
 
 Run this command in your terminal (NOT inside Claude):
 
-  .claude/scripts/ralph-prd.sh <prd-path> <plan-path>
+  .claude/ralph/ralph run <prd-path> <plan-path>
 
 Example with detected files:
 
-  .claude/scripts/ralph-prd.sh docs/prds/YYYY-MM-DD-feature.md docs/plans/YYYY-MM-DD-feature.md
+  .claude/ralph/ralph run docs/prds/YYYY-MM-DD-feature.md docs/plans/YYYY-MM-DD-feature.md
 
 Options:
   --dry-run         Preview without invoking Claude
   --max-attempts N  Max retries per ticket (default: 3)
+  --verbose         Show debug output and stack traces
 
 ══════════════════════════════════════════════════════════════
 
 Copy and paste the command above into a NEW terminal window.
 Do NOT run it inside this Claude session.
 ```
+
+## Prerequisites
+
+- Python 3.10 or higher
+- `gh` CLI (authenticated)
+- `git` CLI
 
 ## Why Outside Claude?
 
