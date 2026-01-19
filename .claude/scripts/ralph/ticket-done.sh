@@ -79,7 +79,8 @@ if [ "$PM_TOOL" = "github" ]; then
     else
         # If no issue number provided, look it up from local state or GitHub
         if [ -z "$ISSUE_NUMBER" ] && [ -f "workflow-state.json" ]; then
-            ISSUE_NUMBER=$(jq -r --arg id "$TICKET_ID" '.ralph.tickets[] | select(.id == $id) | .issue_number // empty' workflow-state.json)
+            # Only try to read from .ralph.tickets if it exists
+            ISSUE_NUMBER=$(jq -r --arg id "$TICKET_ID" '(.ralph.tickets // [])[] | select(.id == $id) | .issue_number // empty' workflow-state.json 2>/dev/null)
         fi
 
         if [ -z "$ISSUE_NUMBER" ]; then
@@ -133,24 +134,42 @@ fi
 
 # Update local workflow-state.json (if it exists)
 if [ -f "workflow-state.json" ]; then
-    jq --arg id "$TICKET_ID" --arg pr "${PR_NUMBER:-null}" --arg issue "${ISSUE_NUMBER:-null}" '
-      .ralph.current = (.ralph.current + 1) |
-      .ralph.current_ticket = null |
-      .ralph.tickets_done += [$id] |
-      .ralph.tickets = (.ralph.tickets | map(
-        if .id == $id then
-          .status = "done" | .pr = (if $pr == "null" then null else $pr end) | .issue_number = (if $issue == "null" then .issue_number else ($issue | tonumber) end)
-        else . end
-      ))
-    ' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
+    # Check if .ralph.tickets exists (newer workflow-state.json format)
+    HAS_TICKETS=$(jq -r '.ralph.tickets // "null"' workflow-state.json)
 
-    # Get updated progress
-    CURRENT=$(jq -r '.ralph.current' workflow-state.json)
-    TOTAL=$(jq -r '.ralph.total' workflow-state.json)
+    if [ "$HAS_TICKETS" != "null" ]; then
+        # Full local state with tickets array - update it
+        jq --arg id "$TICKET_ID" --arg pr "${PR_NUMBER:-null}" --arg issue "${ISSUE_NUMBER:-null}" '
+          .ralph.current = ((.ralph.current // 0) + 1) |
+          .ralph.current_ticket = null |
+          .ralph.tickets_done = ((.ralph.tickets_done // []) + [$id]) |
+          .ralph.tickets = ((.ralph.tickets // []) | map(
+            if .id == $id then
+              .status = "done" | .pr = (if $pr == "null" then null else $pr end) | .issue_number = (if $issue == "null" then .issue_number else ($issue | tonumber) end)
+            else . end
+          ))
+        ' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
+
+        # Get updated progress from local state
+        CURRENT=$(jq -r '.ralph.current // 0' workflow-state.json)
+        TOTAL=$(jq -r '.ralph.total // 0' workflow-state.json)
+    else
+        # Minimal workflow-state.json (only dependencies) - use GitHub for counts
+        echo -e "${YELLOW}Note: workflow-state.json uses GitHub as source of truth${NC}"
+        TOTAL_OPEN=$(gh issue list --state open --json number --limit 1000 2>/dev/null | jq 'length' || echo "0")
+        TOTAL_CLOSED=$(gh issue list --state closed --json number --limit 1000 2>/dev/null | jq 'length' || echo "0")
+        TOTAL=$((TOTAL_OPEN + TOTAL_CLOSED))
+        CURRENT=$TOTAL_CLOSED
+    fi
+
     REMAINING=$((TOTAL - CURRENT))
 
-    # Find next pending ticket from local state
-    NEXT_TICKET=$(jq -r '.ralph.tickets[] | select(.status == "pending") | .id' workflow-state.json | head -1)
+    # Find next pending ticket from local state (if tickets array exists)
+    if [ "$HAS_TICKETS" != "null" ]; then
+        NEXT_TICKET=$(jq -r '.ralph.tickets[] | select(.status == "pending") | .id' workflow-state.json 2>/dev/null | head -1)
+    else
+        NEXT_TICKET=""  # Will be determined by get-next-ticket.sh
+    fi
 else
     # No local state - use GitHub counts
     if [ "$PM_TOOL" = "github" ]; then

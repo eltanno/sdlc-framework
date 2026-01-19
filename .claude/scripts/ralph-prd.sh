@@ -97,6 +97,41 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 RALPH_SCRIPTS="$SCRIPT_DIR/ralph"
 cd "$PROJECT_ROOT"
 
+# ============================================================================
+# Check for required .env file with RALPH_LABEL
+# ============================================================================
+
+if [ ! -f ".env" ]; then
+    echo -e "${RED}ERROR: .env file not found${NC}"
+    echo ""
+    echo "Each ralph worktree needs a .env file with a unique RALPH_LABEL."
+    echo "This prevents multiple instances from picking up the same ticket."
+    echo ""
+    echo "Create .env with:"
+    echo "  echo 'RALPH_LABEL=ralph-1' > .env    # For first instance"
+    echo "  echo 'RALPH_LABEL=ralph-2' > .env    # For second instance"
+    echo ""
+    echo "Current directory: $PROJECT_ROOT"
+    exit 1
+fi
+
+# Load .env
+set -a
+source .env
+set +a
+
+if [ -z "$RALPH_LABEL" ]; then
+    echo -e "${RED}ERROR: RALPH_LABEL not set in .env${NC}"
+    echo ""
+    echo "Add RALPH_LABEL to your .env file:"
+    echo "  echo 'RALPH_LABEL=ralph-1' >> .env"
+    echo ""
+    echo "Each worktree must have a unique label (ralph-1, ralph-2, etc.)"
+    exit 1
+fi
+
+echo -e "${GREEN}✓${NC} Instance label: $RALPH_LABEL"
+
 # Source state utilities (for prompt building and state management)
 source "$RALPH_SCRIPTS/state-utils.sh"
 
@@ -617,7 +652,7 @@ invoke_claude() {
         return 0
     fi
 
-    log_step "Invoking Claude (model: $model, timeout: ${timeout_mins}m)..."
+    log_step "Invoking Claude (model: $model, timeout: ${timeout_mins}m) at $(date +%H:%M:%S)..."
     log_to_file "Claude invocation: model=$model, timeout=${timeout_mins}m, task=$task_label"
     log_to_file "Claude log file: $claude_log"
 
@@ -914,7 +949,7 @@ ENDJSON
             # LLM WORK: Engineer (implements + validates + commits)
             # ================================================================
 
-            log_step "Invoking Claude engineer (model: $TICKET_MODEL, timeout: ${ENGINEER_TIMEOUT}m)..."
+            log_step "Invoking Claude engineer (model: $TICKET_MODEL, timeout: ${ENGINEER_TIMEOUT}m) at $(date +%H:%M:%S)..."
 
             local ENGINEER_OUTPUT=""
             local ENGINEER_EXIT=0

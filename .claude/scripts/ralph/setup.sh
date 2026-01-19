@@ -107,19 +107,8 @@ if [ "$PM_TOOL" = "github" ]; then
 
     if [[ "$INSTANCE_OPEN_COUNT" -gt 0 ]]; then
         echo ""
-        echo -e "${YELLOW}Warning: Label '$INSTANCE_LABEL' has $INSTANCE_OPEN_COUNT open issue(s).${NC}"
-        echo "This may indicate another ralph instance is using this label."
-        echo ""
-        read -p "Resume existing work with this label? (y/n): " CONFIRM
-
-        if [[ "$CONFIRM" != "y" && "$CONFIRM" != "Y" ]]; then
-            echo ""
-            echo "Exiting. To use a different label, update RALPH_LABEL in your .env file."
-            echo "Example: RALPH_LABEL=ralph-2"
-            exit 1
-        fi
-
-        echo "Continuing with label '$INSTANCE_LABEL'..."
+        echo -e "${YELLOW}Notice: Label '$INSTANCE_LABEL' has $INSTANCE_OPEN_COUNT open issue(s).${NC}"
+        echo "Resuming existing work with this label..."
     fi
 
     # Get counts from GitHub (lightweight query - just for display)
