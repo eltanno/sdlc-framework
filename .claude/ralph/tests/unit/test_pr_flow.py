@@ -1,0 +1,388 @@
+"""Unit tests for the PR flow command module.
+
+Tests cover:
+- Committing staged changes
+- Pushing to remote
+- Creating pull requests with proper linking
+- Merging pull requests
+- The complete PR flow from commit to merge
+"""
+
+import subprocess
+from dataclasses import dataclass
+from typing import Any
+from unittest.mock import MagicMock, patch, call
+
+import pytest
+
+
+@pytest.fixture
+def mock_git_module(mocker):
+    """Mock the git module functions."""
+    return mocker.patch.object(
+        __import__("commands.pr_flow", fromlist=["git"]),
+        "git",
+    )
+
+
+@pytest.fixture
+def mock_github_module(mocker):
+    """Mock the github module functions."""
+    return mocker.patch.object(
+        __import__("commands.pr_flow", fromlist=["github"]),
+        "github",
+    )
+
+
+class TestPrFlowResult:
+    """Tests for PrFlowResult dataclass."""
+
+    def test_pr_flow_result_contains_all_fields(self):
+        """Given PR flow completes, when result is created, then all fields are present."""
+        from commands.pr_flow import PrFlowResult
+
+        result = PrFlowResult(
+            ticket_id="TASK-001",
+            branch="feature/TASK-001-test",
+            commit_sha="abc1234",
+            pr_number=123,
+            pr_url="https://github.com/owner/repo/pull/123",
+            merged=True,
+            already_done=False,
+        )
+
+        assert result.ticket_id == "TASK-001"
+        assert result.branch == "feature/TASK-001-test"
+        assert result.commit_sha == "abc1234"
+        assert result.pr_number == 123
+        assert result.pr_url == "https://github.com/owner/repo/pull/123"
+        assert result.merged is True
+        assert result.already_done is False
+
+
+class TestStageAndCommit:
+    """Tests for stage_and_commit function."""
+
+    def test_stage_and_commit_stages_all_and_commits(self, mock_git_module):
+        """Given changes exist, when stage_and_commit called, then changes are committed."""
+        from commands import pr_flow
+
+        mock_git_module.is_dirty.return_value = True
+        mock_git_module.stage_all.return_value = None
+        mock_git_module.commit.return_value = "abc1234"
+
+        result = pr_flow.stage_and_commit("TASK-001", "Implementation complete")
+
+        mock_git_module.stage_all.assert_called_once()
+        mock_git_module.commit.assert_called_once()
+        assert result == "abc1234"
+
+    def test_stage_and_commit_returns_none_when_no_changes(self, mock_git_module):
+        """Given no changes, when stage_and_commit called, then None is returned."""
+        from commands import pr_flow
+
+        mock_git_module.is_dirty.return_value = False
+
+        result = pr_flow.stage_and_commit("TASK-001", "Test message")
+
+        assert result is None
+        mock_git_module.commit.assert_not_called()
+
+    def test_stage_and_commit_adds_coauthor(self, mock_git_module):
+        """Given commit message, when committing, then co-author is added."""
+        from commands import pr_flow
+
+        mock_git_module.is_dirty.return_value = True
+        mock_git_module.commit.return_value = "abc1234"
+
+        pr_flow.stage_and_commit("TASK-001", "Test message")
+
+        commit_call = mock_git_module.commit.call_args
+        message = commit_call[0][0]
+        assert "Co-Authored-By:" in message or "Claude" in message
+
+
+class TestPushBranch:
+    """Tests for push_branch function."""
+
+    def test_push_branch_pushes_with_upstream(self, mock_git_module):
+        """Given branch not pushed, when pushing, then sets upstream."""
+        from commands import pr_flow
+
+        mock_git_module.push.return_value = None
+
+        pr_flow.push_branch("feature/test")
+
+        mock_git_module.push.assert_called_once()
+        call_kwargs = mock_git_module.push.call_args[1]
+        assert call_kwargs.get("set_upstream") is True
+
+
+class TestCreatePr:
+    """Tests for create_pr function."""
+
+    def test_create_pr_creates_with_ticket_in_title(self, mock_github_module):
+        """Given ticket ID, when creating PR, then title includes ticket ID."""
+        from commands import pr_flow
+        from core.github import PullRequestResult
+
+        mock_github_module.create_pull_request.return_value = PullRequestResult(
+            url="https://github.com/owner/repo/pull/42",
+            number=42,
+        )
+
+        result = pr_flow.create_pr("TASK-001", "Implementation complete")
+
+        create_call = mock_github_module.create_pull_request.call_args
+        title = create_call[1].get("title") or create_call[0][0]
+        assert "TASK-001" in title
+
+    def test_create_pr_links_to_issue_in_body(self, mock_github_module):
+        """Given issue number, when creating PR, then body links to issue."""
+        from commands import pr_flow
+        from core.github import PullRequestResult
+
+        mock_github_module.find_issue_by_title.return_value = 110
+        mock_github_module.create_pull_request.return_value = PullRequestResult(
+            url="https://github.com/owner/repo/pull/42",
+            number=42,
+        )
+
+        pr_flow.create_pr("TASK-001", "Implementation complete")
+
+        create_call = mock_github_module.create_pull_request.call_args
+        body = create_call[1].get("body") or create_call[0][1]
+        assert "#110" in body or "Closes #110" in body
+
+    def test_create_pr_returns_pr_info(self, mock_github_module):
+        """Given PR creation succeeds, when result returned, then PR URL and number are provided."""
+        from commands import pr_flow
+        from core.github import PullRequestResult
+
+        mock_github_module.find_issue_by_title.return_value = None
+        mock_github_module.create_pull_request.return_value = PullRequestResult(
+            url="https://github.com/owner/repo/pull/123",
+            number=123,
+        )
+
+        result = pr_flow.create_pr("TASK-001", "Test")
+
+        assert result.number == 123
+        assert result.url == "https://github.com/owner/repo/pull/123"
+
+
+class TestMergePr:
+    """Tests for merge_pr function."""
+
+    def test_merge_pr_uses_squash_by_default(self, mock_github_module):
+        """Given PR number, when merging, then squash merge is used."""
+        from commands import pr_flow
+
+        mock_github_module.merge_pull_request.return_value = None
+
+        pr_flow.merge_pr(123)
+
+        mock_github_module.merge_pull_request.assert_called_once()
+        call_args = mock_github_module.merge_pull_request.call_args
+        assert call_args[0][0] == 123
+        assert call_args[1].get("strategy") == "squash"
+
+
+class TestCheckoutDetachedMain:
+    """Tests for checkout_detached_main function."""
+
+    def test_checkout_detached_main_fetches_and_checkouts(self, mock_git_module):
+        """Given main exists remotely, when checking out detached, then detached HEAD is used."""
+        from commands import pr_flow
+
+        mock_git_module.fetch.return_value = None
+        # Simulate checkout --detach
+        mock_git_module._run_git_command = MagicMock()
+
+        pr_flow.checkout_detached_main("main")
+
+        mock_git_module.fetch.assert_called()
+
+
+class TestFindExistingPr:
+    """Tests for find_existing_pr function."""
+
+    def test_find_existing_pr_returns_pr_number(self, mock_github_module):
+        """Given PR exists for branch, when checking, then PR number is returned."""
+        from commands import pr_flow
+
+        mock_github_module.list_pull_requests.return_value = [
+            {"number": 50, "title": "Test PR"}
+        ]
+
+        result = pr_flow.find_existing_pr("feature/test")
+
+        assert result == 50
+
+    def test_find_existing_pr_returns_none_when_no_pr(self, mock_github_module):
+        """Given no PR exists, when checking, then None is returned."""
+        from commands import pr_flow
+
+        mock_github_module.list_pull_requests.return_value = []
+
+        result = pr_flow.find_existing_pr("feature/no-pr")
+
+        assert result is None
+
+
+class TestCheckAlreadyMerged:
+    """Tests for check_already_merged function."""
+
+    def test_check_already_merged_returns_pr_number_when_merged(self, mock_github_module):
+        """Given PR was merged for ticket, when checking, then PR number is returned."""
+        from commands import pr_flow
+
+        mock_github_module.find_merged_pr.return_value = 99
+
+        result = pr_flow.check_already_merged("TASK-001")
+
+        assert result == 99
+
+    def test_check_already_merged_returns_none_when_not_merged(self, mock_github_module):
+        """Given no merged PR, when checking, then None is returned."""
+        from commands import pr_flow
+
+        mock_github_module.find_merged_pr.return_value = None
+
+        result = pr_flow.check_already_merged("TASK-001")
+
+        assert result is None
+
+
+class TestPrFlow:
+    """Tests for the main pr_flow function."""
+
+    def test_pr_flow_complete_happy_path(self, mock_git_module, mock_github_module):
+        """Given changes to commit, when running full flow, then PR is created and merged."""
+        from commands import pr_flow
+        from core.github import PullRequestResult
+
+        # Setup mocks for happy path
+        mock_git_module.get_current_branch.return_value = "feature/TASK-001-test"
+        mock_git_module.is_dirty.return_value = True
+        mock_git_module.stage_all.return_value = None
+        mock_git_module.commit.return_value = "abc1234"
+        mock_git_module.push.return_value = None
+        mock_git_module.fetch.return_value = None
+
+        mock_github_module.find_merged_pr.return_value = None
+        mock_github_module.list_pull_requests.return_value = []
+        mock_github_module.find_issue_by_title.return_value = 110
+        mock_github_module.create_pull_request.return_value = PullRequestResult(
+            url="https://github.com/owner/repo/pull/42",
+            number=42,
+        )
+        mock_github_module.merge_pull_request.return_value = None
+
+        result = pr_flow.pr_flow("TASK-001", "Implementation complete")
+
+        assert result.ticket_id == "TASK-001"
+        assert result.pr_number == 42
+        assert result.merged is True
+        assert result.already_done is False
+
+    def test_pr_flow_already_merged_returns_early(self, mock_git_module, mock_github_module):
+        """Given PR already merged, when running flow, then returns early with already_done."""
+        from commands import pr_flow
+
+        mock_git_module.get_current_branch.return_value = "main"
+        mock_git_module.is_dirty.return_value = False
+        mock_github_module.find_merged_pr.return_value = 99
+
+        result = pr_flow.pr_flow("TASK-001", "Test")
+
+        assert result.already_done is True
+        assert result.pr_number == 99
+        mock_github_module.create_pull_request.assert_not_called()
+
+    def test_pr_flow_reuses_existing_pr(self, mock_git_module, mock_github_module):
+        """Given PR already exists, when running flow, then existing PR is used."""
+        from commands import pr_flow
+        from core.github import PullRequestResult
+
+        mock_git_module.get_current_branch.return_value = "feature/TASK-001-test"
+        mock_git_module.is_dirty.return_value = False
+        mock_git_module.push.return_value = None
+        mock_git_module.fetch.return_value = None
+
+        mock_github_module.find_merged_pr.return_value = None
+        mock_github_module.list_pull_requests.return_value = [{"number": 50}]
+        mock_github_module.get_pull_request.return_value = {
+            "number": 50,
+            "url": "https://github.com/owner/repo/pull/50",
+        }
+        mock_github_module.merge_pull_request.return_value = None
+
+        result = pr_flow.pr_flow("TASK-001", "Test")
+
+        assert result.pr_number == 50
+        mock_github_module.create_pull_request.assert_not_called()
+
+    def test_pr_flow_no_merge_option(self, mock_git_module, mock_github_module):
+        """Given --no-merge flag, when running flow, then PR is not merged."""
+        from commands import pr_flow
+        from core.github import PullRequestResult
+
+        mock_git_module.get_current_branch.return_value = "feature/TASK-001-test"
+        mock_git_module.is_dirty.return_value = True
+        mock_git_module.commit.return_value = "abc1234"
+        mock_git_module.push.return_value = None
+
+        mock_github_module.find_merged_pr.return_value = None
+        mock_github_module.list_pull_requests.return_value = []
+        mock_github_module.find_issue_by_title.return_value = None
+        mock_github_module.create_pull_request.return_value = PullRequestResult(
+            url="https://github.com/owner/repo/pull/42",
+            number=42,
+        )
+
+        result = pr_flow.pr_flow("TASK-001", "Test", no_merge=True)
+
+        assert result.merged is False
+        mock_github_module.merge_pull_request.assert_not_called()
+
+    def test_pr_flow_dry_run_no_real_operations(self, mock_git_module, mock_github_module):
+        """Given --dry-run flag, when running flow, then no real operations occur."""
+        from commands import pr_flow
+
+        mock_git_module.get_current_branch.return_value = "feature/TASK-001-test"
+        mock_git_module.is_dirty.return_value = True
+
+        mock_github_module.find_merged_pr.return_value = None
+
+        result = pr_flow.pr_flow("TASK-001", "Test", dry_run=True)
+
+        # In dry run, no actual commit/push/PR operations should occur
+        mock_git_module.commit.assert_not_called()
+        mock_git_module.push.assert_not_called()
+        mock_github_module.create_pull_request.assert_not_called()
+
+    def test_pr_flow_raises_on_main_with_no_changes(self, mock_git_module, mock_github_module):
+        """Given on main branch with no changes and no existing PR, when running flow, then error is raised."""
+        from commands import pr_flow
+
+        mock_git_module.get_current_branch.return_value = "main"
+        mock_git_module.is_dirty.return_value = False
+        mock_github_module.find_merged_pr.return_value = None
+
+        with pytest.raises(pr_flow.PrFlowError) as exc_info:
+            pr_flow.pr_flow("TASK-001", "Test")
+
+        assert "main" in str(exc_info.value).lower() or "default branch" in str(exc_info.value).lower()
+
+
+class TestPrFlowError:
+    """Tests for PrFlowError exception class."""
+
+    def test_pr_flow_error_contains_message(self):
+        """Given error condition, when raised, then message is included."""
+        from commands.pr_flow import PrFlowError
+
+        error = PrFlowError("Cannot create PR from main branch")
+
+        assert "main" in str(error)
