@@ -1,0 +1,36 @@
+{
+  "ticket_id": "AUCT-0188",
+  "final_status": "SUCCESS",
+  "total_attempts": 1,
+  "completed": "2026-01-19T18:08:13+00:00",
+  "outcome": "Ticket completed successfully after 1 attempt(s). PR #16 merged.",
+  "attempt_history": [
+    {
+      "attempt": 1,
+      "status": "validation_passed",
+      "key_issues": "None"
+    }
+  ],
+  "branch": "",
+  "last_commit": "46a29c2",
+  "pr_number": "16",
+  "files_changed": [
+    ".claude/commands/analyze-codebase.md",
+    "docs/state/AUCT-0187/summary.json",
+    "docs/state/AUCT-0187/summary.md",
+    "docs/state/AUCT-0188/attempt-1/engineer-state.json",
+    "docs/state/AUCT-0188/attempt-1/engineer-state.md"
+  ],
+  "lessons_learned": [],
+  "usage": {
+    "invocation_count": 1,
+    "duration_seconds": 160,
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "cache_read_tokens": 0,
+    "cache_creation_tokens": 0,
+    "total_cost": 0,
+    "model": "opus",
+    "complexity": 3
+  }
+}

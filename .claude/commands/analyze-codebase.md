@@ -641,32 +641,139 @@ Analyze the code style conventions and standards used in this codebase.
    - Function/method naming
    - File naming patterns
    - Class/component naming
+   - Constants naming
 
 2. **Linting & Formatting**
    - ESLint, Prettier, Ruff, Black configs
-   - Configured rules
+   - Configured rules (key rules that deviate from defaults)
    - Auto-formatting setup
+   - Pre-commit hooks
 
 3. **Code Organization**
    - Import organization style
    - File structure within modules
    - Export patterns
+   - Module boundary patterns
 
 4. **Comment Patterns**
    - Documentation style (JSDoc, docstrings, etc.)
    - Inline comment patterns
-   - TODO/FIXME usage
+   - TODO/FIXME/HACK usage patterns
 
 5. **Git Conventions**
-   - Commit message patterns (if observable)
+   - Commit message patterns (if observable from git log)
    - Branch naming (if observable)
-   - PR templates
+   - PR templates if present
 
 ### How to Analyze
 
-- Read linter/formatter config files
-- Sample code files to observe patterns
-- Look for style guides or contributing docs
+Use these tools to gather information:
+- `Glob` for config files: `**/.eslintrc*`, `**/.prettierrc*`, `**/pyproject.toml`, `**/.editorconfig`
+- `Read` to examine linter/formatter configurations
+- `Grep` to find naming patterns in code: variable declarations, function definitions, class definitions
+- `Bash` with `git log --oneline -20` to observe commit message patterns
+- Sample 3-5 representative source files to observe actual conventions in practice
+
+**Linter/Formatter Detection by Ecosystem:**
+
+| Ecosystem | Linter | Formatter | Config Files |
+|-----------|--------|-----------|--------------|
+| TypeScript/JavaScript | ESLint | Prettier | `.eslintrc.*`, `eslint.config.js`, `.prettierrc.*`, `prettier.config.js` |
+| Python | Ruff, Flake8, Pylint | Black, Ruff, YAPF | `pyproject.toml [tool.ruff]`, `.flake8`, `pylintrc`, `.style.yapf` |
+| Go | golangci-lint | gofmt, goimports | `.golangci.yml`, `.golangci.yaml` |
+| Rust | Clippy | rustfmt | `clippy.toml`, `rustfmt.toml`, `.rustfmt.toml` |
+| Java | Checkstyle, SpotBugs | google-java-format | `checkstyle.xml`, `spotbugs-exclude.xml` |
+| Ruby | RuboCop | RuboCop | `.rubocop.yml` |
+
+**Key ESLint Rules to Document:**
+
+| Rule Category | Example Rules | Why Important |
+|---------------|---------------|---------------|
+| Naming | `camelcase`, `@typescript-eslint/naming-convention` | Enforces naming standards |
+| Imports | `import/order`, `import/no-cycle` | Import organization |
+| Code Style | `semi`, `quotes`, `indent`, `max-len` | Basic formatting |
+| Best Practices | `no-unused-vars`, `eqeqeq`, `no-console` | Code quality |
+| TypeScript | `@typescript-eslint/explicit-function-return-type`, `@typescript-eslint/no-explicit-any` | Type safety |
+
+**Key Prettier Options to Document:**
+
+| Option | Common Values | Impact |
+|--------|---------------|--------|
+| `printWidth` | 80, 100, 120 | Line length |
+| `tabWidth` | 2, 4 | Indentation |
+| `semi` | true, false | Semicolon usage |
+| `singleQuote` | true, false | Quote style |
+| `trailingComma` | "es5", "all", "none" | Trailing commas |
+| `arrowParens` | "always", "avoid" | Arrow function parens |
+
+**Python Linting/Formatting Configuration:**
+
+| Tool | Config Location | Key Settings |
+|------|-----------------|--------------|
+| Ruff | `pyproject.toml [tool.ruff]` | `line-length`, `select`, `ignore`, `target-version` |
+| Black | `pyproject.toml [tool.black]` | `line-length`, `target-version`, `skip-string-normalization` |
+| isort | `pyproject.toml [tool.isort]` | `profile`, `line_length`, `known_first_party` |
+| mypy | `pyproject.toml [tool.mypy]` | `strict`, `ignore_missing_imports` |
+| Flake8 | `.flake8` or `setup.cfg` | `max-line-length`, `ignore`, `exclude` |
+
+**Naming Convention Detection Patterns:**
+
+| Convention | Detection Pattern | Common Usage |
+|------------|-------------------|--------------|
+| camelCase | `[a-z][a-zA-Z0-9]*` | JavaScript/TypeScript variables, functions |
+| PascalCase | `[A-Z][a-zA-Z0-9]*` | Classes, React components, TypeScript types |
+| snake_case | `[a-z][a-z0-9_]*` | Python variables, functions, modules |
+| SCREAMING_SNAKE_CASE | `[A-Z][A-Z0-9_]*` | Constants across languages |
+| kebab-case | `[a-z][a-z0-9-]*` | File names, CSS classes, URL slugs |
+| Hungarian notation | Prefixes like `str`, `int`, `arr` | Legacy codebases |
+
+**How to Detect Naming Conventions:**
+1. Sample variable declarations: `const`, `let`, `var` (JS); assignment statements (Python)
+2. Sample function definitions: `function`, `const x = () =>` (JS); `def` (Python)
+3. Sample class definitions: `class` keyword across languages
+4. Sample file names: use `Glob` to list files and observe patterns
+5. Look for constants: `const` with UPPER_CASE (JS); module-level UPPER_CASE (Python)
+
+**Import Organization Detection:**
+
+| Style | Detection Pattern | Example |
+|-------|-------------------|---------|
+| Grouped by type | External, then internal, then relative | React apps with `import/order` |
+| Alphabetical | All imports sorted A-Z | Some auto-formatters |
+| Ungrouped | No clear pattern | Legacy or no tooling |
+| Absolute imports | `from src/components/...` | Configured in tsconfig/pyproject |
+| Relative imports | `from ./`, `from ../` | Common default |
+| Barrel exports | `index.ts` re-exports | Component libraries |
+
+**File Naming Convention Detection:**
+
+| Pattern | Examples | Ecosystem |
+|---------|----------|-----------|
+| kebab-case | `user-profile.ts`, `api-client.py` | Common in Node.js, Python |
+| PascalCase | `UserProfile.tsx`, `ApiClient.java` | React components, Java classes |
+| snake_case | `user_profile.py`, `api_client.rb` | Python, Ruby modules |
+| camelCase | `userProfile.ts` | Some JavaScript projects |
+| Dot notation | `user.controller.ts`, `user.service.ts` | NestJS, Angular |
+| Suffix patterns | `*.spec.ts`, `*.test.js`, `*_test.go` | Test files |
+
+**Documentation Style Detection:**
+
+| Style | Detection Pattern | Ecosystem |
+|-------|-------------------|-----------|
+| JSDoc | `/** ... */` with `@param`, `@returns` | JavaScript/TypeScript |
+| TSDoc | `/** ... */` with `@remarks`, `@example` | TypeScript (stricter) |
+| Docstrings | `"""..."""` or `'''...'''` | Python |
+| Google-style docstrings | `Args:`, `Returns:`, `Raises:` sections | Python (Google convention) |
+| NumPy-style docstrings | `Parameters`, `Returns` with dashes | Python (scientific) |
+| Godoc | Comment directly above declaration | Go |
+| Rustdoc | `///` or `//!` comments | Rust |
+| Javadoc | `/** ... */` with `@param`, `@return` | Java |
+
+**Git Convention Detection:**
+- Run `git log --oneline -20` to see recent commit messages
+- Look for patterns: Conventional Commits (`feat:`, `fix:`), ticket references (`[JIRA-123]`), imperative mood
+- Check for `.github/PULL_REQUEST_TEMPLATE.md` or `.gitlab/merge_request_templates/`
+- Check for `.gitmessage` or commit-msg hooks in `.husky/` or `.git/hooks/`
 
 ### Output
 
@@ -680,37 +787,119 @@ Create `docs/legacy/CONVENTIONS.md` with this structure:
 
 ## Summary
 
-[2-3 sentence overview of code conventions]
+[2-3 sentence overview of code conventions and tooling maturity]
 
 ## Findings
 
 ### Naming Conventions
-- Variables: [style]
-- Functions: [style]
-- Files: [style]
-- Classes: [style]
+
+| Element | Convention | Examples | Consistency |
+|---------|------------|----------|-------------|
+| Variables | [camelCase/snake_case/etc] | [example names found] | [High/Medium/Low] |
+| Functions | [convention] | [example names found] | [High/Medium/Low] |
+| Classes/Types | [convention] | [example names found] | [High/Medium/Low] |
+| Constants | [convention] | [example names found] | [High/Medium/Low] |
+| Files | [convention] | [example patterns] | [High/Medium/Low] |
+
+**Notable Patterns:**
+- [Any unique naming conventions observed]
+- [Prefix/suffix patterns used]
 
 ### Linting & Formatting
-- Linter: [tool and key rules]
-- Formatter: [tool and settings]
-- Type Checking: [tool if applicable]
+
+**Linter Configuration:**
+| Tool | Config File | Key Rules |
+|------|-------------|-----------|
+| [ESLint/Ruff/etc] | [file path] | [notable non-default rules] |
+
+**Formatter Configuration:**
+| Tool | Config File | Key Settings |
+|------|-------------|--------------|
+| [Prettier/Black/etc] | [file path] | [notable settings like line length, quotes] |
+
+**Type Checking:**
+| Tool | Config File | Strictness |
+|------|-------------|------------|
+| [TypeScript/mypy/etc] | [file path] | [strict/moderate/loose] |
+
+**Automation:**
+- Pre-commit hooks: [yes/no - tool if yes]
+- CI lint checks: [yes/no - where configured]
+- Editor integration: [.editorconfig present? VS Code settings?]
 
 ### Code Organization
-- Import Style: [description]
-- Export Style: [description]
-- Module Pattern: [description]
+
+**Import Style:**
+| Aspect | Convention | Enforced By |
+|--------|------------|-------------|
+| Grouping | [external → internal → relative / alphabetical / none] | [ESLint rule or "not enforced"] |
+| Path style | [absolute / relative / mixed] | [tsconfig paths / pyproject / none] |
+| Default vs named | [preference observed] | [not typically enforced] |
+
+**Export Patterns:**
+- [Barrel exports (index files) / direct exports / mixed]
+- [Default exports vs named exports preference]
+
+**Module Structure:**
+- [How files are organized within directories]
+- [Co-location patterns (tests with source, styles with components)]
 
 ### Documentation Style
-- Format: [JSDoc/docstrings/etc]
-- Coverage: [how much is documented]
+
+| Aspect | Convention | Coverage |
+|--------|------------|----------|
+| Format | [JSDoc/docstrings/Godoc/etc] | [High/Medium/Low/None] |
+| Public APIs | [documented/partial/undocumented] | [percentage estimate] |
+| Internal code | [documented/partial/undocumented] | [percentage estimate] |
+| README quality | [comprehensive/basic/minimal/missing] | N/A |
+
+**Comment Patterns:**
+- TODO count: [approximate count]
+- FIXME count: [approximate count]
+- Inline comment style: [description of how comments are used]
 
 ### Git Conventions
-- Commit Style: [observed pattern or "not determined"]
-- Branch Naming: [observed pattern or "not determined"]
+
+**Commit Messages:**
+| Aspect | Observed Pattern | Examples |
+|--------|------------------|----------|
+| Style | [Conventional Commits/Imperative/Free-form] | [sample messages] |
+| Ticket references | [yes - format / no] | [example if yes] |
+| Co-author tags | [yes/no] | [example if yes] |
+
+**Branch Naming:**
+- Pattern: [feature/xxx, fix/xxx, etc. or "not determinable"]
+
+**PR/MR Templates:**
+- Template present: [yes - path / no]
+- Template quality: [comprehensive/basic/none]
+
+### EditorConfig / IDE Settings
+
+| Setting | Value | File |
+|---------|-------|------|
+| Indent style | [spaces/tabs] | [.editorconfig or inferred] |
+| Indent size | [2/4/etc] | [source] |
+| End of line | [lf/crlf/auto] | [source] |
+| Trim trailing whitespace | [yes/no] | [source] |
+| Final newline | [yes/no] | [source] |
+
+## Consistency Assessment
+
+| Area | Consistency | Notes |
+|------|-------------|-------|
+| Naming | [High/Medium/Low] | [brief note] |
+| Formatting | [High/Medium/Low] | [brief note] |
+| Documentation | [High/Medium/Low] | [brief note] |
+| Imports | [High/Medium/Low] | [brief note] |
+
+**Overall Convention Maturity:** [Mature/Developing/Minimal]
 
 ## Recommendations
 
-- [Convention recommendations]
+- [Recommendation 1: specific, actionable improvement]
+- [Recommendation 2: specific, actionable improvement]
+- [Recommendation 3: specific, actionable improvement]
 
 ---
 *Generated by `/analyze-codebase`*
@@ -722,7 +911,8 @@ After creating the document, return:
 ```
 CONVENTIONS ANALYSIS COMPLETE
 Document: docs/legacy/CONVENTIONS.md
-Style: [1-2 sentence summary]
+Style: [1-2 sentence summary including primary language conventions and tooling]
+Convention Maturity: [Mature/Developing/Minimal]
 ```
 ```
 
