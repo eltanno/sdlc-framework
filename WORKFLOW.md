@@ -167,6 +167,15 @@ docs/
 │   └── PROGRESS.md                 # Implementation tracking
 ├── research/
 │   └── YYYY-MM-DD-topic.md        # Technical research
+├── legacy/                         # Output from /analyze-codebase
+│   ├── STACK.md                   # Languages, frameworks, runtime
+│   ├── ARCHITECTURE.md            # System patterns, data flow
+│   ├── STRUCTURE.md               # Directory organization
+│   ├── CONVENTIONS.md             # Code style standards
+│   ├── TESTING.md                 # Test frameworks, coverage
+│   ├── INTEGRATIONS.md            # External services, APIs
+│   ├── CONCERNS.md                # Technical debt, fragile areas
+│   └── NEXT-STEPS.md              # Prioritized improvements
 ├── rca/
 │   └── YYYY-MM-DD-issue.md        # Root cause analysis for bugs
 ├── execution-reports/
@@ -477,6 +486,7 @@ Discovery v1 (iteration scope)           Discovery v1.1 (next iteration)
 | `/whats-next` | None - run anytime to get oriented |
 | `/prime` | None - run before any significant work |
 | `/research` | None - can run anytime |
+| `/analyze-codebase` | None - run on any existing codebase |
 | `/rca` | Bug report or issue to investigate |
 
 ### Planning Phases
@@ -632,6 +642,68 @@ Output: `docs/research/YYYY-MM-DD-{topic}.md`
 
 ---
 
+## Optional: Analyze Codebase
+
+The `/analyze-codebase` command performs deep, non-destructive analysis of any existing codebase and produces comprehensive documentation for legacy project adoption.
+
+```bash
+/analyze-codebase
+```
+
+**Purpose:** Enable teams with existing codebases to understand what they have before planning improvements. This command produces structured documentation that serves as the foundation for SDLC adoption.
+
+**How it works:**
+
+1. **Optional Q&A** - Clarifying questions to focus the analysis (can be skipped)
+   - "What's the main purpose of this project?"
+   - "Any specific areas of concern or focus?"
+   - "Known pain points or technical debt?"
+
+2. **Parallel Analysis** - 7 independent analysis agents run concurrently:
+   - Stack Analyzer → `docs/legacy/STACK.md`
+   - Architecture Analyzer → `docs/legacy/ARCHITECTURE.md`
+   - Structure Analyzer → `docs/legacy/STRUCTURE.md`
+   - Conventions Analyzer → `docs/legacy/CONVENTIONS.md`
+   - Testing Analyzer → `docs/legacy/TESTING.md`
+   - Integrations Analyzer → `docs/legacy/INTEGRATIONS.md`
+   - Concerns Analyzer → `docs/legacy/CONCERNS.md`
+
+3. **Synthesis** - After all analyses complete, a synthesizer creates:
+   - `docs/legacy/NEXT-STEPS.md` - Prioritized improvements (P1/P2/P3) and SDLC workflow guidance
+
+**Output:** 8 Markdown documents in `docs/legacy/`
+
+```
+docs/legacy/
+├── STACK.md           # Languages, frameworks, runtime
+├── ARCHITECTURE.md    # System patterns, data flow
+├── STRUCTURE.md       # Directory organization
+├── CONVENTIONS.md     # Code style standards
+├── TESTING.md         # Test frameworks, coverage
+├── INTEGRATIONS.md    # External services, APIs
+├── CONCERNS.md        # Technical debt, fragile areas
+└── NEXT-STEPS.md      # Prioritized improvements + SDLC guidance
+```
+
+**Key characteristics:**
+- **Non-destructive** - Read-only analysis, never modifies source files
+- **Language-agnostic** - Works with any programming language
+- **Parallel execution** - Independent analyses run concurrently for speed
+- **Actionable output** - Each document includes recommendations
+- **SDLC integration** - NEXT-STEPS.md guides users to `/discover` for improvements
+
+**When to use:**
+- Onboarding to a legacy codebase
+- Planning SDLC adoption for existing projects
+- Technical debt assessment
+- Understanding unfamiliar code before modifications
+
+**When NOT to use:**
+- Greenfield projects (nothing to analyze yet)
+- Projects already documented via SDLC workflow
+
+---
+
 ## Document Locations (State Persistence)
 
 Workflow state persists in files, not context:
@@ -640,6 +712,7 @@ Workflow state persists in files, not context:
 |-------|-------------------|--------------|-------|
 | Discovery | `docs/discovery/YYYY-MM-DD-{version}.md` | NOT STARTED → IN PROGRESS → READY FOR PLANNING | **One iteration/version** |
 | Research | `docs/research/YYYY-MM-DD-{topic}.md` | (point-in-time) | Technical investigations |
+| Analyze Codebase | `docs/legacy/*.md` (8 files) | (point-in-time) | Legacy codebase analysis |
 | RCA | `docs/rca/YYYY-MM-DD-{issue}.md` | ANALYZING → FIX PROPOSED → VERIFIED | Bug investigation |
 | PRD | `docs/prds/YYYY-MM-DD-{feature}.md` | DRAFT → APPROVED | **One feature/epic per PRD** |
 | Plan | `docs/plans/YYYY-MM-DD-{feature}.md` | DRAFT → APPROVED | Technical approach for one PRD |
