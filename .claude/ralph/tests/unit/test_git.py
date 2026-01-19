@@ -453,3 +453,55 @@ class TestFetch:
 
         call_args = mock_git.call_args[0][0]
         assert "--prune" in call_args
+
+
+class TestMerge:
+    """Tests for merge function."""
+
+    def test_merge_calls_git_merge(self, mock_git: MagicMock):
+        """Given a branch, when merging, then git merge is called."""
+        from core import git
+
+        mock_git.return_value.returncode = 0
+
+        git.merge("origin/main")
+
+        call_args = mock_git.call_args[0][0]
+        assert "git" in call_args
+        assert "merge" in call_args
+        assert "origin/main" in call_args
+
+    def test_merge_uses_no_edit_by_default(self, mock_git: MagicMock):
+        """Given default options, when merging, then --no-edit is used."""
+        from core import git
+
+        mock_git.return_value.returncode = 0
+
+        git.merge("origin/main")
+
+        call_args = mock_git.call_args[0][0]
+        assert "--no-edit" in call_args
+
+    def test_merge_with_custom_message(self, mock_git: MagicMock):
+        """Given custom message, when merging, then -m flag is used."""
+        from core import git
+
+        mock_git.return_value.returncode = 0
+
+        git.merge("origin/main", message="Merge main into feature")
+
+        call_args = mock_git.call_args[0][0]
+        assert "-m" in call_args
+        assert "Merge main into feature" in call_args
+
+    def test_merge_raises_on_conflict(self, mock_git: MagicMock):
+        """Given merge conflict, when merging, then GitError is raised."""
+        from core import git
+
+        mock_git.return_value.returncode = 1
+        mock_git.return_value.stderr = "CONFLICT (content): Merge conflict"
+
+        with pytest.raises(git.GitError) as exc_info:
+            git.merge("origin/main")
+
+        assert "CONFLICT" in str(exc_info.value) or "Git command failed" in str(exc_info.value)

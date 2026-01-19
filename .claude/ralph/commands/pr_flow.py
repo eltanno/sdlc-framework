@@ -189,6 +189,28 @@ def checkout_detached_main(default_branch: str = "main") -> None:
         pass
 
 
+def sync_with_main(default_branch: str = "main") -> None:
+    """Sync current branch with latest main to avoid merge conflicts.
+
+    Fetches the latest main branch and merges it into the current branch.
+    This ensures the PR will be fast-forward mergeable.
+
+    Args:
+        default_branch: Name of the default branch to sync with
+
+    Raises:
+        PrFlowError: If fetch or merge fails (including conflicts)
+    """
+    try:
+        git.fetch(remote="origin")
+        git.merge(f"origin/{default_branch}")
+    except git.GitError as e:
+        raise PrFlowError(
+            f"Failed to sync with {default_branch}. "
+            f"Merge conflicts may need manual resolution: {e}"
+        )
+
+
 def find_existing_pr(branch: str) -> int | None:
     """Find an existing PR for a branch.
 
@@ -275,6 +297,10 @@ def pr_flow(
 
     # Stage and commit changes
     commit_sha = stage_and_commit(ticket_id, commit_message)
+
+    # Sync with latest main to avoid merge conflicts on GitHub
+    # This ensures the PR will be fast-forward mergeable
+    sync_with_main()
 
     # Push to remote
     push_branch(current_branch)

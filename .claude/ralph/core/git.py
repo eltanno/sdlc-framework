@@ -373,3 +373,25 @@ def has_remote_branch(branch_name: str, remote: str = "origin") -> bool:
         check=False,
     )
     return bool(result.stdout.strip())
+
+
+def merge(branch: str, no_edit: bool = True, message: str | None = None) -> None:
+    """Merge a branch into the current branch.
+
+    Args:
+        branch: Branch or ref to merge (e.g., "origin/main")
+        no_edit: If True, use default merge commit message
+        message: Custom merge commit message (optional)
+
+    Raises:
+        GitError: If merge fails (including conflicts)
+    """
+    args = ["merge", branch]
+
+    if no_edit:
+        args.append("--no-edit")
+
+    if message:
+        args.extend(["-m", message])
+
+    _run_git_command(args)

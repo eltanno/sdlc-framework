@@ -204,6 +204,49 @@ class TestCheckoutDetachedMain:
         mock_git_module.fetch.assert_called()
 
 
+class TestSyncWithMain:
+    """Tests for sync_with_main function."""
+
+    def test_sync_with_main_fetches_and_merges(self, mock_git_module):
+        """Given main exists remotely, when syncing, then fetch and merge are called."""
+        from commands import pr_flow
+
+        mock_git_module.fetch.return_value = None
+        mock_git_module.merge.return_value = None
+
+        pr_flow.sync_with_main("main")
+
+        mock_git_module.fetch.assert_called_once_with(remote="origin")
+        mock_git_module.merge.assert_called_once_with("origin/main")
+
+    def test_sync_with_main_raises_on_conflict(self, mock_git_module):
+        """Given merge has conflicts, when syncing, then PrFlowError is raised."""
+        from commands import pr_flow
+        from commands.pr_flow import PrFlowError
+        from core.git import GitError
+
+        mock_git_module.fetch.return_value = None
+        mock_git_module.merge.side_effect = GitError("CONFLICT")
+        # Ensure GitError is the real exception class, not mocked
+        mock_git_module.GitError = GitError
+
+        with pytest.raises(PrFlowError) as exc_info:
+            pr_flow.sync_with_main()
+
+        assert "Merge conflicts" in str(exc_info.value)
+
+    def test_sync_with_main_uses_custom_branch(self, mock_git_module):
+        """Given custom default branch, when syncing, then that branch is used."""
+        from commands import pr_flow
+
+        mock_git_module.fetch.return_value = None
+        mock_git_module.merge.return_value = None
+
+        pr_flow.sync_with_main("develop")
+
+        mock_git_module.merge.assert_called_once_with("origin/develop")
+
+
 class TestFindExistingPr:
     """Tests for find_existing_pr function."""
 
