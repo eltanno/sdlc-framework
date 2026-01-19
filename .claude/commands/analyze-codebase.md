@@ -2222,6 +2222,84 @@ The following documents must exist before you begin:
 - **P2 (Important):** Significant improvements for productivity. Linting, type checking, documentation gaps.
 - **P3 (Nice to Have):** Polish and optimization. Code cleanup, minor refactoring, style consistency.
 
+### How to Analyze
+
+Use the `Read` tool to examine each document systematically. Cross-reference findings to identify patterns.
+
+**Step 1: Read All Documents**
+
+```
+Read docs/legacy/STACK.md
+Read docs/legacy/ARCHITECTURE.md
+Read docs/legacy/STRUCTURE.md
+Read docs/legacy/CONVENTIONS.md
+Read docs/legacy/TESTING.md
+Read docs/legacy/INTEGRATIONS.md
+Read docs/legacy/CONCERNS.md
+```
+
+**Step 2: Cross-Reference Analysis**
+
+Look for patterns that span multiple documents:
+
+| Cross-Reference | Documents to Compare | What to Look For |
+|-----------------|---------------------|------------------|
+| Untested critical paths | ARCHITECTURE + TESTING | API endpoints, auth flows, data mutations without tests |
+| Inconsistent conventions | CONVENTIONS + STRUCTURE | Naming patterns that don't match directory organization |
+| Integration risks | INTEGRATIONS + CONCERNS | External dependencies flagged as concerns |
+| Stack misalignment | STACK + CONVENTIONS | Build tools that don't match linting/formatting setup |
+| Architecture debt | ARCHITECTURE + CONCERNS | Coupling patterns, missing abstraction layers |
+
+**Step 3: Priority Classification Criteria**
+
+Use these concrete criteria to classify items:
+
+**P1 (Critical) Indicators:**
+- TESTING.md shows "No tests found" or <30% coverage on critical paths
+- CONCERNS.md lists security vulnerabilities or data integrity risks
+- STACK.md shows outdated dependencies with known CVEs
+- ARCHITECTURE.md reveals no error handling patterns
+- Build/deploy broken or unreliable (from any analysis)
+
+**P2 (Important) Indicators:**
+- CONVENTIONS.md shows no linting configured
+- TESTING.md shows tests exist but no integration/e2e tests
+- STRUCTURE.md reveals inconsistent organization patterns
+- CONCERNS.md lists moderate technical debt (TODO/FIXME count >20)
+- INTEGRATIONS.md shows undocumented external dependencies
+
+**P3 (Nice to Have) Indicators:**
+- CONVENTIONS.md shows minor style inconsistencies
+- STRUCTURE.md suggests reorganization for clarity
+- TESTING.md shows good coverage but missing edge cases
+- CONCERNS.md lists small code smells (long files <5)
+
+**Step 4: Quick Wins Identification**
+
+A quick win meets ALL these criteria:
+1. **Low effort:** Can be done in <1 hour
+2. **Low risk:** No behavior change, no dependencies affected
+3. **Immediate value:** Visible improvement right away
+
+Common quick wins by document:
+- CONVENTIONS.md: Add .editorconfig, configure prettier
+- TESTING.md: Add test script to package.json if missing
+- STRUCTURE.md: Create missing standard directories (docs/, test/)
+- CONCERNS.md: Fix obvious typos in TODO comments, remove dead code
+
+**Step 5: SDLC Gap Analysis**
+
+The SDLC workflow requires certain foundations. Check for these gaps:
+
+| SDLC Requirement | Source Document | Gap Indicator |
+|------------------|-----------------|---------------|
+| Test infrastructure | TESTING.md | No test framework configured |
+| Lint/format pipeline | CONVENTIONS.md | No linter/formatter in package.json/pyproject.toml |
+| Type safety | STACK.md | JavaScript without TypeScript, Python without type hints |
+| Clear architecture | ARCHITECTURE.md | No identifiable patterns, spaghetti data flow |
+| Organized structure | STRUCTURE.md | Mixed concerns in directories, no clear entry points |
+| Documented integrations | INTEGRATIONS.md | Environment variables without documentation |
+
 ### Output
 
 Create `docs/legacy/NEXT-STEPS.md` with this structure:
