@@ -7,37 +7,14 @@ pm:
   tool: github                    # asana | trello | github | linear | none (must be set before /ticket)
 
 # Development Commands
-# For single-codebase repos: use the top-level commands directly
-# For monorepos: define codebases (see below) and the top-level commands are ignored
+# This is the SDLC framework itself - mostly markdown/scripts, no compiled code
 dev:
-  # Default commands for single-codebase repos (ignored if codebases defined)
   runtime: node                    # node | bun | deno | python
   package_manager: npm             # npm | bun | yarn | pnpm | uv
-  typecheck_command: "npm run typecheck"
-  lint_command: "npm run lint"
-  test_command: "npm test"
-  build_command: "npm run build"
-
-  # Monorepo: define named codebases (optional)
-  # Each codebase has its own path, runtime, and commands
-  # Engineer runs commands for ALL codebases before committing
-  codebases:
-    mobile:
-      path: "mobile"
-      runtime: node
-      package_manager: npm
-      typecheck_command: "npm run typecheck"
-      lint_command: "npm run lint"
-      test_command: "npm test"
-      build_command: "echo 'Expo build skipped in dev'"
-    backend:
-      path: "backend"
-      runtime: python
-      package_manager: pip
-      typecheck_command: "echo 'Python typecheck skipped'"
-      lint_command: "echo 'Python lint skipped'"
-      test_command: "pytest"
-      build_command: "python manage.py check"
+  typecheck_command: "echo 'No typecheck - framework project'"
+  lint_command: "echo 'No lint - framework project'"
+  test_command: "echo 'No tests - framework project'"
+  build_command: "echo 'No build - framework project'"
 
 # Git Conventions
 git:
@@ -46,7 +23,6 @@ git:
     feature: "feature/"
     bugfix: "bugfix/"
     hotfix: "hotfix/"
-  commit_co_author: "Claude <noreply@anthropic.com>"
 
 # Repository Provider
 repo:
@@ -61,8 +37,8 @@ pr:
 
 # Ticket Configuration
 tickets:
-  prefix: "AUCT"                    # Project code prefix for all tickets (e.g., AUCT-0001)
-  counter: 184                       # Current ticket count - auto-incremented when tickets created
+  prefix: "SDLC"                   # Project code prefix for all tickets (e.g., SDLC-0001)
+  counter: 12                      # Current ticket count - auto-incremented when tickets created
 
 # Ralph Orchestrator Settings (V2)
 ralph:
@@ -86,4 +62,4 @@ ralph:
   # For running multiple Ralph instances under same GitHub user
   # instance_label is now in .env (RALPH_LABEL) to prevent commit conflicts
   instance_label_prefix: "ralph-"  # Prefix for all instance labels (used to skip other instances' tickets)
-  use_assignee: false               # Also assign issues to user (set false for multi-instance with same user)
+  use_assignee: false              # Also assign issues to user (set false for multi-instance with same user)
