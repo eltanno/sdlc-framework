@@ -25,7 +25,7 @@ This is an AI-assisted software development lifecycle (SDLC) framework that auto
 - **Claude Code CLI** - installed and authenticated
 - **Git** - version control
 - **GitHub CLI** (`gh`) - authenticated: `gh auth login`
-- **jq** - JSON processor (used extensively by ralph scripts)
+- **Python 3.10+** - required for the Ralph orchestrator
 - **Node.js** and npm/bun (or your project's runtime)
 
 **Optional:**
@@ -36,16 +36,16 @@ This is an AI-assisted software development lifecycle (SDLC) framework that auto
 
 ```bash
 # macOS (via Homebrew)
-brew install jq gh coreutils   # coreutils provides gtimeout
+brew install gh python@3.10 coreutils   # coreutils provides gtimeout
 
 # Ubuntu/Debian
-sudo apt install jq gh
+sudo apt install gh python3.10 python3-pip
 
 # Arch Linux
-sudo pacman -S jq github-cli
+sudo pacman -S github-cli python python-pip
 
 # Verify installation
-jq --version
+python3 --version   # Should be 3.10+
 gh --version
 ```
 
@@ -73,7 +73,36 @@ ralph:
 RALPH_LABEL=ralph-1         # Unique label for this instance
 ```
 
-### 3. Your First Workflow
+### 3. Installing Ralph
+
+Ralph is the autonomous execution engine. Install its Python dependencies:
+
+```bash
+# Navigate to the ralph package directory
+cd .claude/ralph
+
+# Install runtime dependencies
+pip install -r requirements.txt
+
+# (Optional) Install development dependencies for testing
+pip install -r requirements-dev.txt
+
+# Verify installation
+./ralph --help
+```
+
+**Expected output:**
+```
+usage: ralph [-h] [--dry-run] [--max-attempts MAX_ATTEMPTS] [--verbose]
+             [prd] [plan]
+
+Ralph - Automated workflow orchestrator for PRD/plan execution
+...
+```
+
+If you see `Error: Python 3.10 or higher is required`, upgrade your Python installation.
+
+### 4. Your First Workflow
 
 Start a Claude session and run the planning phases:
 
@@ -125,7 +154,19 @@ Ralph is the autonomous execution engine that processes tickets without human in
 
 ```bash
 # From your project root
-.claude/scripts/ralph-prd.sh docs/prds/YYYY-MM-DD-feature.md docs/plans/YYYY-MM-DD-feature.md
+.claude/ralph/ralph docs/prds/YYYY-MM-DD-feature.md docs/plans/YYYY-MM-DD-feature.md
+```
+
+**Options:**
+```bash
+# Preview without execution
+.claude/ralph/ralph docs/prds/feature.md docs/plans/feature.md --dry-run
+
+# Set max retry attempts per ticket
+.claude/ralph/ralph docs/prds/feature.md docs/plans/feature.md --max-attempts 5
+
+# Enable verbose logging
+.claude/ralph/ralph docs/prds/feature.md docs/plans/feature.md --verbose
 ```
 
 ### Multiple Instances (Parallel Execution)
@@ -147,13 +188,19 @@ For faster execution, run multiple ralph instances:
    RALPH_LABEL=ralph-2
    ```
 
-3. **Start loops in separate terminals:**
+3. **Install dependencies in each worktree:**
+   ```bash
+   cd ../ralph-1/.claude/ralph && pip install -r requirements.txt
+   cd ../ralph-2/.claude/ralph && pip install -r requirements.txt
+   ```
+
+4. **Start loops in separate terminals:**
    ```bash
    # Terminal 1
-   cd ralph-1 && .claude/scripts/ralph-prd.sh ...
+   cd ralph-1 && .claude/ralph/ralph docs/prds/feature.md docs/plans/feature.md
 
    # Terminal 2
-   cd ralph-2 && .claude/scripts/ralph-prd.sh ...
+   cd ralph-2 && .claude/ralph/ralph docs/prds/feature.md docs/plans/feature.md
    ```
 
 See [Multi-Instance Setup Guide](./multi-instance-setup.md) for details.
@@ -225,9 +272,14 @@ Configure the threshold in `config.yaml` → `ralph.sonnet_threshold`
 project/
 ├── .claude/
 │   ├── agents/              # Agent definitions
-│   ├── scripts/
-│   │   ├── ralph-prd.sh     # Main ralph orchestrator
-│   │   └── ralph/           # Ralph helper scripts
+│   ├── ralph/               # Ralph orchestrator (Python)
+│   │   ├── ralph            # Entry point (shell wrapper)
+│   │   ├── cli.py           # CLI with argparse
+│   │   ├── requirements.txt # PyYAML dependency
+│   │   ├── core/            # Config, state, git/gh wrappers
+│   │   ├── commands/        # Command implementations
+│   │   └── tests/           # Unit and integration tests
+│   ├── scripts/             # Other shell scripts
 │   └── skills/              # Skill definitions
 ├── docs/
 │   ├── discovery/           # Discovery documents
@@ -245,6 +297,33 @@ project/
 ---
 
 ## Troubleshooting
+
+### "Python 3.10 or higher is required"
+
+Ralph requires Python 3.10+. Check your version:
+```bash
+python3 --version
+```
+
+If your version is too old:
+```bash
+# macOS
+brew install python@3.10
+
+# Ubuntu/Debian
+sudo apt install python3.10 python3.10-pip
+
+# Alternatively, use pyenv for version management
+pyenv install 3.10.0
+pyenv global 3.10.0
+```
+
+### "ModuleNotFoundError: No module named 'yaml'"
+
+Install the Python dependencies:
+```bash
+cd .claude/ralph && pip install -r requirements.txt
+```
 
 ### "No tickets found"
 
