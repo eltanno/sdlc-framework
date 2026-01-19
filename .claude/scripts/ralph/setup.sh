@@ -67,23 +67,27 @@ if [ "$PM_TOOL" != "github" ]; then
     exit 1
 fi
 
-# Detect ticket prefix from plan file (if provided), otherwise use config.yaml
-TICKET_PREFIX=""
-if [ -n "$PLAN_PATH" ] && [ -f "$PLAN_PATH" ]; then
-    # Auto-detect prefix from plan file (first ticket ID found)
-    FIRST_TICKET=$(grep -oE '[A-Z]+-[0-9]+' "$PLAN_PATH" 2>/dev/null | head -1)
-    if [ -n "$FIRST_TICKET" ]; then
+# Extract ticket IDs directly from PRD (source of truth)
+# PRD has tickets in format: [AUCT-0185](https://github.com/...)
+PRD_TICKET_IDS=""
+if [ -n "$PRD_PATH" ] && [ -f "$PRD_PATH" ]; then
+    # Match ticket IDs in markdown link format: [PREFIX-NNNN](url)
+    PRD_TICKET_IDS=$(grep -oE '\[[A-Z]+-[0-9]+\]\(' "$PRD_PATH" 2>/dev/null | sed 's/\[//;s/\]($//' | sort -u)
+    if [ -n "$PRD_TICKET_IDS" ]; then
+        TICKET_COUNT=$(echo "$PRD_TICKET_IDS" | wc -l)
+        FIRST_TICKET=$(echo "$PRD_TICKET_IDS" | head -1)
         TICKET_PREFIX=$(echo "$FIRST_TICKET" | sed 's/-[0-9]*$//')
-        echo "Detected ticket prefix from plan: $TICKET_PREFIX"
+        echo "Extracted $TICKET_COUNT tickets from PRD (prefix: $TICKET_PREFIX)"
     fi
 fi
-# Fall back to config.yaml if not detected from plan
+# Fall back to config.yaml prefix if no tickets in PRD
 if [ -z "$TICKET_PREFIX" ] && [ -f "config.yaml" ]; then
     TICKET_PREFIX=$(grep -E '^\s*prefix:' config.yaml | head -1 | sed 's/.*prefix:\s*"\?\([^"]*\)"\?.*/\1/' | tr -d ' "')
+    echo "Using prefix from config.yaml: $TICKET_PREFIX"
 fi
 if [ -z "$TICKET_PREFIX" ]; then
-    echo -e "${RED}Error: No ticket prefix found in plan or config.yaml${NC}"
-    echo "Either provide a plan file with ticket IDs, or add 'tickets.prefix' to config.yaml"
+    echo -e "${RED}Error: No ticket prefix found in PRD or config.yaml${NC}"
+    echo "Either provide a PRD with ticket IDs, or add 'tickets.prefix' to config.yaml"
     exit 1
 fi
 
@@ -155,31 +159,28 @@ fi
 # Set phase to ralph
 jq '.phase = "ralph" | .ralph.source = "github"' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
 
-# Parse and store ticket list AND dependencies from plan document (if provided)
-if [ -n "$PLAN_PATH" ] && [ -f "$PLAN_PATH" ]; then
-    echo "Parsing tickets and dependencies from plan..."
-    # Get dependencies and compact to single line (avoids bash variable issues with newlines)
-    DEPS_JSON=$("$SCRIPT_DIR/parse-plan-deps.sh" "$PLAN_PATH" "$TICKET_PREFIX" 2>/dev/null | jq -c '.' || echo "{}")
+# Store ticket list from PRD (source of truth)
+if [ -n "$PRD_TICKET_IDS" ]; then
+    echo "Storing tickets from PRD..."
+    # Convert newline-separated IDs to JSON array
+    TICKET_JSON=$(echo "$PRD_TICKET_IDS" | jq -R -s 'split("\n") | map(select(length > 0))')
+    TICKET_COUNT=$(echo "$TICKET_JSON" | jq 'length')
 
-    if [ "$DEPS_JSON" != "{}" ]; then
-        # Extract ticket IDs (the keys from dependencies object)
-        TICKET_LIST=$(echo "$DEPS_JSON" | jq -c 'keys')
-        TICKET_COUNT=$(echo "$DEPS_JSON" | jq 'length')
-
-        # Store both ticket list AND dependencies in workflow-state.json
-        jq --argjson deps "$DEPS_JSON" --argjson tickets "$TICKET_LIST" '
-            .ralph.dependencies = $deps |
-            .ralph.tickets = $tickets
-        ' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
-
-        echo -e "${GREEN}Loaded $TICKET_COUNT tickets from plan${NC}"
-    else
-        echo -e "${YELLOW}No tickets found in plan (or parse failed)${NC}"
-        echo "The loop will fall back to querying all 'task' labeled issues"
+    # Parse dependencies from PRD if available (look for dependency column in ticket table)
+    DEPS_JSON="{}"
+    if [ -n "$PRD_PATH" ] && [ -f "$PRD_PATH" ]; then
+        DEPS_JSON=$("$SCRIPT_DIR/parse-plan-deps.sh" "$PRD_PATH" "$TICKET_PREFIX" 2>/dev/null | jq -c '.' || echo "{}")
     fi
+
+    # Store tickets and dependencies in workflow-state.json
+    jq --argjson deps "$DEPS_JSON" --argjson tickets "$TICKET_JSON" '
+        .ralph.dependencies = $deps |
+        .ralph.tickets = $tickets
+    ' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
+
+    echo -e "${GREEN}Loaded $TICKET_COUNT tickets from PRD${NC}"
 else
-    echo -e "${YELLOW}No plan path provided - will query all 'task' labeled issues${NC}"
-    echo "Tip: Pass plan path to scope the loop to specific tickets"
+    echo -e "${YELLOW}No tickets found in PRD - will query all 'task' labeled issues${NC}"
 fi
 
 # Get ticket count from stored list (or fall back to available count)
