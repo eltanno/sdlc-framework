@@ -1,0 +1,36 @@
+{
+  "ticket_id": "SDLC-0034",
+  "final_status": "SUCCESS",
+  "total_attempts": 1,
+  "completed": "2026-01-19T20:40:01+00:00",
+  "outcome": "Ticket completed successfully after 1 attempt(s). PR #69 merged.",
+  "attempt_history": [
+    {
+      "attempt": 1,
+      "status": "validation_passed",
+      "key_issues": "None"
+    }
+  ],
+  "branch": "",
+  "last_commit": "3a05d31",
+  "pr_number": "69",
+  "files_changed": [
+    "docs/guides/getting-started.md",
+    "docs/state/SDLC-0032/summary.json",
+    "docs/state/SDLC-0032/summary.md",
+    "docs/state/SDLC-0034/attempt-1/engineer-state.json",
+    "docs/state/SDLC-0034/attempt-1/engineer-state.md"
+  ],
+  "lessons_learned": [],
+  "usage": {
+    "invocation_count": 1,
+    "duration_seconds": 173,
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "cache_read_tokens": 0,
+    "cache_creation_tokens": 0,
+    "total_cost": 0,
+    "model": "opus",
+    "complexity": 3
+  }
+}
