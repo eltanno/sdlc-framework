@@ -38,7 +38,7 @@ pr:
 # Ticket Configuration
 tickets:
   prefix: "SDLC"                   # Project code prefix for all tickets (e.g., SDLC-0001)
-  counter: 12                      # Current ticket count - auto-incremented when tickets created
+  counter: 37                      # Current ticket count - auto-incremented when tickets created
 
 # Ralph Orchestrator Settings (V2)
 ralph:
