@@ -2,15 +2,20 @@
 # Parse Plan Dependencies - Extract ticket dependencies from plan markdown
 # Usage: parse-plan-deps.sh <plan-path> <ticket-prefix>
 #
-# Reads the Tickets table from a plan document and outputs JSON mapping
+# Reads ticket dependencies from a plan document and outputs JSON mapping
 # ticket IDs to their dependencies.
 #
-# Expected table format:
+# Supports TWO formats:
+#
+# FORMAT 1 - Table format:
 # | # | Title | Description | Priority | Complexity | Phase | Dependencies |
 # |---|-------|-------------|----------|------------|-------|--------------|
 # | 1 | Title | Desc        | P1       | 2          | 1     | -            |
 # | 2 | Title | Desc        | P1       | 2          | 1     | 1            |
-# | 9 | Title | Desc        | P1       | 3          | 3     | 3, 8         |
+#
+# FORMAT 2 - Section format:
+# ### TEST-001: Title here
+# - **Dependencies:** None (or TEST-001, TEST-002)
 #
 # Output: JSON object mapping ticket ID to dependency array
 # {
@@ -36,8 +41,9 @@ fi
 
 # Find the starting ticket number from config.yaml or workflow-state.json
 # We need to map plan row # to actual ticket ID
+# Use PROJECT_ROOT if passed from parent, otherwise use pwd
+PROJECT_ROOT="${PROJECT_ROOT:-$(pwd)}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 # Try to get ticket counter start from config.yaml
 # The counter in config.yaml is the NEXT number to use, so we need to find
@@ -54,15 +60,15 @@ if [ -z "$FIRST_TICKET" ]; then
     fi
 fi
 
-if [ -z "$FIRST_TICKET" ]; then
-    echo "Error: Could not find any $TICKET_PREFIX-XXXX tickets in plan" >&2
-    exit 1
-fi
-
-# Extract the starting number (e.g., "AUCT-0161" -> 161)
-START_NUM=$(echo "$FIRST_TICKET" | sed "s/${TICKET_PREFIX}-0*//" | sed 's/^0*//')
-if [ -z "$START_NUM" ]; then
-    START_NUM=1
+# For table format, we need a starting number
+# For section format, ticket IDs are explicit in the headers
+START_NUM=1
+if [ -n "$FIRST_TICKET" ]; then
+    # Extract the starting number (e.g., "AUCT-0161" -> 161)
+    START_NUM=$(echo "$FIRST_TICKET" | sed "s/${TICKET_PREFIX}-0*//" | sed 's/^0*//')
+    if [ -z "$START_NUM" ]; then
+        START_NUM=1
+    fi
 fi
 
 # Parse the Tickets table from the plan
@@ -134,6 +140,43 @@ while IFS= read -r line; do
         fi
     fi
 done < "$PLAN_PATH"
+
+# If no tickets found using table format, try section format
+# Section format uses: ### PREFIX-XXX: Title
+#                      - **Dependencies:** PREFIX-YYY, PREFIX-ZZZ (or "None")
+if [ ${#TICKET_DEPS[@]} -eq 0 ]; then
+    CURRENT_TICKET=""
+    while IFS= read -r line; do
+        # Match section headers like "### TEST-001:" or "### AUCT-0161:"
+        if echo "$line" | grep -qE "^### ${TICKET_PREFIX}-[0-9]+:"; then
+            CURRENT_TICKET=$(echo "$line" | grep -oE "${TICKET_PREFIX}-[0-9]+")
+            # Initialize with empty deps
+            TICKET_DEPS[$CURRENT_TICKET]=""
+        fi
+
+        # Match dependencies line like "- **Dependencies:** TEST-001, TEST-002" or "- **Dependencies:** None"
+        if [ -n "$CURRENT_TICKET" ] && echo "$line" | grep -qiE '^\- \*\*Dependencies:?\*\*:?'; then
+            # Extract everything after "Dependencies:**" or "Dependencies:**:"
+            DEPS_VALUE=$(echo "$line" | sed -E 's/^.*\*\*[Dd]ependencies:?\*\*:?\s*//')
+
+            # Check if it's "None", "-", or empty
+            if echo "$DEPS_VALUE" | grep -qiE '^(none|-)?\s*$'; then
+                TICKET_DEPS[$CURRENT_TICKET]=""
+            else
+                # Extract ticket IDs from the dependencies (PREFIX-NNN format)
+                DEP_IDS=""
+                for dep_id in $(echo "$DEPS_VALUE" | grep -oE "${TICKET_PREFIX}-[0-9]+"); do
+                    if [ -n "$DEP_IDS" ]; then
+                        DEP_IDS="$DEP_IDS,$dep_id"
+                    else
+                        DEP_IDS="$dep_id"
+                    fi
+                done
+                TICKET_DEPS[$CURRENT_TICKET]="$DEP_IDS"
+            fi
+        fi
+    done < "$PLAN_PATH"
+fi
 
 # Output as JSON
 echo "{"

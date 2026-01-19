@@ -29,10 +29,10 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-# Find project root
+# Use PROJECT_ROOT if passed from parent, otherwise use pwd
+# This allows the same script to be used across multiple worktrees
+PROJECT_ROOT="${PROJECT_ROOT:-$(pwd)}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-cd "$PROJECT_ROOT"
 
 echo "=== Ralph Validation ==="
 

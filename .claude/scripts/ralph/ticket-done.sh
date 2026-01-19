@@ -14,10 +14,10 @@
 
 set -e
 
-# Find project root and source config
+# Use PROJECT_ROOT if passed from parent, otherwise use pwd
+# This allows the same script to be used across multiple worktrees
+PROJECT_ROOT="${PROJECT_ROOT:-$(pwd)}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-cd "$PROJECT_ROOT"
 
 # Load .env if present (for RALPH_LABEL)
 if [ -f .env ]; then
@@ -53,9 +53,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-# Find project root (SCRIPT_DIR already set when sourcing config-helpers.sh)
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-cd "$PROJECT_ROOT"
+# PROJECT_ROOT is already set at top of script from pwd
 
 if [ -z "$TICKET_ID" ]; then
     echo -e "${RED}Error: Missing ticket ID${NC}"
@@ -79,8 +77,10 @@ if [ "$PM_TOOL" = "github" ]; then
     else
         # If no issue number provided, look it up from local state or GitHub
         if [ -z "$ISSUE_NUMBER" ] && [ -f "workflow-state.json" ]; then
-            # Only try to read from .ralph.tickets if it exists
-            ISSUE_NUMBER=$(jq -r --arg id "$TICKET_ID" '(.ralph.tickets // [])[] | select(.id == $id) | .issue_number // empty' workflow-state.json 2>/dev/null)
+            # Only try to read from .ralph.tickets if it exists and has object format
+            # Note: tickets may be stored as strings ["TEST-001"] or objects [{id:"TEST-001", issue_number:123}]
+            # This query only works with object format; string format will return empty (not error)
+            ISSUE_NUMBER=$(jq -r --arg id "$TICKET_ID" '(.ralph.tickets // [])[] | select(type == "object" and .id == $id) | .issue_number // empty' workflow-state.json 2>/dev/null || echo "")
         fi
 
         if [ -z "$ISSUE_NUMBER" ]; then
@@ -134,11 +134,13 @@ fi
 
 # Update local workflow-state.json (if it exists)
 if [ -f "workflow-state.json" ]; then
-    # Check if .ralph.tickets exists (newer workflow-state.json format)
-    HAS_TICKETS=$(jq -r '.ralph.tickets // "null"' workflow-state.json)
+    # Check if .ralph.tickets exists AND is in object format (not string array)
+    # String format: ["TEST-001", "TEST-002", ...] - used for ticket list only
+    # Object format: [{id:"TEST-001", status:"pending", ...}] - full state tracking
+    TICKETS_FORMAT=$(jq -r '(.ralph.tickets // [])[0] | type' workflow-state.json 2>/dev/null || echo "null")
 
-    if [ "$HAS_TICKETS" != "null" ]; then
-        # Full local state with tickets array - update it
+    if [ "$TICKETS_FORMAT" = "object" ]; then
+        # Full local state with tickets as objects - update it
         jq --arg id "$TICKET_ID" --arg pr "${PR_NUMBER:-null}" --arg issue "${ISSUE_NUMBER:-null}" '
           .ralph.current = ((.ralph.current // 0) + 1) |
           .ralph.current_ticket = null |
@@ -153,21 +155,17 @@ if [ -f "workflow-state.json" ]; then
         # Get updated progress from local state
         CURRENT=$(jq -r '.ralph.current // 0' workflow-state.json)
         TOTAL=$(jq -r '.ralph.total // 0' workflow-state.json)
-    else
-        # Minimal workflow-state.json (only dependencies) - use GitHub for counts
-        echo -e "${YELLOW}Note: workflow-state.json uses GitHub as source of truth${NC}"
-        TOTAL_OPEN=$(gh issue list --state open --json number --limit 1000 2>/dev/null | jq 'length' || echo "0")
-        TOTAL_CLOSED=$(gh issue list --state closed --json number --limit 1000 2>/dev/null | jq 'length' || echo "0")
-        TOTAL=$((TOTAL_OPEN + TOTAL_CLOSED))
-        CURRENT=$TOTAL_CLOSED
-    fi
+        REMAINING=$((TOTAL - CURRENT))
 
-    REMAINING=$((TOTAL - CURRENT))
-
-    # Find next pending ticket from local state (if tickets array exists)
-    if [ "$HAS_TICKETS" != "null" ]; then
+        # Find next pending ticket from local state
         NEXT_TICKET=$(jq -r '.ralph.tickets[] | select(.status == "pending") | .id' workflow-state.json 2>/dev/null | head -1)
     else
+        # Tickets stored as strings or not present - use GitHub as source of truth
+        TOTAL_OPEN=$(gh issue list --state open --label task --json number --limit 1000 2>/dev/null | jq 'length' || echo "0")
+        TOTAL_CLOSED=$(gh issue list --state closed --label task --json number --limit 1000 2>/dev/null | jq 'length' || echo "0")
+        TOTAL=$((TOTAL_OPEN + TOTAL_CLOSED))
+        CURRENT=$TOTAL_CLOSED
+        REMAINING=$TOTAL_OPEN
         NEXT_TICKET=""  # Will be determined by get-next-ticket.sh
     fi
 else

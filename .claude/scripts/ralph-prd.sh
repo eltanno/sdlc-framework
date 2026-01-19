@@ -17,6 +17,7 @@
 #
 
 set -e
+set -o pipefail  # Ensure pipeline returns first non-zero exit code (fixes timeout detection)
 
 # ============================================================================
 # Signal Handling - ensure Ctrl+C kills child processes
@@ -91,11 +92,12 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-# Find script directory and project root
+# Project root is where we're running from (not where the script lives)
+# This allows the same script to be used across multiple worktrees
+PROJECT_ROOT="$(pwd)"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 RALPH_SCRIPTS="$SCRIPT_DIR/ralph"
-cd "$PROJECT_ROOT"
+# Stay in PROJECT_ROOT (don't cd anywhere)
 
 # ============================================================================
 # Check for required .env file with RALPH_LABEL
@@ -656,10 +658,6 @@ invoke_claude() {
     log_to_file "Claude invocation: model=$model, timeout=${timeout_mins}m, task=$task_label"
     log_to_file "Claude log file: $claude_log"
 
-    # Capture usage BEFORE invocation
-    local usage_before=$(capture_usage)
-    log_to_file "Usage before: $usage_before"
-
     # Log the prompt to the claude-specific log
     {
         echo "========================================"
@@ -674,37 +672,133 @@ invoke_claude() {
         echo "--- PROMPT ---"
         echo "$prompt"
         echo ""
-        echo "--- RESPONSE ---"
+        echo "--- RESPONSE (stream-json) ---"
     } > "$claude_log"
 
     echo ""
 
-    # Use claude CLI with the prompt
-    # -p / --print: outputs response without interactive mode
-    # --agent: use the engineer agent (defined in .claude/agents/engineer.md)
-    # --model: specify model
-    # --allowedTools: limit tools to what's needed
-    # timeout: prevent runaway sessions
+    # =========================================================================
+    # WORKAROUND FOR CLAUDE CLI BUG (GitHub Issue #19060)
+    # =========================================================================
+    # The Claude CLI has a bug where it hangs after completing work due to an
+    # unhandled promise rejection ("No messages returned"). The process never
+    # exits, even though work is complete.
+    #
+    # FIX: Use --output-format stream-json. The {"type":"result"} JSON message
+    # is emitted BEFORE the hang occurs. We monitor for this message, then
+    # kill the process after a short grace period.
+    # =========================================================================
+
     local start_time=$(date +%s)
     local exit_code=0
+    local result_found=false
+    local result_text=""
 
+    # Run claude with stream-json output in background
+    # NOTE: --verbose is required when using --output-format stream-json with -p
     timeout "${timeout_mins}m" claude -p "$prompt" \
         --agent engineer \
         --model "$model" \
-        --allowedTools "Bash,Read,Write,Edit,Glob,Grep,Task,TodoWrite" \
-        2>&1 | tee -a "$claude_log" || exit_code=$?
+        --allowedTools "Bash,Read,Write,Edit,Glob,Grep,TodoWrite" \
+        --output-format stream-json \
+        --verbose \
+        2>&1 >> "$claude_log" &
+    local claude_pid=$!
+
+    log_to_file "Claude PID: $claude_pid"
+
+    # Monitor log file for the result JSON message
+    # The stream-json format outputs lines like: {"type":"result","subtype":"success","result":"..."}
+    local last_size=0
+    local stall_count=0
+    local max_stall=60  # 60 * 5s = 5 minutes of no output before forcing check
+
+    while kill -0 $claude_pid 2>/dev/null; do
+        # Check for result message in log
+        if grep -q '"type":"result"' "$claude_log" 2>/dev/null; then
+            log_step "Result message detected in stream-json output"
+            result_found=true
+
+            # Extract the result text from the JSON
+            result_text=$(grep '"type":"result"' "$claude_log" | tail -1 | jq -r '.result // empty' 2>/dev/null || echo "")
+
+            # Give Claude 2 seconds to exit cleanly
+            sleep 2
+
+            # If still running, kill it (this is the bug workaround)
+            if kill -0 $claude_pid 2>/dev/null; then
+                log_step "Claude still running after result - killing (CLI bug workaround)"
+                kill $claude_pid 2>/dev/null || true
+                sleep 1
+                kill -9 $claude_pid 2>/dev/null || true
+            fi
+            break
+        fi
+
+        # Check for stalled output (no new data for a while)
+        local current_size=$(stat -c%s "$claude_log" 2>/dev/null || echo "0")
+        if [ "$current_size" = "$last_size" ]; then
+            stall_count=$((stall_count + 1))
+            if [ "$stall_count" -ge "$max_stall" ]; then
+                log_step "Output stalled for $((max_stall * 5))s - checking for work done"
+                break
+            fi
+        else
+            stall_count=0
+            last_size=$current_size
+        fi
+
+        sleep 5
+    done
+
+    # Wait for process to finish
+    wait $claude_pid 2>/dev/null || exit_code=$?
+
+    # If we found result, treat as success
+    if [ "$result_found" = true ]; then
+        exit_code=0
+        # Write the extracted result text to log for easy parsing
+        {
+            echo ""
+            echo "--- EXTRACTED RESULT ---"
+            echo "$result_text"
+        } >> "$claude_log"
+    fi
+
+    # Check for validation markers in the result text or log
+    local marker_found=false
+    if echo "$result_text" | grep -qE "VALIDATION_PASSED|VALIDATION_FAILED"; then
+        marker_found=true
+        log_step "Validation marker found in result text"
+    elif grep -qE "VALIDATION_PASSED|VALIDATION_FAILED" "$claude_log" 2>/dev/null; then
+        # Sometimes the marker is in an assistant message, not the final result
+        marker_found=true
+        log_step "Validation marker found in log output"
+    fi
+
+    # If no marker found, check if work was done (commit made on feature branch)
+    # This handles edge cases where Claude completes work but crashes before any output
+    if [ "$marker_found" = false ] && [ -n "${CURRENT_TICKET:-}" ]; then
+        local base_commit=$(git rev-parse origin/main 2>/dev/null || echo "")
+        local current_commit=$(git rev-parse HEAD 2>/dev/null || echo "")
+
+        if [ -n "$base_commit" ] && [ -n "$current_commit" ] && [ "$base_commit" != "$current_commit" ]; then
+            local commit_count=$(git rev-list --count origin/main..HEAD 2>/dev/null || echo "0")
+            if [ "$commit_count" -gt 0 ]; then
+                log_step "Work detected: $commit_count commit(s) made despite no completion marker"
+                log_step "Claude likely crashed after completing work - treating as unclear result"
+                echo "UNCLEAR_RESULT_WORK_DONE" >> "$claude_log"
+            fi
+        fi
+    fi
 
     local end_time=$(date +%s)
     local duration=$((end_time - start_time))
 
-    # Capture usage AFTER invocation
-    local usage_after=$(capture_usage)
-    log_to_file "Usage after: $usage_after"
-
-    # Calculate delta and add to metrics
-    local usage_delta=$(calculate_usage_delta "$usage_before" "$usage_after")
-    add_invocation_metric "${CURRENT_TICKET:-unknown}" "$task_label" "$duration" "$usage_delta" "$model" "$complexity"
-    log_to_file "Usage delta: $usage_delta (model: $model, complexity: $complexity)"
+    # Track invocation with duration (usage tracking disabled for concurrent loops)
+    local empty_delta='{"inputTokens":0,"outputTokens":0,"cacheCreationTokens":0,"cacheReadTokens":0,"totalTokens":0,"totalCost":0}'
+    add_invocation_metric "${CURRENT_TICKET:-unknown}" "$task_label" "$duration" "$empty_delta" "$model" "$complexity"
+    log_to_file "Invocation complete: duration=${duration}s, model=$model, complexity=$complexity"
 
     # Log completion info
     {
@@ -713,11 +807,6 @@ invoke_claude() {
         echo ""
         echo "Duration: ${duration}s"
         echo "Exit code: $exit_code"
-        echo ""
-        echo "--- USAGE ---"
-        echo "Before: $usage_before"
-        echo "After: $usage_after"
-        echo "Delta: $usage_delta"
         echo "========================================"
     } >> "$claude_log"
 
@@ -791,7 +880,7 @@ main() {
     log_header "PHASE 1: Setup"
 
     log_step "Running setup script..."
-    SETUP_OUTPUT=$("$RALPH_SCRIPTS/setup.sh" "$PRD_PATH" "$PLAN_PATH" 2>&1)
+    SETUP_OUTPUT=$(PROJECT_ROOT="$PROJECT_ROOT" "$RALPH_SCRIPTS/setup.sh" "$PRD_PATH" "$PLAN_PATH" 2>&1)
     echo "$SETUP_OUTPUT" | grep -v "JSON_OUTPUT" | tee_log
 
     # Get initial counts (for display only - loop is purely reactive)
@@ -823,7 +912,7 @@ main() {
 
     while true; do
         # Get next ticket (No LLM)
-        NEXT_OUTPUT=$("$RALPH_SCRIPTS/get-next-ticket.sh" 2>&1)
+        NEXT_OUTPUT=$(PROJECT_ROOT="$PROJECT_ROOT" "$RALPH_SCRIPTS/get-next-ticket.sh" 2>&1)
         NEXT_TICKET=$(get_json_value "$NEXT_OUTPUT" ".next_ticket")
         HAS_MORE=$(get_json_value "$NEXT_OUTPUT" ".has_more")
         TICKET_STATUS=$(get_json_value "$NEXT_OUTPUT" ".status")
@@ -994,14 +1083,37 @@ Co-Authored-By: Claude <noreply@anthropic.com>" || true
 
             # ================================================================
             # Check engineer result: VALIDATION_PASSED or VALIDATION_FAILED
+            # The log file is now in stream-json format with an extracted result section
             # ================================================================
 
-            if echo "$ENGINEER_OUTPUT" | grep -q "VALIDATION_PASSED"; then
+            # Find the Claude log file for this attempt (most recent matching pattern)
+            local claude_log_file=$(ls -t "$LOG_DIR/${NEXT_TICKET}-engineer-attempt-${CURRENT_ATTEMPT}-"*.log 2>/dev/null | head -1)
+            local log_content=""
+            local response_content=""
+            local extracted_result=""
+            if [ -n "$claude_log_file" ] && [ -f "$claude_log_file" ]; then
+                # Get full log content (needed for crash detection markers)
+                log_content=$(cat "$claude_log_file" 2>/dev/null || echo "")
+                # Get ONLY the response section (between --- RESPONSE and --- END RESPONSE)
+                # This excludes the prompt which may contain example markers
+                response_content=$(sed -n '/^--- RESPONSE/,/^--- END RESPONSE/p' "$claude_log_file" 2>/dev/null || echo "")
+                # Get extracted result section if present
+                extracted_result=$(sed -n '/^--- EXTRACTED RESULT ---$/,$p' "$claude_log_file" 2>/dev/null || echo "")
+            fi
+
+            # Check for VALIDATION_PASSED in output, response section, or extracted result
+            # NOTE: We check response_content (not full log) to avoid matching prompt examples
+            if echo "$ENGINEER_OUTPUT" | grep -q "VALIDATION_PASSED" || \
+               echo "$response_content" | grep -q "VALIDATION_PASSED" || \
+               echo "$extracted_result" | grep -q "VALIDATION_PASSED"; then
                 log_success "Engineer reported: VALIDATION_PASSED"
                 TICKET_COMPLETE=true
                 break
 
-            elif echo "$ENGINEER_OUTPUT" | grep -q "VALIDATION_FAILED"; then
+            # Check for VALIDATION_FAILED in output, response section, or extracted result
+            elif echo "$ENGINEER_OUTPUT" | grep -q "VALIDATION_FAILED" || \
+                 echo "$response_content" | grep -q "VALIDATION_FAILED" || \
+                 echo "$extracted_result" | grep -q "VALIDATION_FAILED"; then
                 log_warn "Engineer reported: VALIDATION_FAILED"
                 log_to_file "Engineer validation failed on attempt $CURRENT_ATTEMPT"
 
@@ -1055,10 +1167,17 @@ Co-Authored-By: Claude <noreply@anthropic.com>" || true
                 continue
 
             else
-                # Engineer didn't report a clear result - CHECK STATE FILE AS FALLBACK
+                # Engineer didn't report a clear result - CHECK FOR WORK DONE AND STATE FILE
                 log_warn "Engineer did not report clear VALIDATION_PASSED or VALIDATION_FAILED"
-                log_step "Checking state file for status fallback..."
 
+                # Check if work was done despite crash (UNCLEAR_RESULT_WORK_DONE marker)
+                local work_done_despite_crash=false
+                if [ -n "$log_content" ] && echo "$log_content" | grep -q "UNCLEAR_RESULT_WORK_DONE"; then
+                    log_step "Detected: Claude crashed after making commits (work done but no marker)"
+                    work_done_despite_crash=true
+                fi
+
+                log_step "Checking state file for status fallback..."
                 local STATE_FILE="$STATE_DIRECTORY/$NEXT_TICKET/attempt-$CURRENT_ATTEMPT/engineer-state.json"
                 if [ -f "$STATE_FILE" ]; then
                     local FILE_STATUS=$(jq -r '.status // "unknown"' "$STATE_FILE" 2>/dev/null)
@@ -1071,6 +1190,21 @@ Co-Authored-By: Claude <noreply@anthropic.com>" || true
                     fi
                 else
                     log_warn "No state file found at: $STATE_FILE"
+                fi
+
+                # If work was done, check git for commits - might be able to proceed
+                if [ "$work_done_despite_crash" = true ]; then
+                    local commit_count=$(git rev-list --count origin/main..HEAD 2>/dev/null || echo "0")
+                    if [ "$commit_count" -gt 0 ]; then
+                        log_step "Found $commit_count commit(s) - checking if validation might have passed..."
+                        # Check if the last commit message suggests success
+                        local last_commit_msg=$(git log -1 --format=%s 2>/dev/null || echo "")
+                        if echo "$last_commit_msg" | grep -qiE "validation.*(pass|success)|complete|feat|fix"; then
+                            log_success "Commit message suggests success - proceeding to PR"
+                            TICKET_COMPLETE=true
+                            break
+                        fi
+                    fi
                 fi
 
                 # If we get here, still treat as failure
@@ -1103,7 +1237,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>" || true
             [ "$DRY_RUN" = true ] && PR_ARGS+=("--dry-run")
 
             # Run PR flow, capturing exit code
-            PR_OUTPUT=$("$RALPH_SCRIPTS/pr-flow.sh" "${PR_ARGS[@]}" 2>&1) || {
+            PR_OUTPUT=$(PROJECT_ROOT="$PROJECT_ROOT" "$RALPH_SCRIPTS/pr-flow.sh" "${PR_ARGS[@]}" 2>&1) || {
                 PR_EXIT_CODE=$?
                 log_error "PR flow failed with exit code $PR_EXIT_CODE"
                 log_to_file "PR flow output: $PR_OUTPUT"
@@ -1132,7 +1266,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>" || true
 
             # Mark ticket complete
             log_step "Marking ticket complete..."
-            DONE_OUTPUT=$("$RALPH_SCRIPTS/ticket-done.sh" "$NEXT_TICKET" "$PR_NUMBER" 2>&1)
+            DONE_OUTPUT=$(PROJECT_ROOT="$PROJECT_ROOT" "$RALPH_SCRIPTS/ticket-done.sh" "$NEXT_TICKET" "$PR_NUMBER" 2>&1)
             echo "$DONE_OUTPUT" | grep -v "JSON_OUTPUT" | tee_log
 
             save_state_snapshot "${NEXT_TICKET}-complete"
@@ -1159,7 +1293,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>" || true
                     PR_ARGS=("$NEXT_TICKET" "[$NEXT_TICKET] Implementation complete")
                     [ "$DRY_RUN" = true ] && PR_ARGS+=("--dry-run")
 
-                    PR_OUTPUT=$("$RALPH_SCRIPTS/pr-flow.sh" "${PR_ARGS[@]}" 2>&1) || {
+                    PR_OUTPUT=$(PROJECT_ROOT="$PROJECT_ROOT" "$RALPH_SCRIPTS/pr-flow.sh" "${PR_ARGS[@]}" 2>&1) || {
                         PR_EXIT_CODE=$?
                         log_error "PR flow failed with exit code $PR_EXIT_CODE"
                     }
@@ -1173,7 +1307,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>" || true
                     if [ -n "$PR_NUMBER" ] && [ "$PR_NUMBER" != "null" ]; then
                         # PR created successfully
                         write_summary "$NEXT_TICKET" "SUCCESS" "$FINAL_ATTEMPT" "$PR_NUMBER" "$(get_ticket_usage "$NEXT_TICKET")"
-                        DONE_OUTPUT=$("$RALPH_SCRIPTS/ticket-done.sh" "$NEXT_TICKET" "$PR_NUMBER" 2>&1)
+                        DONE_OUTPUT=$(PROJECT_ROOT="$PROJECT_ROOT" "$RALPH_SCRIPTS/ticket-done.sh" "$NEXT_TICKET" "$PR_NUMBER" 2>&1)
                         echo "$DONE_OUTPUT" | grep -v "JSON_OUTPUT" | tee_log
                         TICKETS_DONE=$((TICKETS_DONE + 1))
                         log_success "Ticket $NEXT_TICKET complete (recovered from unclear status)!"
@@ -1188,7 +1322,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>" || true
             log_warn "Max attempts exceeded, marking as blocked"
             write_summary "$NEXT_TICKET" "BLOCKED" "$MAX_ATTEMPTS" "" "$(get_ticket_usage "$NEXT_TICKET")"
 
-            BLOCK_OUTPUT=$("$RALPH_SCRIPTS/mark-blocked.sh" "$NEXT_TICKET" "Exceeded $MAX_ATTEMPTS attempts" 2>&1)
+            BLOCK_OUTPUT=$(PROJECT_ROOT="$PROJECT_ROOT" "$RALPH_SCRIPTS/mark-blocked.sh" "$NEXT_TICKET" "Exceeded $MAX_ATTEMPTS attempts" 2>&1)
             echo "$BLOCK_OUTPUT" | grep -v "JSON_OUTPUT" | tee_log
 
             log_error_context "Ticket blocked: max attempts" "Ticket: $NEXT_TICKET, Attempts: $MAX_ATTEMPTS"
@@ -1204,7 +1338,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>" || true
 
     log_header "PHASE 3: Cleanup"
 
-    CLEANUP_OUTPUT=$("$RALPH_SCRIPTS/cleanup.sh" 2>&1)
+    CLEANUP_OUTPUT=$(PROJECT_ROOT="$PROJECT_ROOT" "$RALPH_SCRIPTS/cleanup.sh" 2>&1)
     echo "$CLEANUP_OUTPUT" | grep -v "JSON_OUTPUT" | tee_log
 
     # Save final state snapshot

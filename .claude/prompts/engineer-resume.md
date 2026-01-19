@@ -127,7 +127,9 @@ git commit -m "[{TICKET_ID}] WIP - attempt {ATTEMPT}
 Co-Authored-By: Claude <noreply@anthropic.com>"
 ```
 
-### Step 7: Report Result
+### Step 7: Report Result and EXIT
+
+**CRITICAL: After outputting your result, you are DONE. STOP and EXIT immediately.**
 
 **If validation passed:**
 ```
@@ -148,6 +150,11 @@ Commit: <sha>
 State file: {REPO_ROOT}/docs/state/{TICKET_ID}/attempt-{ATTEMPT}/engineer-state.md
 ```
 
+**After outputting VALIDATION_PASSED or VALIDATION_FAILED:**
+1. **DO NOT make any more tool calls** - no Bash, no Read, no Edit, nothing
+2. **DO NOT write any more text** - your response ends with the result block above
+3. **Your task is complete** - the orchestrator will handle the rest
+
 ## Focus Areas
 
 Based on the validation report, prioritize:
@@ -161,4 +168,6 @@ Based on the validation report, prioritize:
 - Always write state file before committing
 - Always commit (even if failing) to preserve work
 - Never create PR - orchestrator handles that
-- Report VALIDATION_PASSED or VALIDATION_FAILED at the end
+- Report VALIDATION_PASSED or VALIDATION_FAILED at the end, then STOP and EXIT
+- Do NOT spawn subagents or delegate work - do everything yourself
+- Do NOT continue after reporting your result

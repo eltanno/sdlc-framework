@@ -4,9 +4,8 @@
 #
 # What this does:
 # 1. Finalize workflow-state.json
-# 2. Generate summary
-# 3. Update status line
-# 4. Output PRD_COMPLETE or summary
+# 2. Generate summary from GitHub (source of truth)
+# 3. Output PRD_COMPLETE or summary
 
 set -e
 
@@ -17,24 +16,23 @@ YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-# Find project root
+# Use PROJECT_ROOT if passed from parent, otherwise use pwd
+# This allows the same script to be used across multiple worktrees
+PROJECT_ROOT="${PROJECT_ROOT:-$(pwd)}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-cd "$PROJECT_ROOT"
 
 echo "=== Ralph Cleanup ==="
+echo "Source: GitHub (querying for final counts...)"
 
-# Validate workflow state exists
-if [ ! -f "workflow-state.json" ]; then
-    echo -e "${RED}Error: workflow-state.json not found${NC}"
-    exit 1
-fi
+# Query GitHub for issue counts (GitHub is always source of truth)
+TOTAL=$(gh issue list --state all --label task --json number --limit 1000 2>/dev/null | jq 'length' || echo "0")
+DONE_COUNT=$(gh issue list --state closed --label task --json number --limit 1000 2>/dev/null | jq 'length' || echo "0")
+BLOCKED_COUNT=$(gh issue list --state open --label blocked --json number --limit 1000 2>/dev/null | jq 'length' || echo "0")
+OPEN_COUNT=$(gh issue list --state open --label task --json number --limit 1000 2>/dev/null | jq 'length' || echo "0")
+PENDING_COUNT=$((OPEN_COUNT - BLOCKED_COUNT))
 
-# Get final counts
-TOTAL=$(jq -r '.ralph.total' workflow-state.json)
-DONE_COUNT=$(jq '[.ralph.tickets[] | select(.status == "done")] | length' workflow-state.json)
-BLOCKED_COUNT=$(jq '.ralph.blocked | length' workflow-state.json)
-PENDING_COUNT=$(jq '[.ralph.tickets[] | select(.status == "pending")] | length' workflow-state.json)
+# Ensure non-negative
+[ "$PENDING_COUNT" -lt 0 ] && PENDING_COUNT=0
 
 # Determine completion status
 if [ "$PENDING_COUNT" -eq 0 ] && [ "$BLOCKED_COUNT" -eq 0 ]; then
@@ -45,14 +43,13 @@ else
     STATUS="incomplete"
 fi
 
-# Update workflow state
-jq '
-  .phase = "idle" |
-  .completed = (.completed + ["ralph"] | unique)
-' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
-
-# Note: statusline.sh is for Claude's hook system, not direct invocation
-# Progress is shown via script output instead
+# Update workflow state (if file exists)
+if [ -f "workflow-state.json" ]; then
+    jq '
+      .phase = "idle" |
+      .completed = ((.completed // []) + ["ralph"] | unique)
+    ' workflow-state.json > tmp.$$.json && mv tmp.$$.json workflow-state.json
+fi
 
 # Output summary
 echo ""
@@ -66,24 +63,22 @@ echo -e "Blocked:          ${YELLOW}$BLOCKED_COUNT${NC}"
 echo -e "Pending:          ${RED}$PENDING_COUNT${NC}"
 echo ""
 
-# List completed tickets
+# List tickets from GitHub
 if [ "$DONE_COUNT" -gt 0 ]; then
     echo "Completed tickets:"
-    jq -r '.ralph.tickets[] | select(.status == "done") | "  - \(.id)" + (if .pr then " (PR #\(.pr))" else "" end)' workflow-state.json
+    gh issue list --state closed --label task --json number,title --limit 1000 2>/dev/null | jq -r '.[] | "  - " + (.title | split("]")[0]) + "]"'
     echo ""
 fi
 
-# List blocked tickets
 if [ "$BLOCKED_COUNT" -gt 0 ]; then
     echo -e "${YELLOW}Blocked tickets:${NC}"
-    jq -r '.ralph.blocked[] | "  - \(.id): \(.reason)"' workflow-state.json
+    gh issue list --state open --label blocked --json number,title --limit 100 2>/dev/null | jq -r '.[] | "  - \(.title)"'
     echo ""
 fi
 
-# List pending tickets
 if [ "$PENDING_COUNT" -gt 0 ]; then
     echo -e "${RED}Pending tickets (not started):${NC}"
-    jq -r '.ralph.tickets[] | select(.status == "pending") | "  - \(.id)"' workflow-state.json
+    gh issue list --state open --label task --json number,title --limit 100 2>/dev/null | jq -r '.[] | "  - \(.title)"'
     echo ""
 fi
 
@@ -119,15 +114,6 @@ cat << EOF
 }
 EOF
 
-# Exit with appropriate code
-case $STATUS in
-    complete)
-        exit 0
-        ;;
-    complete_with_blocked)
-        exit 0
-        ;;
-    incomplete)
-        exit 1
-        ;;
-esac
+# Always exit 0 - cleanup is informational, not a pass/fail gate
+# Other instances may still be working on remaining tickets
+exit 0

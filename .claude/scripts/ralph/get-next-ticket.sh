@@ -20,10 +20,10 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-# Find project root
+# Use PROJECT_ROOT if passed from parent, otherwise use pwd
+# This allows the same script to be used across multiple worktrees
+PROJECT_ROOT="${PROJECT_ROOT:-$(pwd)}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-cd "$PROJECT_ROOT"
 
 # Load .env if present (for RALPH_LABEL)
 if [ -f .env ]; then
@@ -183,7 +183,7 @@ if [ "$PM_TOOL" = "github" ]; then
     fi
 
     # PHASE 3: If no in-progress issue, find oldest available open issue
-    # Filters: unassigned, not blocked, AND no ralph-* labels (to avoid other instances' work)
+    # Filters: in ticket list (if defined), not blocked, dependencies met, no ralph-* labels
     if [ -z "$ISSUE_NUMBER" ]; then
         # Get blocked ticket IDs from local state (to skip them)
         BLOCKED_IDS=""
@@ -191,12 +191,31 @@ if [ "$PM_TOOL" = "github" ]; then
             BLOCKED_IDS=$(jq -r '.ralph.blocked[]?.id // empty' workflow-state.json 2>/dev/null | tr '\n' '|' | sed 's/|$//')
         fi
 
-        # Get all open issues, sorted by created (oldest first)
-        # Filter for:
-        # 1. Unassigned (if use_assignee is true) OR all (if use_assignee is false)
-        # 2. No "blocked" label
-        # 3. No ralph-* labels (skip issues claimed by any Ralph instance)
-        ALL_ISSUES_JSON=$(gh issue list --state open $LABEL_ARG --json number,title,assignees,labels --limit 100 2>/dev/null || echo "[]")
+        # Get ticket list from workflow-state.json (scopes this loop to specific tickets)
+        TICKET_LIST=""
+        if [ -f "workflow-state.json" ]; then
+            TICKET_LIST=$(jq -r '.ralph.tickets // [] | .[]' workflow-state.json 2>/dev/null)
+        fi
+
+        # Build the list of issues to check
+        ALL_ISSUES_JSON="[]"
+        if [ -n "$TICKET_LIST" ]; then
+            # Query GitHub for only the tickets in our list
+            echo -e "${YELLOW}Querying GitHub for tickets from plan...${NC}" >&2
+            TEMP_ISSUES="[]"
+            for ticket_id in $TICKET_LIST; do
+                # Search for this specific ticket by title
+                ISSUE_DATA=$(gh issue list --state open --search "\"[$ticket_id]\" in:title" --json number,title,assignees,labels --limit 1 2>/dev/null || echo "[]")
+                if [ "$ISSUE_DATA" != "[]" ]; then
+                    # Merge into our list
+                    TEMP_ISSUES=$(echo "$TEMP_ISSUES" "$ISSUE_DATA" | jq -s 'add')
+                fi
+            done
+            ALL_ISSUES_JSON="$TEMP_ISSUES"
+        else
+            # Fallback: Get all open issues with task label (old behavior)
+            ALL_ISSUES_JSON=$(gh issue list --state open $LABEL_ARG --json number,title,assignees,labels --limit 100 2>/dev/null || echo "[]")
+        fi
 
         # Build jq filter based on use_assignee setting
         if [ "$USE_ASSIGNEE" = "true" ]; then
@@ -337,64 +356,7 @@ EOF
     fi
 fi
 
-# Fallback: Use workflow-state.json (original behavior)
-# Validate workflow state exists
-if [ ! -f "workflow-state.json" ]; then
-    echo -e "${RED}Error: workflow-state.json not found${NC}" >&2
-    exit 1
-fi
-
-# Get next ticket: prioritize in_progress (resume failed), then pending
-NEXT_TICKET=$(jq -r '
-  (.ralph.tickets[] | select(.status == "in_progress") | .id),
-  (.ralph.tickets[] | select(.status == "pending") | .id)
-' workflow-state.json | head -1)
-
-# Get counts
-CURRENT=$(jq -r '.ralph.current' workflow-state.json)
-TOTAL=$(jq -r '.ralph.total' workflow-state.json)
-# Count pending + in_progress (both need work)
-PENDING=$(jq '[.ralph.tickets[] | select(.status == "pending" or .status == "in_progress")] | length' workflow-state.json)
-BLOCKED=$(jq '.ralph.blocked | length' workflow-state.json)
-
-if [ -n "$NEXT_TICKET" ]; then
-    echo -e "Next: ${GREEN}$NEXT_TICKET${NC}"
-    echo "Progress: $CURRENT/$TOTAL ($PENDING pending, $BLOCKED blocked)"
-
-    echo ""
-    echo "---JSON_OUTPUT---"
-    cat << EOF
-{
-  "next_ticket": "$NEXT_TICKET",
-  "issue_number": null,
-  "current": $CURRENT,
-  "total": $TOTAL,
-  "pending": $PENDING,
-  "blocked": $BLOCKED,
-  "has_more": true,
-  "status": "ready",
-  "source": "local"
-}
-EOF
-    exit 0
-else
-    echo -e "${YELLOW}No pending or in-progress tickets${NC}"
-    echo "Progress: $CURRENT/$TOTAL ($BLOCKED blocked)"
-
-    echo ""
-    echo "---JSON_OUTPUT---"
-    cat << EOF
-{
-  "next_ticket": null,
-  "issue_number": null,
-  "current": $CURRENT,
-  "total": $TOTAL,
-  "pending": 0,
-  "blocked": $BLOCKED,
-  "has_more": false,
-  "status": "complete",
-  "source": "local"
-}
-EOF
-    exit 0
-fi
+# pm.tool must be github - no fallback
+echo -e "${RED}Error: pm.tool must be 'github' in config.yaml${NC}" >&2
+echo "GitHub Issues is the only supported PM tool for ralph." >&2
+exit 1

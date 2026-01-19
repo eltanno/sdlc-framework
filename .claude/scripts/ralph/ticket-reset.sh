@@ -29,10 +29,10 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-# Find project root
+# Use PROJECT_ROOT if passed from parent, otherwise use pwd
+# This allows the same script to be used across multiple worktrees
+PROJECT_ROOT="${PROJECT_ROOT:-$(pwd)}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-cd "$PROJECT_ROOT"
 
 if [ -z "$TICKET_ID" ]; then
     echo -e "${RED}Error: Missing ticket ID${NC}"
