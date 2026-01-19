@@ -960,10 +960,161 @@ Analyze the testing setup, patterns, and coverage in this codebase.
 
 ### How to Analyze
 
-- Find test directories and files
-- Read test configuration (jest.config, pytest.ini, etc.)
-- Sample test files to understand patterns
-- Look for coverage reports or config
+Use these tools to gather information:
+- `Glob` for test files: `**/*.test.ts`, `**/*.spec.ts`, `**/test_*.py`, `**/*_test.go`, `**/__tests__/**`
+- `Read` to examine test configuration files and sample test files
+- `Grep` to find test patterns: describe blocks, test functions, assertions
+- Check package.json, pyproject.toml, go.mod for test dependencies
+
+**Test Framework Detection by Ecosystem:**
+
+| Ecosystem | Framework | Detection Indicators |
+|-----------|-----------|---------------------|
+| JavaScript/TypeScript | Jest | `jest` in devDependencies, `jest.config.*`, `@jest/globals` imports |
+| JavaScript/TypeScript | Vitest | `vitest` in devDependencies, `vitest.config.*`, `import { describe } from 'vitest'` |
+| JavaScript/TypeScript | Mocha | `mocha` in devDependencies, `.mocharc.*`, `mocha.opts` |
+| JavaScript/TypeScript | Jasmine | `jasmine` in devDependencies, `jasmine.json` |
+| JavaScript/TypeScript | AVA | `ava` in devDependencies, `ava` config in package.json |
+| JavaScript/TypeScript | Tape | `tape` in devDependencies, `require('tape')` |
+| JavaScript/TypeScript | Node Test Runner | `node:test` imports (Node.js 18+) |
+| Python | pytest | `pytest` in requirements/pyproject, `pytest.ini`, `conftest.py`, `test_*.py` files |
+| Python | unittest | `import unittest`, `class *Test(unittest.TestCase)` |
+| Python | nose/nose2 | `nose`/`nose2` in requirements, `setup.cfg [nosetests]` |
+| Python | doctest | `doctest.testmod()`, `>>> ` patterns in docstrings |
+| Go | testing | `_test.go` files, `import "testing"`, `func Test*` |
+| Go | testify | `github.com/stretchr/testify` imports |
+| Go | ginkgo | `github.com/onsi/ginkgo` imports, `*_suite_test.go` |
+| Rust | built-in | `#[cfg(test)]`, `#[test]`, `tests/` directory |
+| Java | JUnit | `@Test` annotations, `junit` dependencies, `src/test/java` |
+| Java | TestNG | `@Test` from testng, `testng.xml` |
+| Ruby | RSpec | `spec/` directory, `*_spec.rb` files, `rspec` in Gemfile |
+| Ruby | Minitest | `test/` directory, `*_test.rb` files, `minitest` |
+
+**E2E/Integration Framework Detection:**
+
+| Framework | Detection Indicators | Purpose |
+|-----------|---------------------|---------|
+| Playwright | `@playwright/test` in deps, `playwright.config.*` | Browser E2E |
+| Cypress | `cypress` in deps, `cypress.config.*`, `cypress/` directory | Browser E2E |
+| Puppeteer | `puppeteer` in deps, often custom test setup | Browser automation |
+| Selenium | `selenium-webdriver` or language bindings | Browser E2E |
+| WebdriverIO | `webdriverio` in deps, `wdio.conf.*` | Browser E2E |
+| Supertest | `supertest` in deps, used with Jest/Mocha | HTTP API testing |
+| TestContainers | `testcontainers` imports | Integration with Docker |
+| pytest-docker | `pytest-docker` plugin | Python integration tests |
+| httptest | `net/http/httptest` imports | Go HTTP testing |
+
+**Test File Location Patterns:**
+
+| Pattern | Location | Common In |
+|---------|----------|-----------|
+| Co-located | `src/utils/helper.ts` → `src/utils/helper.test.ts` | Modern JS/TS projects |
+| Separate `__tests__` | `src/utils/__tests__/helper.test.ts` | React/CRA convention |
+| Root `test/` directory | `test/unit/`, `test/integration/`, `test/e2e/` | Many frameworks |
+| Root `tests/` directory | `tests/` | Python convention |
+| Spec directory | `spec/` | Ruby/RSpec convention |
+| `src/test/` | `src/test/java/`, `src/test/resources/` | Java/Maven convention |
+
+**Test File Naming Conventions:**
+
+| Convention | Pattern | Ecosystem |
+|------------|---------|-----------|
+| `.test.ts/js` | `*.test.ts`, `*.test.js` | Jest, Vitest (common) |
+| `.spec.ts/js` | `*.spec.ts`, `*.spec.js` | Jasmine, Angular, Playwright |
+| `_test.go` | `*_test.go` | Go (required convention) |
+| `test_*.py` | `test_*.py`, `*_test.py` | pytest (both supported) |
+| `_test.rb` | `*_test.rb` | Ruby Minitest |
+| `_spec.rb` | `*_spec.rb` | Ruby RSpec |
+| `Test*.java` | `*Test.java`, `Test*.java` | JUnit |
+
+**Configuration File Detection:**
+
+| Framework | Config Files | Key Settings to Note |
+|-----------|--------------|---------------------|
+| Jest | `jest.config.js/ts/mjs`, `package.json "jest"` | `testEnvironment`, `collectCoverage`, `coverageThreshold`, `setupFilesAfterEnv` |
+| Vitest | `vitest.config.ts/js`, `vite.config.ts` (test section) | `environment`, `coverage`, `include/exclude` |
+| pytest | `pytest.ini`, `pyproject.toml [tool.pytest]`, `setup.cfg`, `conftest.py` | `testpaths`, `addopts`, `markers` |
+| Mocha | `.mocharc.*`, `package.json "mocha"` | `reporter`, `timeout`, `recursive` |
+| Playwright | `playwright.config.ts/js` | `projects`, `use.baseURL`, `retries` |
+| Cypress | `cypress.config.ts/js` | `e2e`, `component`, `baseUrl` |
+
+**Assertion Library Detection:**
+
+| Library | Detection Indicators | Style |
+|---------|---------------------|-------|
+| Jest/Vitest expect | `expect().toBe()`, `expect().toEqual()` | Matcher-based |
+| Chai | `expect().to.equal()`, `should.equal()`, `assert.equal()` | BDD/TDD styles |
+| Node assert | `import assert from 'assert'` | Built-in Node.js |
+| pytest assert | `assert x == y` (with rewrite) | Plain Python assert |
+| testify assert | `assert.Equal(t, expected, actual)` | Go testify |
+| AssertJ | `assertThat().isEqualTo()` | Java fluent |
+
+**Mocking Framework Detection:**
+
+| Framework | Detection Indicators | Ecosystem |
+|-----------|---------------------|-----------|
+| Jest mocks | `jest.mock()`, `jest.fn()`, `jest.spyOn()` | JavaScript/TypeScript |
+| Vitest mocks | `vi.mock()`, `vi.fn()`, `vi.spyOn()` | JavaScript/TypeScript |
+| Sinon | `sinon.stub()`, `sinon.spy()`, `sinon.mock()` | JavaScript/TypeScript |
+| unittest.mock | `from unittest.mock import Mock, patch`, `@patch` | Python |
+| pytest-mock | `mocker` fixture, `mocker.patch()` | Python |
+| gomock | `mockgen`, `EXPECT()`, `ctrl.Finish()` | Go |
+| testify/mock | `mock.Mock`, `On().Return()` | Go |
+| Mockito | `@Mock`, `when().thenReturn()`, `verify()` | Java |
+| Mockery | `Mockery::mock()` | PHP |
+
+**Test Utility Detection:**
+
+| Utility Type | Common Names/Patterns | Purpose |
+|--------------|----------------------|---------|
+| Test helpers | `test/helpers/`, `testutils/`, `test/support/` | Shared test utilities |
+| Fixtures | `fixtures/`, `__fixtures__/`, `test/fixtures/` | Test data files |
+| Factories | `factories/`, `*Factory.ts`, `factory_bot` | Test data generation |
+| Mocks | `__mocks__/`, `mocks/`, `test/mocks/` | Mock implementations |
+| Setup files | `setupTests.ts`, `conftest.py`, `test_helper.rb` | Global test setup |
+
+**Coverage Tool Detection:**
+
+| Tool | Detection Indicators | Ecosystem |
+|------|---------------------|-----------|
+| Istanbul/nyc | `nyc` in deps, `.nycrc`, `c8` in deps | JavaScript/TypeScript |
+| Jest coverage | `--coverage` flag, `collectCoverage: true` | Jest built-in |
+| Vitest coverage | `coverage` config, `@vitest/coverage-v8` or `@vitest/coverage-istanbul` | Vitest |
+| coverage.py | `coverage` in deps, `.coveragerc`, `[tool.coverage]` | Python |
+| pytest-cov | `pytest-cov` in deps, `--cov` flag | Python |
+| go test -cover | `-cover`, `-coverprofile` flags | Go built-in |
+| JaCoCo | `jacoco` plugin in pom.xml/build.gradle | Java |
+| SimpleCov | `simplecov` in Gemfile, `spec_helper.rb` setup | Ruby |
+
+**CI Test Configuration Detection:**
+
+| CI Platform | Config File | Test Section Indicators |
+|-------------|-------------|------------------------|
+| GitHub Actions | `.github/workflows/*.yml` | `npm test`, `pytest`, `go test`, job names with "test" |
+| GitLab CI | `.gitlab-ci.yml` | `test` stage, script commands |
+| CircleCI | `.circleci/config.yml` | `test` jobs |
+| Travis CI | `.travis.yml` | `script` section |
+| Jenkins | `Jenkinsfile` | `stage('Test')` |
+| Azure Pipelines | `azure-pipelines.yml` | Test tasks |
+
+**How to Assess Coverage Gaps:**
+
+1. **Compare source directories vs test directories:**
+   - List all source modules: `Glob` for `src/**/*.ts` or equivalent
+   - List all test files: `Glob` for `**/*.test.ts` or equivalent
+   - Identify modules without corresponding tests
+
+2. **Check for common untested areas:**
+   - Error handling paths
+   - Edge cases (null, empty, boundary values)
+   - Integration points (API calls, database queries)
+   - Authentication/authorization logic
+   - Configuration/environment handling
+
+3. **Look for coverage configuration:**
+   - Coverage thresholds if configured
+   - Excluded files/directories
+   - Coverage reports in CI artifacts
 
 ### Output
 
@@ -977,42 +1128,113 @@ Create `docs/legacy/TESTING.md` with this structure:
 
 ## Summary
 
-[2-3 sentence overview of testing state]
+[2-3 sentence overview of testing state - include overall test health assessment]
 
 ## Findings
 
 ### Test Framework
-- Unit: [framework]
-- Integration: [framework or "none"]
-- E2E: [framework or "none"]
+| Test Type | Framework | Version | Config File |
+|-----------|-----------|---------|-------------|
+| Unit | [Jest/pytest/etc] | [version] | [config path] |
+| Integration | [framework or "None configured"] | [version] | [config path] |
+| E2E | [Playwright/Cypress/etc or "None configured"] | [version] | [config path] |
+
+**Framework Details:**
+- [Notable configuration or setup patterns]
 
 ### Test Organization
-- Location: [where tests live]
-- Naming: [file naming pattern]
-- Helpers: [utility location if any]
+| Attribute | Value | Evidence |
+|-----------|-------|----------|
+| Location Pattern | [co-located/separate directory/mixed] | [example paths] |
+| File Naming | [.test.ts, _test.py, etc] | [examples found] |
+| Directory Structure | [flat/nested/by-feature] | [description] |
+
+**Test Directories:**
+| Directory | Purpose | Test Count |
+|-----------|---------|------------|
+| [path] | [unit/integration/e2e] | [approximate count] |
+
+**Test Utilities:**
+| Location | Purpose |
+|----------|---------|
+| [path] | [helpers/fixtures/mocks/factories] |
 
 ### Test Patterns
-- Assertions: [style]
-- Mocking: [approach]
-- Fixtures: [approach]
+
+**Assertion Style:**
+| Library | Style | Example |
+|---------|-------|---------|
+| [library] | [matcher/BDD/TDD] | [sample assertion] |
+
+**Mocking Approach:**
+| Tool | Usage Pattern | Example Location |
+|------|---------------|------------------|
+| [tool] | [how mocks are created] | [sample file] |
+
+**Fixture Patterns:**
+- [How test data is managed - inline, files, factories, etc.]
+
+**Setup/Teardown:**
+| Pattern | Implementation |
+|---------|----------------|
+| Global setup | [file and approach] |
+| Per-test setup | [beforeEach/setUp pattern] |
+| Cleanup | [afterEach/tearDown pattern] |
 
 ### Coverage Assessment
-**Well Tested:**
-- [area/module]
-- [area/module]
 
-**Gaps Identified:**
-- [area/module lacking tests]
-- [area/module lacking tests]
+**Coverage Configuration:**
+| Setting | Value | Source |
+|---------|-------|--------|
+| Tool | [Istanbul/coverage.py/etc] | [config file] |
+| Threshold | [percentage or "not configured"] | [where defined] |
+| Report formats | [html/lcov/etc] | [config] |
 
-### CI/CD
-- Test Command: [command]
-- CI Integration: [yes/no and details]
-- Coverage Reporting: [yes/no]
+**Well Tested Areas:**
+| Module/Area | Evidence | Test Types |
+|-------------|----------|------------|
+| [module name] | [test file count, coverage if known] | [unit/integration] |
+
+**Identified Coverage Gaps:**
+| Module/Area | Gap Type | Risk Level |
+|-------------|----------|------------|
+| [module lacking tests] | [no tests/minimal tests/missing edge cases] | [High/Medium/Low] |
+
+**Test Quality Observations:**
+- [Observations about test quality - are tests meaningful or superficial?]
+- [Are there test smells - flaky tests, too much mocking, etc.?]
+
+### CI/CD Integration
+| Aspect | Value | Location |
+|--------|-------|----------|
+| Test Command | [npm test/pytest/etc] | [package.json/Makefile/etc] |
+| CI Platform | [GitHub Actions/GitLab/etc] | [config file] |
+| Test Stage | [job/stage name] | [config file] |
+| Coverage Reporting | [yes - to where / no] | [CI config] |
+| Test Artifacts | [yes/no] | [what's preserved] |
+
+**CI Test Configuration:**
+- [Notable CI test settings - parallel execution, retry, etc.]
+
+### Test Metrics
+
+| Metric | Value | Notes |
+|--------|-------|-------|
+| Total Test Files | [count] | [how counted] |
+| Approximate Test Count | [count if determinable] | [based on describe/it blocks] |
+| Test-to-Source Ratio | [ratio or "not determinable"] | [test files / source files] |
+| Coverage % | [percentage or "not measured/not configured"] | [source if known] |
 
 ## Recommendations
 
-- [Testing recommendations]
+### Critical (P1)
+- [Critical testing gaps that pose risk]
+
+### Important (P2)
+- [Important improvements for test quality]
+
+### Nice to Have (P3)
+- [Polish items for testing infrastructure]
 
 ---
 *Generated by `/analyze-codebase`*
@@ -1024,10 +1246,25 @@ After creating the document, return:
 ```
 TESTING ANALYSIS COMPLETE
 Document: docs/legacy/TESTING.md
-Testing: [1-2 sentence summary]
+Testing: [1-2 sentence summary including framework, organization, and coverage state]
+Test Maturity: [None/Basic/Developing/Mature]
 ```
 
-**Note:** If no tests exist, explicitly state "No tests found" and focus recommendations on establishing testing.
+**Special Cases:**
+
+**If no tests exist:**
+Create the document with this content in the Summary:
+```
+No tests were detected in this codebase. There are no test files, no test configuration, and no test framework dependencies.
+```
+
+Then populate the document with:
+- "None" for all framework fields
+- "No tests found" for organization
+- Recommendations focused entirely on establishing testing from scratch
+
+**If tests exist but no coverage tooling:**
+Note this explicitly and recommend adding coverage measurement as a P2 item.
 ```
 
 ---
