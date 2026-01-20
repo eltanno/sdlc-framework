@@ -555,3 +555,330 @@ class TestTicketDoneOutput:
         assert "remaining" in result["progress"]
         assert "next_ticket" in result
         assert "all_done" in result
+
+
+class TestTicketDoneWithPMTool:
+    """Tests for ticket_done integration with PMTool protocol."""
+
+    def test_ticket_done_accepts_pm_tool_parameter(self, tmp_path: Path, mocker):
+        """Given a pm_tool parameter, ticket_done accepts it without error."""
+        from commands.ticket_done import ticket_done
+        from core.pm import LocalPM
+
+        # Setup state file
+        state = {
+            "version": "2.0",
+            "prd_path": "docs/prds/test.md",
+            "plan_path": "docs/plans/test.md",
+            "tickets": [
+                {"id": "TASK-001", "title": "Test", "status": "in_progress", "dependencies": [], "issue_number": 42},
+            ],
+            "current_ticket": "TASK-001",
+            "completed_count": 0,
+            "blocked_count": 0,
+        }
+        state_file = tmp_path / "workflow-state.json"
+        state_file.write_text(json.dumps(state))
+
+        # Create PM tool mock
+        pm_tool = LocalPM()
+
+        result = ticket_done(
+            ticket_id="TASK-001",
+            state_file=state_file,
+            pm_tool=pm_tool,
+        )
+
+        assert result["status"] == "completed"
+
+    def test_ticket_done_calls_pm_tool_close_ticket(self, tmp_path: Path, mocker):
+        """Given pm_tool, ticket_done calls close_ticket with issue number."""
+        from commands.ticket_done import ticket_done
+
+        # Setup state file with issue_number
+        state = {
+            "version": "2.0",
+            "prd_path": "docs/prds/test.md",
+            "plan_path": "docs/plans/test.md",
+            "tickets": [
+                {"id": "TASK-001", "title": "Test", "status": "in_progress", "dependencies": [], "issue_number": 42},
+            ],
+            "current_ticket": "TASK-001",
+            "completed_count": 0,
+            "blocked_count": 0,
+        }
+        state_file = tmp_path / "workflow-state.json"
+        state_file.write_text(json.dumps(state))
+
+        # Create mock PM tool
+        mock_pm_tool = MagicMock()
+        mock_pm_tool.close_ticket.return_value = True
+        mock_pm_tool.remove_label.return_value = True
+
+        ticket_done(
+            ticket_id="TASK-001",
+            state_file=state_file,
+            pm_tool=mock_pm_tool,
+            ralph_label="ralph-1",
+        )
+
+        mock_pm_tool.close_ticket.assert_called_once_with("42")
+
+    def test_ticket_done_calls_pm_tool_remove_label(self, tmp_path: Path, mocker):
+        """Given pm_tool and ralph_label, ticket_done removes the label first."""
+        from commands.ticket_done import ticket_done
+
+        # Setup state file with issue_number
+        state = {
+            "version": "2.0",
+            "prd_path": "docs/prds/test.md",
+            "plan_path": "docs/plans/test.md",
+            "tickets": [
+                {"id": "TASK-001", "title": "Test", "status": "in_progress", "dependencies": [], "issue_number": 42},
+            ],
+            "current_ticket": "TASK-001",
+            "completed_count": 0,
+            "blocked_count": 0,
+        }
+        state_file = tmp_path / "workflow-state.json"
+        state_file.write_text(json.dumps(state))
+
+        # Create mock PM tool
+        mock_pm_tool = MagicMock()
+        mock_pm_tool.close_ticket.return_value = True
+        mock_pm_tool.remove_label.return_value = True
+
+        ticket_done(
+            ticket_id="TASK-001",
+            state_file=state_file,
+            pm_tool=mock_pm_tool,
+            ralph_label="ralph-1",
+        )
+
+        mock_pm_tool.remove_label.assert_called_once_with("42", "ralph-1")
+
+    def test_ticket_done_removes_label_before_closing(self, tmp_path: Path, mocker):
+        """Given pm_tool and ralph_label, remove_label is called before close_ticket."""
+        from commands.ticket_done import ticket_done
+
+        # Setup state file
+        state = {
+            "version": "2.0",
+            "prd_path": "docs/prds/test.md",
+            "plan_path": "docs/plans/test.md",
+            "tickets": [
+                {"id": "TASK-001", "title": "Test", "status": "in_progress", "dependencies": [], "issue_number": 42},
+            ],
+            "current_ticket": "TASK-001",
+            "completed_count": 0,
+            "blocked_count": 0,
+        }
+        state_file = tmp_path / "workflow-state.json"
+        state_file.write_text(json.dumps(state))
+
+        # Track call order
+        call_order = []
+        mock_pm_tool = MagicMock()
+        mock_pm_tool.remove_label.side_effect = lambda *args: call_order.append("remove_label") or True
+        mock_pm_tool.close_ticket.side_effect = lambda *args: call_order.append("close_ticket") or True
+
+        ticket_done(
+            ticket_id="TASK-001",
+            state_file=state_file,
+            pm_tool=mock_pm_tool,
+            ralph_label="ralph-1",
+        )
+
+        assert call_order == ["remove_label", "close_ticket"]
+
+    def test_ticket_done_handles_already_closed_issue(self, tmp_path: Path, mocker):
+        """Given pm_tool returns False for close, ticket_done still succeeds."""
+        from commands.ticket_done import ticket_done
+
+        # Setup state file
+        state = {
+            "version": "2.0",
+            "prd_path": "docs/prds/test.md",
+            "plan_path": "docs/plans/test.md",
+            "tickets": [
+                {"id": "TASK-001", "title": "Test", "status": "in_progress", "dependencies": [], "issue_number": 42},
+            ],
+            "current_ticket": "TASK-001",
+            "completed_count": 0,
+            "blocked_count": 0,
+        }
+        state_file = tmp_path / "workflow-state.json"
+        state_file.write_text(json.dumps(state))
+
+        # Mock PM tool that returns False for close (issue already closed)
+        mock_pm_tool = MagicMock()
+        mock_pm_tool.close_ticket.return_value = False  # Already closed
+        mock_pm_tool.remove_label.return_value = True
+
+        result = ticket_done(
+            ticket_id="TASK-001",
+            state_file=state_file,
+            pm_tool=mock_pm_tool,
+            ralph_label="ralph-1",
+        )
+
+        # Should still complete successfully
+        assert result["status"] == "completed"
+
+    def test_ticket_done_skips_pm_operations_without_issue_number(self, tmp_path: Path, mocker):
+        """Given no issue_number in state, ticket_done skips PM tool calls."""
+        from commands.ticket_done import ticket_done
+
+        # Setup state file WITHOUT issue_number
+        state = {
+            "version": "2.0",
+            "prd_path": "docs/prds/test.md",
+            "plan_path": "docs/plans/test.md",
+            "tickets": [
+                {"id": "TASK-001", "title": "Test", "status": "in_progress", "dependencies": []},
+            ],
+            "current_ticket": "TASK-001",
+            "completed_count": 0,
+            "blocked_count": 0,
+        }
+        state_file = tmp_path / "workflow-state.json"
+        state_file.write_text(json.dumps(state))
+
+        # Create mock PM tool
+        mock_pm_tool = MagicMock()
+
+        result = ticket_done(
+            ticket_id="TASK-001",
+            state_file=state_file,
+            pm_tool=mock_pm_tool,
+            ralph_label="ralph-1",
+        )
+
+        # Should complete without calling PM tool
+        assert result["status"] == "completed"
+        mock_pm_tool.close_ticket.assert_not_called()
+        mock_pm_tool.remove_label.assert_not_called()
+
+    def test_ticket_done_skips_remove_label_without_ralph_label(self, tmp_path: Path, mocker):
+        """Given pm_tool but no ralph_label, ticket_done skips remove_label."""
+        from commands.ticket_done import ticket_done
+
+        # Setup state file
+        state = {
+            "version": "2.0",
+            "prd_path": "docs/prds/test.md",
+            "plan_path": "docs/plans/test.md",
+            "tickets": [
+                {"id": "TASK-001", "title": "Test", "status": "in_progress", "dependencies": [], "issue_number": 42},
+            ],
+            "current_ticket": "TASK-001",
+            "completed_count": 0,
+            "blocked_count": 0,
+        }
+        state_file = tmp_path / "workflow-state.json"
+        state_file.write_text(json.dumps(state))
+
+        # Create mock PM tool
+        mock_pm_tool = MagicMock()
+        mock_pm_tool.close_ticket.return_value = True
+
+        ticket_done(
+            ticket_id="TASK-001",
+            state_file=state_file,
+            pm_tool=mock_pm_tool,
+            ralph_label=None,  # No label
+        )
+
+        # close_ticket should be called, but not remove_label
+        mock_pm_tool.close_ticket.assert_called_once()
+        mock_pm_tool.remove_label.assert_not_called()
+
+    def test_ticket_done_preserves_attempt_count_in_state(self, tmp_path: Path, mocker):
+        """Given ticket with attempt_count, ticket_done preserves it in state."""
+        from commands.ticket_done import ticket_done
+
+        # Setup state file with attempt_count
+        state = {
+            "version": "2.0",
+            "prd_path": "docs/prds/test.md",
+            "plan_path": "docs/plans/test.md",
+            "tickets": [
+                {
+                    "id": "TASK-001",
+                    "title": "Test",
+                    "status": "in_progress",
+                    "dependencies": [],
+                    "issue_number": 42,
+                    "attempt_count": 3,
+                },
+            ],
+            "current_ticket": "TASK-001",
+            "completed_count": 0,
+            "blocked_count": 0,
+        }
+        state_file = tmp_path / "workflow-state.json"
+        state_file.write_text(json.dumps(state))
+
+        # Create mock PM tool
+        mock_pm_tool = MagicMock()
+        mock_pm_tool.close_ticket.return_value = True
+        mock_pm_tool.remove_label.return_value = True
+
+        ticket_done(
+            ticket_id="TASK-001",
+            state_file=state_file,
+            pm_tool=mock_pm_tool,
+            ralph_label="ralph-1",
+        )
+
+        # Verify attempt_count is preserved in state
+        updated_state = json.loads(state_file.read_text())
+        assert updated_state["tickets"][0]["attempt_count"] == 3
+
+    def test_ticket_done_uses_pm_tool_over_config_github(self, tmp_path: Path, mocker):
+        """Given both pm_tool and github config, pm_tool takes precedence."""
+        from commands.ticket_done import ticket_done
+
+        # Setup state file
+        state = {
+            "version": "2.0",
+            "prd_path": "docs/prds/test.md",
+            "plan_path": "docs/plans/test.md",
+            "tickets": [
+                {"id": "TASK-001", "title": "Test", "status": "in_progress", "dependencies": [], "issue_number": 42},
+            ],
+            "current_ticket": "TASK-001",
+            "completed_count": 0,
+            "blocked_count": 0,
+        }
+        state_file = tmp_path / "workflow-state.json"
+        state_file.write_text(json.dumps(state))
+
+        # Setup config file with GitHub
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+pm:
+  tool: github
+ralph:
+  instance_label: ralph-1
+""")
+
+        # Mock subprocess - should NOT be called when pm_tool is provided
+        mock_run = mocker.patch("commands.ticket_done.subprocess.run")
+
+        # Create mock PM tool
+        mock_pm_tool = MagicMock()
+        mock_pm_tool.close_ticket.return_value = True
+        mock_pm_tool.remove_label.return_value = True
+
+        ticket_done(
+            ticket_id="TASK-001",
+            state_file=state_file,
+            config_file=config_file,
+            pm_tool=mock_pm_tool,
+            ralph_label="ralph-1",
+        )
+
+        # pm_tool should be called, not subprocess (gh CLI)
+        mock_pm_tool.close_ticket.assert_called_once()
+        mock_run.assert_not_called()
