@@ -18,9 +18,12 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
+
+if TYPE_CHECKING:
+    from core.pm import PMTool
 
 
 def mark_ticket_done(
@@ -230,15 +233,17 @@ def ticket_done(
     issue_number: int | None = None,
     state_file: Path | None = None,
     config_file: Path | None = None,
+    pm_tool: PMTool | None = None,
+    ralph_label: str | None = None,
 ) -> dict[str, Any]:
-    """Complete a ticket, handling both state update and GitHub operations.
+    """Complete a ticket, handling both state update and PM tool operations.
 
     This is the main entry point that:
-    1. Reads config to check PM tool
-    2. Looks up issue number if not provided (for GitHub)
-    3. Removes instance label if configured
-    4. Closes the GitHub issue
-    5. Updates workflow state
+    1. Uses pm_tool if provided, otherwise falls back to config-based GitHub operations
+    2. Looks up issue number if not provided (from state)
+    3. Removes instance label via PM tool if configured
+    4. Closes the issue via PM tool
+    5. Updates workflow state (preserving attempt_count for metrics)
 
     Args:
         ticket_id: The ticket identifier to complete
@@ -246,47 +251,60 @@ def ticket_done(
         issue_number: Optional GitHub issue number (will be looked up if not provided)
         state_file: Path to workflow state file
         config_file: Path to config.yaml
+        pm_tool: Optional PM tool instance (takes precedence over config-based GitHub)
+        ralph_label: Optional label to remove from the ticket (e.g., "ralph-1")
 
     Returns:
         Dictionary with completion details
     """
-    # Load config
-    config = _load_config(config_file)
-    pm_config = config.get("pm", {})
-    ralph_config = config.get("ralph", {})
-
-    pm_tool = pm_config.get("tool", "none")
-    instance_label = ralph_config.get("instance_label", "")
-
-    # Check if we need to lookup issue number from state
+    # Resolve issue number from state if not provided
     actual_issue_number = issue_number
+    if actual_issue_number is None and state_file and state_file.exists():
+        try:
+            state = json.loads(state_file.read_text())
+            for t in state.get("tickets", []):
+                if t["id"] == ticket_id and "issue_number" in t:
+                    actual_issue_number = t["issue_number"]
+                    break
+        except (json.JSONDecodeError, KeyError):
+            pass
 
-    if pm_tool == "github":
-        # Try to get issue number from state file first
-        if actual_issue_number is None and state_file and state_file.exists():
-            try:
-                state = json.loads(state_file.read_text())
-                for t in state.get("tickets", []):
-                    if t["id"] == ticket_id and "issue_number" in t:
-                        actual_issue_number = t["issue_number"]
-                        break
-            except (json.JSONDecodeError, KeyError):
-                pass
-
-        # If still no issue number, look it up via gh CLI
-        if actual_issue_number is None:
-            actual_issue_number = find_issue_by_ticket_id(ticket_id)
-
-        # Perform GitHub operations if we have an issue number
+    # Use PM tool if provided (takes precedence over config-based operations)
+    if pm_tool is not None:
+        # Only perform PM operations if we have an issue number
         if actual_issue_number is not None:
-            # Remove instance label if configured
-            if instance_label:
-                remove_label_from_issue(actual_issue_number, instance_label)
+            ticket_id_str = str(actual_issue_number)
 
-            # Close the issue
-            close_github_issue(actual_issue_number)
+            # Remove instance label first (if provided)
+            if ralph_label:
+                pm_tool.remove_label(ticket_id_str, ralph_label)
 
-    # Update the state file
+            # Close the ticket (idempotent - handles already closed)
+            pm_tool.close_ticket(ticket_id_str)
+    else:
+        # Fall back to config-based GitHub operations (legacy behavior)
+        config = _load_config(config_file)
+        pm_config = config.get("pm", {})
+        ralph_config = config.get("ralph", {})
+
+        pm_tool_name = pm_config.get("tool", "none")
+        instance_label = ralph_config.get("instance_label", "")
+
+        if pm_tool_name == "github":
+            # If still no issue number, look it up via gh CLI
+            if actual_issue_number is None:
+                actual_issue_number = find_issue_by_ticket_id(ticket_id)
+
+            # Perform GitHub operations if we have an issue number
+            if actual_issue_number is not None:
+                # Remove instance label if configured
+                if instance_label:
+                    remove_label_from_issue(actual_issue_number, instance_label)
+
+                # Close the issue
+                close_github_issue(actual_issue_number)
+
+    # Update the state file (preserves all existing ticket fields including attempt_count)
     result = mark_ticket_done(
         ticket_id=ticket_id,
         pr_number=pr_number,
