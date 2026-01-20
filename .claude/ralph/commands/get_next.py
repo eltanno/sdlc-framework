@@ -204,6 +204,67 @@ def claim_ticket_with_race_detection(
     return True
 
 
+def _check_dependencies_via_pm_tool(
+    ticket_id: str,
+    ticket_deps: list[str],
+    ticket_ids: list[str],
+    open_ticket_ids: set[str],
+    pm_tool: PMTool,
+) -> bool:
+    """Check if all dependencies are satisfied by querying PM tool status.
+
+    A dependency is satisfied only if:
+    1. It exists in the workflow ticket list (ticket_ids)
+    2. It is CLOSED in the PM tool (not in open_ticket_ids, or status is CLOSED)
+
+    If a dependency doesn't exist in the workflow (not in ticket_ids), it is
+    logged as a warning and treated as unmet.
+
+    Args:
+        ticket_id: ID of the ticket being checked (for logging)
+        ticket_deps: List of dependency ticket IDs for this ticket
+        ticket_ids: List of all known ticket IDs in the workflow
+        open_ticket_ids: Set of ticket IDs that are currently open
+        pm_tool: PM tool for querying ticket status
+
+    Returns:
+        True if all dependencies are satisfied, False otherwise
+    """
+    if not ticket_deps:
+        return True
+
+    ticket_id_set = set(ticket_ids)
+
+    for dep_id in ticket_deps:
+        # Check if dependency exists in the workflow
+        if dep_id not in ticket_id_set:
+            # Dependency doesn't exist in the workflow - treat as unmet
+            logger.warning(
+                f"Dependency {dep_id} for ticket {ticket_id} not found in workflow. "
+                "Treating as unmet dependency."
+            )
+            return False
+
+        # Check if dependency is closed (completed)
+        if dep_id in open_ticket_ids:
+            # Dependency is in the open tickets list - check its actual status
+            try:
+                dep_status = pm_tool.get_ticket_status(dep_id)
+                if dep_status != TicketStatus.CLOSED:
+                    # Dependency is still open
+                    return False
+            except PMError as e:
+                # Failed to query dependency status - log warning and treat as unmet
+                logger.warning(
+                    f"Failed to check status of dependency {dep_id} for ticket {ticket_id}: {e}. "
+                    "Treating as unmet dependency."
+                )
+                return False
+        # If not in open_ticket_ids but in ticket_ids, it's closed (completed)
+
+    return True
+
+
 def get_next_ticket(
     state: WorkflowState,
     pm_tool: PMTool | None = None,
@@ -360,17 +421,13 @@ def _get_next_ticket_with_pm_tool(
 
         # Check if dependencies are satisfied
         ticket_deps = dependencies.get(ticket_id, [])
-        deps_satisfied = True
-
-        for dep_id in ticket_deps:
-            # Check if dependency is closed (completed)
-            if dep_id in open_ticket_ids:
-                # Dependency is still open - need to check its status
-                dep_status = pm_tool.get_ticket_status(dep_id)
-                if dep_status != TicketStatus.CLOSED:
-                    deps_satisfied = False
-                    break
-            # If not in open_ticket_ids, it's closed = completed
+        deps_satisfied = _check_dependencies_via_pm_tool(
+            ticket_id=ticket_id,
+            ticket_deps=ticket_deps,
+            ticket_ids=ticket_ids,
+            open_ticket_ids=open_ticket_ids,
+            pm_tool=pm_tool,
+        )
 
         if deps_satisfied:
             # Try to claim this ticket with race detection
@@ -393,12 +450,16 @@ def _get_next_ticket_with_pm_tool(
                     remaining_info = open_ticket_map[remaining_id]
                     if remaining_info.status != TicketStatus.BLOCKED:
                         remaining_deps = dependencies.get(remaining_id, [])
-                        for dep_id in remaining_deps:
-                            if dep_id in open_ticket_ids:
-                                dep_status = pm_tool.get_ticket_status(dep_id)
-                                if dep_status != TicketStatus.CLOSED:
-                                    skipped_for_deps += 1
-                                    break
+                        if remaining_deps:
+                            deps_met = _check_dependencies_via_pm_tool(
+                                ticket_id=remaining_id,
+                                ticket_deps=remaining_deps,
+                                ticket_ids=ticket_ids,
+                                open_ticket_ids=open_ticket_ids,
+                                pm_tool=pm_tool,
+                            )
+                            if not deps_met:
+                                skipped_for_deps += 1
 
             # Create a Ticket object for the result
             ticket = Ticket(
