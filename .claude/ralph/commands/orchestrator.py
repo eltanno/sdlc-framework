@@ -494,6 +494,11 @@ def process_ticket(
             )
 
         # Invoke Claude
+        print(f"\n{'='*60}")
+        print(f"INVOKING CLAUDE: {ticket_id} (attempt {current_attempt}/{config.max_attempts})")
+        print(f"Model: {model}, Timeout: {config.engineer_timeout} minutes")
+        print(f"{'='*60}\n")
+
         result = invoke_claude(
             prompt=prompt,
             timeout_minutes=config.engineer_timeout,
@@ -502,6 +507,8 @@ def process_ticket(
         )
 
         # Handle result
+        print(f"\nClaude returned: {result.status}")
+
         if result.status == VALIDATION_PASSED:
             # Success! Run PR flow
             try:

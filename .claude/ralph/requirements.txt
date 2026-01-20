@@ -2,3 +2,4 @@
 # Python 3.10+ required
 
 pyyaml>=6.0
+httpx>=0.24.0
