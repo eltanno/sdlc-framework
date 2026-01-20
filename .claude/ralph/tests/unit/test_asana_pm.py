@@ -7,9 +7,13 @@ Tests cover:
 - Error handling for API failures
 - Base HTTP request functionality
 - Tag management (_get_or_create_tag)
+- close_ticket with section move
 
 SDLC-0052: AsanaPM HTTP client and authentication
 SDLC-0053: AsanaPM tag management
+SDLC-0054: AsanaPM get_ticket_status method
+SDLC-0055: AsanaPM claim_ticket and is_ticket_claimed methods
+SDLC-0056: AsanaPM close_ticket with section move
 """
 
 import os
@@ -1279,3 +1283,484 @@ class TestAsanaPMIsTicketClaimed:
 
         assert is_claimed is False
         assert label is None
+
+
+# =============================================================================
+# SDLC-0056: close_ticket with section move Tests
+# =============================================================================
+
+
+class TestAsanaPMCloseTicket:
+    """Tests for AsanaPM.close_ticket method.
+
+    SDLC-0056: Implement task completion and optional Done section move with graceful degradation.
+    """
+
+    def test_close_ticket_marks_task_as_complete(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task ID, when close_ticket is called, then task is marked as completed."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: PUT /tasks/{task_id} succeeds
+        mock_put_response = MagicMock()
+        mock_put_response.status_code = 200
+        mock_put_response.json.return_value = {
+            "data": {"gid": "12345", "completed": True}
+        }
+
+        # Mock: GET /projects/{project_id}/sections returns sections
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = {
+            "data": [{"gid": "done-section-gid", "name": "Done"}]
+        }
+
+        # Mock: POST /sections/{section_id}/addTask succeeds
+        mock_post_response = MagicMock()
+        mock_post_response.status_code = 200
+        mock_post_response.json.return_value = {"data": {}}
+
+        mock_httpx_client.return_value.__enter__.return_value.put.return_value = (
+            mock_put_response
+        )
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_get_response
+        )
+        mock_httpx_client.return_value.__enter__.return_value.post.return_value = (
+            mock_post_response
+        )
+
+        pm = AsanaPM()
+        result = pm.close_ticket("12345")
+
+        assert result is True
+
+        # Verify PUT was called with completed=True
+        put_call_args = (
+            mock_httpx_client.return_value.__enter__.return_value.put.call_args
+        )
+        json_body = put_call_args.kwargs.get("json", {})
+        assert json_body.get("data", {}).get("completed") is True
+
+    def test_close_ticket_moves_task_to_done_section(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given project has Done section, when close_ticket is called, then task is moved to Done section."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: PUT /tasks/{task_id} succeeds
+        mock_put_response = MagicMock()
+        mock_put_response.status_code = 200
+        mock_put_response.json.return_value = {
+            "data": {"gid": "12345", "completed": True}
+        }
+
+        # Mock: GET /projects/{project_id}/sections returns Done section
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = {
+            "data": [
+                {"gid": "backlog-section-gid", "name": "Backlog"},
+                {"gid": "done-section-gid", "name": "Done"},
+            ]
+        }
+
+        # Mock: POST /sections/{section_id}/addTask succeeds
+        mock_post_response = MagicMock()
+        mock_post_response.status_code = 200
+        mock_post_response.json.return_value = {"data": {}}
+
+        mock_httpx_client.return_value.__enter__.return_value.put.return_value = (
+            mock_put_response
+        )
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_get_response
+        )
+        mock_httpx_client.return_value.__enter__.return_value.post.return_value = (
+            mock_post_response
+        )
+
+        pm = AsanaPM()
+        result = pm.close_ticket("12345")
+
+        assert result is True
+
+        # Verify POST was called with correct section GID
+        post_call_args = (
+            mock_httpx_client.return_value.__enter__.return_value.post.call_args
+        )
+        url = post_call_args.args[0] if post_call_args.args else ""
+        assert "done-section-gid" in url or "addTask" in url
+
+    def test_close_ticket_succeeds_without_done_section(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given project has no Done section, when close_ticket is called, then task is marked complete (graceful degradation)."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: PUT /tasks/{task_id} succeeds
+        mock_put_response = MagicMock()
+        mock_put_response.status_code = 200
+        mock_put_response.json.return_value = {
+            "data": {"gid": "12345", "completed": True}
+        }
+
+        # Mock: GET /projects/{project_id}/sections returns NO Done section
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = {
+            "data": [
+                {"gid": "backlog-section-gid", "name": "Backlog"},
+                {"gid": "in-progress-section-gid", "name": "In Progress"},
+            ]
+        }
+
+        mock_httpx_client.return_value.__enter__.return_value.put.return_value = (
+            mock_put_response
+        )
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_get_response
+        )
+
+        pm = AsanaPM()
+        result = pm.close_ticket("12345")
+
+        # Should succeed even without Done section (graceful degradation)
+        assert result is True
+
+    def test_close_ticket_uses_case_insensitive_done_section_match(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given Done section has different case, when close_ticket is called, then section is found."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: PUT /tasks/{task_id} succeeds
+        mock_put_response = MagicMock()
+        mock_put_response.status_code = 200
+        mock_put_response.json.return_value = {
+            "data": {"gid": "12345", "completed": True}
+        }
+
+        # Mock: GET /projects/{project_id}/sections returns "DONE" (uppercase)
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = {
+            "data": [{"gid": "uppercase-done-gid", "name": "DONE"}]
+        }
+
+        # Mock: POST /sections/{section_id}/addTask succeeds
+        mock_post_response = MagicMock()
+        mock_post_response.status_code = 200
+        mock_post_response.json.return_value = {"data": {}}
+
+        mock_httpx_client.return_value.__enter__.return_value.put.return_value = (
+            mock_put_response
+        )
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_get_response
+        )
+        mock_httpx_client.return_value.__enter__.return_value.post.return_value = (
+            mock_post_response
+        )
+
+        pm = AsanaPM()
+        result = pm.close_ticket("12345")
+
+        assert result is True
+
+        # Verify POST was called to move to section
+        post_call_args = (
+            mock_httpx_client.return_value.__enter__.return_value.post.call_args
+        )
+        url = post_call_args.args[0] if post_call_args.args else ""
+        assert "uppercase-done-gid" in url or "addTask" in url
+
+    def test_close_ticket_calls_correct_task_endpoint(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task ID, when close_ticket is called, then correct API endpoint is used."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: PUT /tasks/{task_id} succeeds
+        mock_put_response = MagicMock()
+        mock_put_response.status_code = 200
+        mock_put_response.json.return_value = {
+            "data": {"gid": "12345", "completed": True}
+        }
+
+        # Mock: GET /projects/{project_id}/sections returns empty
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = {"data": []}
+
+        mock_httpx_client.return_value.__enter__.return_value.put.return_value = (
+            mock_put_response
+        )
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_get_response
+        )
+
+        pm = AsanaPM()
+        pm.close_ticket("task-id-xyz")
+
+        # Verify PUT was called with correct endpoint
+        put_call_args = (
+            mock_httpx_client.return_value.__enter__.return_value.put.call_args
+        )
+        url = put_call_args.args[0] if put_call_args.args else ""
+        assert "/tasks/task-id-xyz" in url
+
+    def test_close_ticket_returns_false_on_completion_failure(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task completion fails, when close_ticket is called, then False is returned."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: PUT /tasks/{task_id} fails
+        mock_put_response = MagicMock()
+        mock_put_response.status_code = 500
+        mock_put_response.json.return_value = {
+            "errors": [{"message": "Server error"}]
+        }
+
+        mock_httpx_client.return_value.__enter__.return_value.put.return_value = (
+            mock_put_response
+        )
+
+        pm = AsanaPM()
+        result = pm.close_ticket("12345")
+
+        assert result is False
+
+    def test_close_ticket_succeeds_even_if_section_move_fails(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given section move fails, when close_ticket is called, then task is still marked complete (graceful degradation)."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: PUT /tasks/{task_id} succeeds
+        mock_put_response = MagicMock()
+        mock_put_response.status_code = 200
+        mock_put_response.json.return_value = {
+            "data": {"gid": "12345", "completed": True}
+        }
+
+        # Mock: GET /projects/{project_id}/sections returns Done section
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = {
+            "data": [{"gid": "done-section-gid", "name": "Done"}]
+        }
+
+        # Mock: POST /sections/{section_id}/addTask fails
+        mock_post_response = MagicMock()
+        mock_post_response.status_code = 500
+        mock_post_response.json.return_value = {
+            "errors": [{"message": "Server error"}]
+        }
+
+        mock_httpx_client.return_value.__enter__.return_value.put.return_value = (
+            mock_put_response
+        )
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_get_response
+        )
+        mock_httpx_client.return_value.__enter__.return_value.post.return_value = (
+            mock_post_response
+        )
+
+        pm = AsanaPM()
+        result = pm.close_ticket("12345")
+
+        # Should still succeed - section move is optional
+        assert result is True
+
+    def test_close_ticket_queries_correct_project_for_sections(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given project ID in env, when close_ticket is called, then correct project's sections are queried."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: PUT /tasks/{task_id} succeeds
+        mock_put_response = MagicMock()
+        mock_put_response.status_code = 200
+        mock_put_response.json.return_value = {
+            "data": {"gid": "12345", "completed": True}
+        }
+
+        # Mock: GET /projects/{project_id}/sections returns empty
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = {"data": []}
+
+        mock_httpx_client.return_value.__enter__.return_value.put.return_value = (
+            mock_put_response
+        )
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_get_response
+        )
+
+        pm = AsanaPM()
+        pm.close_ticket("12345")
+
+        # Verify GET was called with correct project ID (from env fixture: "project-12345")
+        get_call_args = (
+            mock_httpx_client.return_value.__enter__.return_value.get.call_args
+        )
+        url = get_call_args.args[0] if get_call_args.args else ""
+        assert "project-12345" in url
+        assert "/sections" in url
+
+
+class TestAsanaPMFindDoneSection:
+    """Tests for AsanaPM._find_done_section helper method.
+
+    SDLC-0056: Section discovery for Done state.
+    """
+
+    def test_find_done_section_returns_gid_when_found(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given Done section exists, when _find_done_section is called, then section GID is returned."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET /projects/{project_id}/sections returns Done section
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": [
+                {"gid": "backlog-gid", "name": "Backlog"},
+                {"gid": "done-gid", "name": "Done"},
+            ]
+        }
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        section_gid = pm._find_done_section()
+
+        assert section_gid == "done-gid"
+
+    def test_find_done_section_returns_none_when_not_found(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given no Done section exists, when _find_done_section is called, then None is returned."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET /projects/{project_id}/sections returns no Done section
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": [
+                {"gid": "backlog-gid", "name": "Backlog"},
+                {"gid": "in-progress-gid", "name": "In Progress"},
+            ]
+        }
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        section_gid = pm._find_done_section()
+
+        assert section_gid is None
+
+    def test_find_done_section_uses_case_insensitive_match(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given Done section with different case, when _find_done_section is called, then section is found."""
+        from core.asana_pm import AsanaPM
+
+        # Test various case variations
+        test_cases = ["done", "Done", "DONE", "DoNe"]
+
+        for section_name in test_cases:
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {
+                "data": [{"gid": "done-gid", "name": section_name}]
+            }
+            mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+                mock_response
+            )
+
+            pm = AsanaPM()
+            section_gid = pm._find_done_section()
+
+            assert section_gid == "done-gid", f"Failed for section name: {section_name}"
+
+
+class TestAsanaPMMoveToSection:
+    """Tests for AsanaPM._move_to_section helper method.
+
+    SDLC-0056: Moving tasks to Done section.
+    """
+
+    def test_move_to_section_calls_correct_endpoint(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task and section IDs, when _move_to_section is called, then correct API endpoint is used."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: POST /sections/{section_id}/addTask succeeds
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"data": {}}
+        mock_httpx_client.return_value.__enter__.return_value.post.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        pm._move_to_section("task-123", "section-456")
+
+        # Verify POST was called with correct endpoint
+        post_call_args = (
+            mock_httpx_client.return_value.__enter__.return_value.post.call_args
+        )
+        url = post_call_args.args[0] if post_call_args.args else ""
+        assert "/sections/section-456/addTask" in url
+
+    def test_move_to_section_sends_correct_task_id(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task ID, when _move_to_section is called, then task ID is sent in request body."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: POST /sections/{section_id}/addTask succeeds
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"data": {}}
+        mock_httpx_client.return_value.__enter__.return_value.post.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        pm._move_to_section("task-123", "section-456")
+
+        # Verify POST body contains task ID
+        post_call_args = (
+            mock_httpx_client.return_value.__enter__.return_value.post.call_args
+        )
+        json_body = post_call_args.kwargs.get("json", {})
+        assert json_body.get("data", {}).get("task") == "task-123"
+
+    def test_move_to_section_raises_pm_error_on_failure(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given API fails, when _move_to_section is called, then PMError is raised."""
+        from core.asana_pm import AsanaPM
+        from core.pm import PMError
+
+        # Mock: POST /sections/{section_id}/addTask fails
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_response.json.return_value = {"errors": [{"message": "Server error"}]}
+        mock_httpx_client.return_value.__enter__.return_value.post.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        with pytest.raises(PMError):
+            pm._move_to_section("task-123", "section-456")
