@@ -258,6 +258,10 @@ class GitHubPM:
 
     This implementation queries GitHub Issues for ticket status and uses
     labels for concurrency control (ralph-* labels for claiming tickets).
+
+    Ticket IDs (like "SDLC-0052") are stored in the state file and matched
+    to GitHub issues by title pattern. The title should contain [TICKET_ID]
+    (e.g., "[SDLC-0052] Description").
     """
 
     def __init__(self, blocked_label: str = "blocked"):
@@ -267,24 +271,98 @@ class GitHubPM:
             blocked_label: Label name used to mark blocked tickets
         """
         self._blocked_label = blocked_label
+        # Cache mapping ticket_id (e.g., "SDLC-0052") to issue_number (e.g., "102")
+        self._ticket_to_issue: dict[str, str] = {}
+
+    def _extract_ticket_id(self, title: str) -> str | None:
+        """Extract ticket ID from issue title.
+
+        Looks for pattern [TICKET_ID] at the start of the title.
+        Examples: "[SDLC-0052] Description" -> "SDLC-0052"
+                  "[TASK-001] Feature" -> "TASK-001"
+
+        Args:
+            title: Issue title
+
+        Returns:
+            Ticket ID if found, None otherwise
+        """
+        import re
+        match = re.match(r"\[([^\]]+)\]", title)
+        return match.group(1) if match else None
+
+    def _find_issue_number(self, ticket_id: str) -> str | None:
+        """Find GitHub issue number for a ticket ID.
+
+        First checks the cache, then queries GitHub if not found.
+        If the ticket_id is already numeric, returns it directly (backwards compat).
+
+        Args:
+            ticket_id: Ticket ID (e.g., "SDLC-0052") or issue number
+
+        Returns:
+            Issue number as string if found, None otherwise
+        """
+        # If ticket_id is already numeric, it's an issue number - return as-is
+        if ticket_id.isdigit():
+            return ticket_id
+
+        # Check cache first
+        if ticket_id in self._ticket_to_issue:
+            return self._ticket_to_issue[ticket_id]
+
+        # Query GitHub for issues and search by title
+        args = [
+            "issue",
+            "list",
+            "--state",
+            "all",
+            "--search",
+            f"[{ticket_id}] in:title",
+            "--json",
+            "number,title",
+            "--limit",
+            "10",
+        ]
+
+        result = _run_gh_command(args, check=False)
+        if result.returncode != 0:
+            return None
+
+        issues = json.loads(result.stdout)
+        for issue in issues:
+            title = issue.get("title", "")
+            extracted = self._extract_ticket_id(title)
+            if extracted == ticket_id:
+                issue_num = str(issue.get("number", ""))
+                self._ticket_to_issue[ticket_id] = issue_num
+                return issue_num
+
+        return None
 
     def get_ticket_status(self, ticket_id: str) -> TicketStatus:
         """Get the current status of a GitHub issue.
 
         Args:
-            ticket_id: Issue number as string
+            ticket_id: Ticket ID (e.g., "SDLC-0052") or issue number
 
         Returns:
             TicketStatus indicating current state
 
         Raises:
-            PMError: If operation fails
+            PMError: If operation fails or ticket not found
             PMAuthError: If not authenticated
         """
+        # Convert ticket_id to issue number if needed
+        issue_num = self._find_issue_number(ticket_id)
+        if issue_num is None:
+            # Try using ticket_id directly as issue number (backwards compat)
+            issue_num = ticket_id
+
         args = [
             "issue",
             "view",
-            ticket_id,
+            issue_num,
             "--json",
             "number,title,state,labels",
         ]
@@ -308,16 +386,21 @@ class GitHubPM:
         """Claim a ticket by adding a label.
 
         Args:
-            ticket_id: Issue number as string
+            ticket_id: Ticket ID (e.g., "SDLC-0052") or issue number
             label: Label to add (e.g., "ralph-1")
 
         Returns:
             True if claim succeeded, False otherwise
         """
+        # Convert ticket_id to issue number if needed
+        issue_num = self._find_issue_number(ticket_id)
+        if issue_num is None:
+            issue_num = ticket_id
+
         args = [
             "issue",
             "edit",
-            ticket_id,
+            issue_num,
             "--add-label",
             label,
         ]
@@ -329,15 +412,20 @@ class GitHubPM:
         """Close a GitHub issue.
 
         Args:
-            ticket_id: Issue number as string
+            ticket_id: Ticket ID (e.g., "SDLC-0052") or issue number
 
         Returns:
             True if close succeeded, False otherwise
         """
+        # Convert ticket_id to issue number if needed
+        issue_num = self._find_issue_number(ticket_id)
+        if issue_num is None:
+            issue_num = ticket_id
+
         args = [
             "issue",
             "close",
-            ticket_id,
+            issue_num,
         ]
 
         result = _run_gh_command(args, check=False)
@@ -349,17 +437,22 @@ class GitHubPM:
         Adds the blocked label and posts a comment with the reason.
 
         Args:
-            ticket_id: Issue number as string
+            ticket_id: Ticket ID (e.g., "SDLC-0052") or issue number
             reason: Reason why the ticket is blocked
 
         Returns:
             True if operation succeeded, False otherwise
         """
+        # Convert ticket_id to issue number if needed
+        issue_num = self._find_issue_number(ticket_id)
+        if issue_num is None:
+            issue_num = ticket_id
+
         # First add the blocked label
         label_args = [
             "issue",
             "edit",
-            ticket_id,
+            issue_num,
             "--add-label",
             self._blocked_label,
         ]
@@ -372,7 +465,7 @@ class GitHubPM:
         comment_args = [
             "issue",
             "comment",
-            ticket_id,
+            issue_num,
             "--body",
             f"Blocked: {reason}",
         ]
@@ -386,16 +479,21 @@ class GitHubPM:
         Checks for any label starting with 'ralph-'.
 
         Args:
-            ticket_id: Issue number as string
+            ticket_id: Ticket ID (e.g., "SDLC-0052") or issue number
 
         Returns:
             Tuple of (is_claimed, claiming_label) where claiming_label
             is the ralph-* label if claimed, None otherwise
         """
+        # Convert ticket_id to issue number if needed
+        issue_num = self._find_issue_number(ticket_id)
+        if issue_num is None:
+            issue_num = ticket_id
+
         args = [
             "issue",
             "view",
-            ticket_id,
+            issue_num,
             "--json",
             "number,labels",
         ]
@@ -417,14 +515,22 @@ class GitHubPM:
     def get_open_tickets(self, ticket_ids: list[str]) -> list[TicketInfo]:
         """Get information about open issues from the provided list.
 
+        Supports two modes:
+        - If ticket_ids are numeric (e.g., ["74", "75"]), matches by issue number
+        - If ticket_ids are non-numeric (e.g., ["SDLC-0052"]), matches by title pattern
+
         Args:
-            ticket_ids: List of issue numbers as strings
+            ticket_ids: List of ticket IDs or issue numbers
 
         Returns:
             List of TicketInfo for issues that are open
         """
         if not ticket_ids:
             return []
+
+        # Detect if we're using ticket IDs or issue numbers
+        # If all are numeric, use issue number matching (backwards compat)
+        use_issue_numbers = all(tid.isdigit() for tid in ticket_ids)
 
         # List all open issues
         args = [
@@ -442,29 +548,54 @@ class GitHubPM:
 
         issues = json.loads(result.stdout)
 
-        # Filter to only issues in our ticket_ids list
         ticket_id_set = set(ticket_ids)
         tickets = []
 
         for issue in issues:
-            issue_id = str(issue.get("number", ""))
-            if issue_id in ticket_id_set:
-                labels = [label["name"] for label in issue.get("labels", [])]
+            title = issue.get("title", "")
+            issue_num = str(issue.get("number", ""))
 
-                # Determine status
-                if self._blocked_label in labels:
-                    status = TicketStatus.BLOCKED
-                else:
-                    status = TicketStatus.OPEN
+            if use_issue_numbers:
+                # Old behavior: match by issue number
+                if issue_num in ticket_id_set:
+                    labels = [label["name"] for label in issue.get("labels", [])]
 
-                tickets.append(
-                    TicketInfo(
-                        id=issue_id,
-                        title=issue.get("title", ""),
-                        status=status,
-                        labels=labels,
+                    if self._blocked_label in labels:
+                        status = TicketStatus.BLOCKED
+                    else:
+                        status = TicketStatus.OPEN
+
+                    tickets.append(
+                        TicketInfo(
+                            id=issue_num,
+                            title=title,
+                            status=status,
+                            labels=labels,
+                        )
                     )
-                )
+            else:
+                # New behavior: match by ticket ID in title
+                extracted_id = self._extract_ticket_id(title)
+
+                if extracted_id and extracted_id in ticket_id_set:
+                    # Cache the mapping for later use
+                    self._ticket_to_issue[extracted_id] = issue_num
+
+                    labels = [label["name"] for label in issue.get("labels", [])]
+
+                    if self._blocked_label in labels:
+                        status = TicketStatus.BLOCKED
+                    else:
+                        status = TicketStatus.OPEN
+
+                    tickets.append(
+                        TicketInfo(
+                            id=extracted_id,  # Use ticket ID
+                            title=title,
+                            status=status,
+                            labels=labels,
+                        )
+                    )
 
         return tickets
 
@@ -472,16 +603,21 @@ class GitHubPM:
         """Remove a label from an issue.
 
         Args:
-            ticket_id: Issue number as string
+            ticket_id: Ticket ID (e.g., "SDLC-0052") or issue number
             label: Label to remove
 
         Returns:
             True if removal succeeded, False otherwise
         """
+        # Convert ticket_id to issue number if needed
+        issue_num = self._find_issue_number(ticket_id)
+        if issue_num is None:
+            issue_num = ticket_id
+
         args = [
             "issue",
             "edit",
-            ticket_id,
+            issue_num,
             "--remove-label",
             label,
         ]
@@ -495,15 +631,20 @@ class GitHubPM:
         Uses @me to assign to the current user.
 
         Args:
-            ticket_id: Issue number as string
+            ticket_id: Ticket ID (e.g., "SDLC-0052") or issue number
 
         Returns:
             True if assignment succeeded, False otherwise
         """
+        # Convert ticket_id to issue number if needed
+        issue_num = self._find_issue_number(ticket_id)
+        if issue_num is None:
+            issue_num = ticket_id
+
         args = [
             "issue",
             "edit",
-            ticket_id,
+            issue_num,
             "--add-assignee",
             "@me",
         ]
