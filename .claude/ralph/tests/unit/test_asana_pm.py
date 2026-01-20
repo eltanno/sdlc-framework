@@ -3260,3 +3260,149 @@ class TestAsanaPMEnsureRequiredTags:
         result = pm.ensure_required_tags()
 
         assert result is False
+
+
+# =============================================================================
+# SDLC-0062: add_pr_comment Tests
+# =============================================================================
+
+
+class TestAsanaPMAddPrComment:
+    """Tests for AsanaPM add_pr_comment method.
+
+    SDLC-0062: Update /pr slash command - Add Asana task comment with PR link
+    """
+
+    def test_add_pr_comment_posts_comment_with_pr_link(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given PR URL, when add_pr_comment is called, then comment is posted to task."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: POST /tasks/{task_id}/stories succeeds
+        mock_post_response = MagicMock()
+        mock_post_response.status_code = 200
+        mock_post_response.json.return_value = {
+            "data": {"gid": "comment-gid-123", "text": "PR: https://github.com/org/repo/pull/42"}
+        }
+
+        mock_httpx_client.return_value.__enter__.return_value.post.return_value = (
+            mock_post_response
+        )
+
+        pm = AsanaPM()
+        result = pm.add_pr_comment("task-12345", "https://github.com/org/repo/pull/42")
+
+        assert result is True
+
+        # Verify POST was called to stories endpoint
+        post_call_args = (
+            mock_httpx_client.return_value.__enter__.return_value.post.call_args
+        )
+        url = post_call_args.args[0] if post_call_args.args else ""
+        assert "/tasks/task-12345/stories" in url
+
+    def test_add_pr_comment_formats_comment_text_correctly(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given PR URL, when add_pr_comment is called, then comment text includes PR link."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: POST /tasks/{task_id}/stories succeeds
+        mock_post_response = MagicMock()
+        mock_post_response.status_code = 200
+        mock_post_response.json.return_value = {"data": {}}
+
+        mock_httpx_client.return_value.__enter__.return_value.post.return_value = (
+            mock_post_response
+        )
+
+        pm = AsanaPM()
+        pm.add_pr_comment("task-12345", "https://github.com/org/repo/pull/42")
+
+        # Verify the comment text was sent
+        post_call_args = (
+            mock_httpx_client.return_value.__enter__.return_value.post.call_args
+        )
+        json_body = post_call_args.kwargs.get("json", {})
+        comment_text = json_body.get("data", {}).get("text", "")
+        assert "https://github.com/org/repo/pull/42" in comment_text
+
+    def test_add_pr_comment_returns_false_on_api_failure(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given API fails, when add_pr_comment is called, then False is returned."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: POST /tasks/{task_id}/stories fails
+        mock_post_response = MagicMock()
+        mock_post_response.status_code = 500
+        mock_post_response.json.return_value = {
+            "errors": [{"message": "Server error"}]
+        }
+
+        mock_httpx_client.return_value.__enter__.return_value.post.return_value = (
+            mock_post_response
+        )
+
+        pm = AsanaPM()
+        result = pm.add_pr_comment("task-12345", "https://github.com/org/repo/pull/42")
+
+        assert result is False
+
+    def test_add_pr_comment_handles_network_error_gracefully(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given network error, when add_pr_comment is called, then False is returned (no exception)."""
+        import httpx
+
+        from core.asana_pm import AsanaPM
+
+        # Mock: POST fails with network error
+        mock_httpx_client.return_value.__enter__.return_value.post.side_effect = (
+            httpx.ConnectError("Connection failed")
+        )
+
+        pm = AsanaPM()
+        result = pm.add_pr_comment("task-12345", "https://github.com/org/repo/pull/42")
+
+        assert result is False
+
+    def test_add_pr_comment_includes_pr_prefix_in_message(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given PR URL, when add_pr_comment is called, then comment has descriptive prefix."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: POST /tasks/{task_id}/stories succeeds
+        mock_post_response = MagicMock()
+        mock_post_response.status_code = 200
+        mock_post_response.json.return_value = {"data": {}}
+
+        mock_httpx_client.return_value.__enter__.return_value.post.return_value = (
+            mock_post_response
+        )
+
+        pm = AsanaPM()
+        pm.add_pr_comment("task-12345", "https://github.com/org/repo/pull/42")
+
+        # Verify the comment text has descriptive prefix
+        post_call_args = (
+            mock_httpx_client.return_value.__enter__.return_value.post.call_args
+        )
+        json_body = post_call_args.kwargs.get("json", {})
+        comment_text = json_body.get("data", {}).get("text", "")
+        # Should have some prefix like "Pull Request:" or "PR:"
+        assert "PR" in comment_text or "Pull Request" in comment_text
+
+    def test_add_pr_comment_has_correct_method_signature(self, mock_env_asana):
+        """Given AsanaPM class, when checking add_pr_comment, then it accepts task_id and pr_url."""
+        from core.asana_pm import AsanaPM
+        import inspect
+
+        pm = AsanaPM()
+        assert hasattr(pm, "add_pr_comment")
+        sig = inspect.signature(pm.add_pr_comment)
+        params = list(sig.parameters.keys())
+        # Should have task_id and pr_url parameters
+        assert len(params) >= 2
