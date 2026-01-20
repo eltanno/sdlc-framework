@@ -8,12 +8,14 @@ Tests cover:
 - Base HTTP request functionality
 - Tag management (_get_or_create_tag)
 - close_ticket with section move
+- add_blocked_label with comment
 
 SDLC-0052: AsanaPM HTTP client and authentication
 SDLC-0053: AsanaPM tag management
 SDLC-0054: AsanaPM get_ticket_status method
 SDLC-0055: AsanaPM claim_ticket and is_ticket_claimed methods
 SDLC-0056: AsanaPM close_ticket with section move
+SDLC-0057: AsanaPM add_blocked_label with comment
 """
 
 import os
@@ -1764,3 +1766,449 @@ class TestAsanaPMMoveToSection:
         pm = AsanaPM()
         with pytest.raises(PMError):
             pm._move_to_section("task-123", "section-456")
+
+
+# =============================================================================
+# SDLC-0057: add_blocked_label with comment Tests
+# =============================================================================
+
+
+class TestAsanaPMAddBlockedLabel:
+    """Tests for AsanaPM.add_blocked_label method.
+
+    SDLC-0057: Implement blocked tag addition and reason comment posting via stories API.
+    """
+
+    def test_add_blocked_label_adds_blocked_tag_to_task(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task ID and reason, when add_blocked_label is called, then blocked tag is added."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET /workspaces/{workspace_id}/tags returns blocked tag
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = {
+            "data": [{"gid": "blocked-tag-gid", "name": "blocked"}]
+        }
+
+        # Mock: POST /tasks/{task_id}/addTag succeeds
+        mock_post_add_tag_response = MagicMock()
+        mock_post_add_tag_response.status_code = 200
+        mock_post_add_tag_response.json.return_value = {"data": {}}
+
+        # Mock: POST /tasks/{task_id}/stories succeeds (for comment)
+        mock_post_story_response = MagicMock()
+        mock_post_story_response.status_code = 201
+        mock_post_story_response.json.return_value = {
+            "data": {"gid": "story-gid", "text": "Blocked: Test reason"}
+        }
+
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_get_response
+        )
+        mock_httpx_client.return_value.__enter__.return_value.post.side_effect = [
+            mock_post_add_tag_response,
+            mock_post_story_response,
+        ]
+
+        pm = AsanaPM()
+        result = pm.add_blocked_label("task-12345", "Test reason")
+
+        assert result is True
+
+    def test_add_blocked_label_posts_comment_with_reason(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task ID and reason, when add_blocked_label is called, then comment with reason is posted."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET /workspaces/{workspace_id}/tags returns blocked tag
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = {
+            "data": [{"gid": "blocked-tag-gid", "name": "blocked"}]
+        }
+
+        # Mock: POST /tasks/{task_id}/addTag succeeds
+        mock_post_add_tag_response = MagicMock()
+        mock_post_add_tag_response.status_code = 200
+        mock_post_add_tag_response.json.return_value = {"data": {}}
+
+        # Mock: POST /tasks/{task_id}/stories succeeds
+        mock_post_story_response = MagicMock()
+        mock_post_story_response.status_code = 201
+        mock_post_story_response.json.return_value = {
+            "data": {"gid": "story-gid", "text": "Blocked: Implementation failed"}
+        }
+
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_get_response
+        )
+        mock_httpx_client.return_value.__enter__.return_value.post.side_effect = [
+            mock_post_add_tag_response,
+            mock_post_story_response,
+        ]
+
+        pm = AsanaPM()
+        pm.add_blocked_label("task-12345", "Implementation failed")
+
+        # Verify POST was called to stories endpoint
+        post_calls = mock_httpx_client.return_value.__enter__.return_value.post.call_args_list
+        stories_call = [c for c in post_calls if "stories" in str(c)]
+        assert len(stories_call) > 0
+
+    def test_add_blocked_label_calls_stories_api_with_correct_task_id(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task ID, when add_blocked_label is called, then stories API is called with correct task ID."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET returns blocked tag
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = {
+            "data": [{"gid": "blocked-tag-gid", "name": "blocked"}]
+        }
+
+        # Mock: POST addTag succeeds
+        mock_post_add_tag_response = MagicMock()
+        mock_post_add_tag_response.status_code = 200
+        mock_post_add_tag_response.json.return_value = {"data": {}}
+
+        # Mock: POST stories succeeds
+        mock_post_story_response = MagicMock()
+        mock_post_story_response.status_code = 201
+        mock_post_story_response.json.return_value = {"data": {"gid": "story-gid"}}
+
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_get_response
+        )
+        mock_httpx_client.return_value.__enter__.return_value.post.side_effect = [
+            mock_post_add_tag_response,
+            mock_post_story_response,
+        ]
+
+        pm = AsanaPM()
+        pm.add_blocked_label("task-xyz-123", "Blocked reason")
+
+        # Verify stories endpoint contains correct task ID
+        post_calls = mock_httpx_client.return_value.__enter__.return_value.post.call_args_list
+        stories_call = [c for c in post_calls if "stories" in str(c)]
+        if stories_call:
+            url = stories_call[0].args[0] if stories_call[0].args else ""
+            assert "/tasks/task-xyz-123/stories" in url
+
+    def test_add_blocked_label_sends_reason_in_comment_text(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given reason, when add_blocked_label is called, then reason is included in comment text."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET returns blocked tag
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = {
+            "data": [{"gid": "blocked-tag-gid", "name": "blocked"}]
+        }
+
+        # Mock: POST addTag succeeds
+        mock_post_add_tag_response = MagicMock()
+        mock_post_add_tag_response.status_code = 200
+        mock_post_add_tag_response.json.return_value = {"data": {}}
+
+        # Mock: POST stories succeeds
+        mock_post_story_response = MagicMock()
+        mock_post_story_response.status_code = 201
+        mock_post_story_response.json.return_value = {"data": {"gid": "story-gid"}}
+
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_get_response
+        )
+        mock_httpx_client.return_value.__enter__.return_value.post.side_effect = [
+            mock_post_add_tag_response,
+            mock_post_story_response,
+        ]
+
+        pm = AsanaPM()
+        pm.add_blocked_label("task-12345", "Tests are failing with error X")
+
+        # Verify comment text contains the reason
+        post_calls = mock_httpx_client.return_value.__enter__.return_value.post.call_args_list
+        stories_call = [c for c in post_calls if "stories" in str(c)]
+        if stories_call:
+            json_body = stories_call[0].kwargs.get("json", {})
+            comment_text = json_body.get("data", {}).get("text", "")
+            assert "Tests are failing with error X" in comment_text
+
+    def test_add_blocked_label_creates_blocked_tag_if_not_exists(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given blocked tag doesn't exist, when add_blocked_label is called, then tag is created."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET /workspaces/{workspace_id}/tags returns empty (no blocked tag)
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = {"data": []}
+
+        # Mock: POST to create tag
+        mock_create_tag_response = MagicMock()
+        mock_create_tag_response.status_code = 201
+        mock_create_tag_response.json.return_value = {
+            "data": {"gid": "new-blocked-tag-gid", "name": "blocked"}
+        }
+
+        # Mock: POST addTag succeeds
+        mock_post_add_tag_response = MagicMock()
+        mock_post_add_tag_response.status_code = 200
+        mock_post_add_tag_response.json.return_value = {"data": {}}
+
+        # Mock: POST stories succeeds
+        mock_post_story_response = MagicMock()
+        mock_post_story_response.status_code = 201
+        mock_post_story_response.json.return_value = {"data": {"gid": "story-gid"}}
+
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_get_response
+        )
+        mock_httpx_client.return_value.__enter__.return_value.post.side_effect = [
+            mock_create_tag_response,  # Create tag
+            mock_post_add_tag_response,  # Add tag to task
+            mock_post_story_response,  # Post comment
+        ]
+
+        pm = AsanaPM()
+        result = pm.add_blocked_label("task-12345", "Reason")
+
+        assert result is True
+        # Verify 3 POST calls were made (create tag, add tag, post story)
+        assert mock_httpx_client.return_value.__enter__.return_value.post.call_count == 3
+
+    def test_add_blocked_label_returns_false_on_tag_add_failure(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given tag addition fails, when add_blocked_label is called, then False is returned."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET returns blocked tag
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = {
+            "data": [{"gid": "blocked-tag-gid", "name": "blocked"}]
+        }
+
+        # Mock: POST addTag fails
+        mock_post_add_tag_response = MagicMock()
+        mock_post_add_tag_response.status_code = 500
+        mock_post_add_tag_response.json.return_value = {
+            "errors": [{"message": "Server error"}]
+        }
+
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_get_response
+        )
+        mock_httpx_client.return_value.__enter__.return_value.post.return_value = (
+            mock_post_add_tag_response
+        )
+
+        pm = AsanaPM()
+        result = pm.add_blocked_label("task-12345", "Reason")
+
+        assert result is False
+
+    def test_add_blocked_label_returns_false_on_comment_failure(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given comment posting fails, when add_blocked_label is called, then False is returned."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET returns blocked tag
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = {
+            "data": [{"gid": "blocked-tag-gid", "name": "blocked"}]
+        }
+
+        # Mock: POST addTag succeeds
+        mock_post_add_tag_response = MagicMock()
+        mock_post_add_tag_response.status_code = 200
+        mock_post_add_tag_response.json.return_value = {"data": {}}
+
+        # Mock: POST stories fails
+        mock_post_story_response = MagicMock()
+        mock_post_story_response.status_code = 500
+        mock_post_story_response.json.return_value = {
+            "errors": [{"message": "Server error"}]
+        }
+
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_get_response
+        )
+        mock_httpx_client.return_value.__enter__.return_value.post.side_effect = [
+            mock_post_add_tag_response,
+            mock_post_story_response,
+        ]
+
+        pm = AsanaPM()
+        result = pm.add_blocked_label("task-12345", "Reason")
+
+        assert result is False
+
+    def test_add_blocked_label_uses_custom_blocked_label(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given custom blocked_label, when add_blocked_label is called, then custom label is used."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET returns custom blocked tag
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = {
+            "data": [{"gid": "needs-attention-gid", "name": "needs-attention"}]
+        }
+
+        # Mock: POST addTag succeeds
+        mock_post_add_tag_response = MagicMock()
+        mock_post_add_tag_response.status_code = 200
+        mock_post_add_tag_response.json.return_value = {"data": {}}
+
+        # Mock: POST stories succeeds
+        mock_post_story_response = MagicMock()
+        mock_post_story_response.status_code = 201
+        mock_post_story_response.json.return_value = {"data": {"gid": "story-gid"}}
+
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_get_response
+        )
+        mock_httpx_client.return_value.__enter__.return_value.post.side_effect = [
+            mock_post_add_tag_response,
+            mock_post_story_response,
+        ]
+
+        pm = AsanaPM(blocked_label="needs-attention")
+        result = pm.add_blocked_label("task-12345", "Reason")
+
+        assert result is True
+
+    def test_add_blocked_label_calls_add_tag_endpoint(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task ID, when add_blocked_label is called, then addTag endpoint is called."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET returns blocked tag
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = {
+            "data": [{"gid": "blocked-tag-gid", "name": "blocked"}]
+        }
+
+        # Mock: POST addTag succeeds
+        mock_post_add_tag_response = MagicMock()
+        mock_post_add_tag_response.status_code = 200
+        mock_post_add_tag_response.json.return_value = {"data": {}}
+
+        # Mock: POST stories succeeds
+        mock_post_story_response = MagicMock()
+        mock_post_story_response.status_code = 201
+        mock_post_story_response.json.return_value = {"data": {"gid": "story-gid"}}
+
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_get_response
+        )
+        mock_httpx_client.return_value.__enter__.return_value.post.side_effect = [
+            mock_post_add_tag_response,
+            mock_post_story_response,
+        ]
+
+        pm = AsanaPM()
+        pm.add_blocked_label("task-12345", "Reason")
+
+        # Verify addTag endpoint was called
+        post_calls = mock_httpx_client.return_value.__enter__.return_value.post.call_args_list
+        add_tag_call = [c for c in post_calls if "addTag" in str(c)]
+        assert len(add_tag_call) > 0
+
+    def test_add_blocked_label_sends_correct_tag_gid(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given blocked tag exists, when add_blocked_label is called, then correct tag GID is sent."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET returns blocked tag with specific GID
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = {
+            "data": [{"gid": "specific-blocked-gid-999", "name": "blocked"}]
+        }
+
+        # Mock: POST addTag succeeds
+        mock_post_add_tag_response = MagicMock()
+        mock_post_add_tag_response.status_code = 200
+        mock_post_add_tag_response.json.return_value = {"data": {}}
+
+        # Mock: POST stories succeeds
+        mock_post_story_response = MagicMock()
+        mock_post_story_response.status_code = 201
+        mock_post_story_response.json.return_value = {"data": {"gid": "story-gid"}}
+
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_get_response
+        )
+        mock_httpx_client.return_value.__enter__.return_value.post.side_effect = [
+            mock_post_add_tag_response,
+            mock_post_story_response,
+        ]
+
+        pm = AsanaPM()
+        pm.add_blocked_label("task-12345", "Reason")
+
+        # Verify correct tag GID was sent
+        post_calls = mock_httpx_client.return_value.__enter__.return_value.post.call_args_list
+        add_tag_call = [c for c in post_calls if "addTag" in str(c)]
+        if add_tag_call:
+            json_body = add_tag_call[0].kwargs.get("json", {})
+            assert json_body.get("data", {}).get("tag") == "specific-blocked-gid-999"
+
+    def test_add_blocked_label_prefixes_comment_with_blocked(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given reason, when add_blocked_label is called, then comment is prefixed with 'Blocked:'."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET returns blocked tag
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = {
+            "data": [{"gid": "blocked-tag-gid", "name": "blocked"}]
+        }
+
+        # Mock: POST addTag succeeds
+        mock_post_add_tag_response = MagicMock()
+        mock_post_add_tag_response.status_code = 200
+        mock_post_add_tag_response.json.return_value = {"data": {}}
+
+        # Mock: POST stories succeeds
+        mock_post_story_response = MagicMock()
+        mock_post_story_response.status_code = 201
+        mock_post_story_response.json.return_value = {"data": {"gid": "story-gid"}}
+
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_get_response
+        )
+        mock_httpx_client.return_value.__enter__.return_value.post.side_effect = [
+            mock_post_add_tag_response,
+            mock_post_story_response,
+        ]
+
+        pm = AsanaPM()
+        pm.add_blocked_label("task-12345", "Some reason here")
+
+        # Verify comment starts with "Blocked:"
+        post_calls = mock_httpx_client.return_value.__enter__.return_value.post.call_args_list
+        stories_call = [c for c in post_calls if "stories" in str(c)]
+        if stories_call:
+            json_body = stories_call[0].kwargs.get("json", {})
+            comment_text = json_body.get("data", {}).get("text", "")
+            assert comment_text.startswith("Blocked:")
