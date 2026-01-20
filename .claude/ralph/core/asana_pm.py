@@ -657,3 +657,146 @@ class AsanaPM:
         except PMError as e:
             logger.warning(f"Failed to assign ticket {ticket_id} to self: {e}")
             return False
+
+    # =========================================================================
+    # Task Creation Methods (SDLC-0060)
+    # =========================================================================
+
+    def create_task(
+        self,
+        name: str,
+        notes: str,
+        add_task_tag: bool = False,
+    ) -> str:
+        """Create a new Asana task in the configured project.
+
+        Creates a task with the given name and notes in the project specified
+        by ASANA_PROJECT_ID. Optionally adds the 'task' tag.
+
+        Args:
+            name: Task name/title (e.g., "[SDLC-0001] Feature Implementation")
+            notes: Task description/notes (supports markdown)
+            add_task_tag: If True, add the 'task' tag after creation
+
+        Returns:
+            Task GID as string
+
+        Raises:
+            PMError: If task creation fails
+
+        SDLC-0060: Task creation for /ticket command
+        """
+        # Create the task
+        task_data = {
+            "name": name,
+            "notes": notes,
+            "projects": [self._project_id],
+        }
+
+        result = self._post("/tasks", task_data)
+        task_gid = result.get("gid", "")
+
+        logger.info(f"Created task '{name}' with GID: {task_gid}")
+
+        # Optionally add the 'task' tag
+        if add_task_tag:
+            try:
+                tag_gid = self._get_or_create_tag("task")
+                self._post(f"/tasks/{task_gid}/addTag", {"tag": tag_gid})
+                logger.info(f"Added 'task' tag to task {task_gid}")
+            except PMError as e:
+                logger.warning(f"Failed to add 'task' tag to task {task_gid}: {e}")
+                # Continue - task creation succeeded, tag is optional
+
+        return task_gid
+
+    def create_subtask(self, parent_task_id: str, name: str) -> str:
+        """Create a subtask under a parent task.
+
+        Creates a subtask (used for acceptance criteria) under the specified
+        parent task. Subtasks appear as checklist items in Asana.
+
+        Args:
+            parent_task_id: GID of the parent task
+            name: Subtask name (e.g., acceptance criterion text)
+
+        Returns:
+            Subtask GID as string
+
+        Raises:
+            PMError: If subtask creation fails
+
+        SDLC-0060: Subtask creation for acceptance criteria
+        """
+        subtask_data = {"name": name}
+
+        result = self._post(f"/tasks/{parent_task_id}/subtasks", subtask_data)
+        subtask_gid = result.get("gid", "")
+
+        logger.debug(f"Created subtask '{name}' under task {parent_task_id}")
+        return subtask_gid
+
+    def add_dependencies(self, task_id: str, dependency_ids: list[str]) -> bool:
+        """Add dependencies to a task.
+
+        Sets up dependency relationships so the task depends on the specified
+        tasks. In Asana, this means the task cannot start until dependencies
+        are complete.
+
+        Args:
+            task_id: GID of the task to add dependencies to
+            dependency_ids: List of GIDs of tasks this task depends on
+
+        Returns:
+            True if dependencies were added, False on failure
+
+        SDLC-0060: Dependency linking for /ticket command
+        """
+        if not dependency_ids:
+            # No dependencies to add
+            return True
+
+        try:
+            # Asana API expects dependencies as an array of GIDs
+            self._post(
+                f"/tasks/{task_id}/addDependencies",
+                {"dependencies": dependency_ids},
+            )
+
+            logger.info(
+                f"Added {len(dependency_ids)} dependencies to task {task_id}"
+            )
+            return True
+        except PMError as e:
+            logger.warning(f"Failed to add dependencies to task {task_id}: {e}")
+            return False
+
+    def ensure_required_tags(self) -> bool:
+        """Ensure required tags exist in the workspace.
+
+        Creates the following tags if they don't exist:
+        - "task": Applied to all tasks created by /ticket
+        - "blocked": Applied to blocked tasks
+        - "ralph-0" through "ralph-5": Used for claiming tickets
+
+        This should be called before creating the first task to ensure
+        all required tags are available.
+
+        Returns:
+            True if all tags exist/were created, False on failure
+
+        SDLC-0060: Create required tags on first /ticket run
+        """
+        required_tags = ["task", "blocked"] + [f"ralph-{i}" for i in range(6)]
+
+        try:
+            for tag_name in required_tags:
+                # _get_or_create_tag handles creation if missing
+                self._get_or_create_tag(tag_name)
+                logger.debug(f"Ensured tag '{tag_name}' exists")
+
+            logger.info(f"All {len(required_tags)} required tags exist")
+            return True
+        except PMError as e:
+            logger.warning(f"Failed to ensure required tags: {e}")
+            return False

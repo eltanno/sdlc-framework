@@ -65,7 +65,7 @@ PM tool not configured. Before creating tickets, please choose a tool:
 
 1. **GitHub Issues** - Recommended if using GitHub (no extra setup)
 2. **Trello** - Visual boards (requires Trello MCP + API credentials)
-3. **Asana** - Full project management (requires Asana MCP + credentials)
+3. **Asana** - Full project management (requires ASANA_ACCESS_TOKEN, ASANA_WORKSPACE_ID, ASANA_PROJECT_ID in .env)
 4. **Linear** - Modern dev tool (requires Linear MCP + credentials)
 
 Update config.yaml with your choice:
@@ -81,11 +81,11 @@ Then run /ticket again.
 
 Based on `pm.tool` value:
 
-| pm.tool | Connection Required (.env) | MCP/Tool |
-|---------|---------------------------|----------|
+| pm.tool | Connection Required (.env) | Tool |
+|---------|---------------------------|------|
 | `github` | gh CLI authenticated | `gh issue create` |
 | `trello` | TRELLO_API_KEY, TRELLO_TOKEN, TRELLO_BOARD_ID | Trello MCP |
-| `asana` | ASANA_ACCESS_TOKEN, ASANA_WORKSPACE_ID, ASANA_PROJECT_ID | Asana MCP |
+| `asana` | ASANA_ACCESS_TOKEN, ASANA_WORKSPACE_ID, ASANA_PROJECT_ID | Direct Asana REST API |
 | `linear` | LINEAR_API_KEY, LINEAR_TEAM_ID | Linear MCP |
 
 ---
@@ -116,16 +116,89 @@ These IDs are used regardless of which PM tool is configured.
 
 ### If pm.tool = asana
 
-Create tasks via Asana MCP:
+**Use the Asana REST API directly via the `AsanaPM` class.**
 
+**Step 1: Ensure required tags exist (first run only)**
+
+Before creating any tasks, ensure the required tags exist:
+
+```python
+from core.asana_pm import AsanaPM
+
+pm = AsanaPM()
+pm.ensure_required_tags()  # Creates: task, blocked, ralph-0 through ralph-5
 ```
-mcp__asana__create_task({
-  workspace_id: "<from ASANA_WORKSPACE_ID>",
-  project_id: "<from ASANA_PROJECT_ID>",
-  name: "[TASK] {title from PRD}",
-  notes: "## Context\n\nPRD: docs/prds/YYYY-MM-DD-feature.md\n\n## Description\n\n{description}\n\n## Acceptance Criteria\n\n{criteria from PRD}\n\n## Estimate\n\n{estimate}"
-})
+
+**Step 2: Create tasks via Asana REST API**
+
+For each ticket in the PRD, create an Asana task:
+
+```python
+from core.asana_pm import AsanaPM
+
+pm = AsanaPM()
+
+# Create the task with title format: [{TICKET_PREFIX}-{N}] {title}
+task_gid = pm.create_task(
+    name="[{TICKET_PREFIX}-{N}] {title from PRD}",
+    notes="""## Context
+
+PRD: docs/prds/YYYY-MM-DD-feature.md
+
+## Description
+
+{description from PRD}
+
+## Acceptance Criteria
+
+{criteria from PRD - will be added as subtasks below}
+
+## Estimate
+
+{estimate from PRD}""",
+    add_task_tag=True,  # Adds the 'task' tag for Ralph
+)
+
+# Store the task GID for dependency linking later
+# task_gid is the Asana task ID (e.g., "1234567890")
 ```
+
+**Step 3: Add acceptance criteria as subtasks**
+
+For each acceptance criterion in the PRD, create a subtask:
+
+```python
+# Parse acceptance criteria from PRD
+criteria_list = [
+    "Given X, when Y, then Z",
+    "Given A, when B, then C",
+]
+
+# Create subtasks for each criterion
+for criterion in criteria_list:
+    pm.create_subtask(
+        parent_task_id=task_gid,
+        name=criterion,
+    )
+```
+
+**Step 4: Set dependencies between tasks**
+
+If the PRD specifies dependencies between tickets, link them:
+
+```python
+# If ticket SDLC-0003 depends on SDLC-0001 and SDLC-0002
+pm.add_dependencies(
+    task_id=task_gid_for_0003,       # The dependent task
+    dependency_ids=[                  # Tasks it depends on
+        task_gid_for_0001,
+        task_gid_for_0002,
+    ],
+)
+```
+
+**Note:** Track task GIDs during creation for dependency linking. The format is:
+- PRD ticket ID (e.g., SDLC-0001) → Asana task GID (e.g., "1234567890")
 
 Update PRD with: `{TICKET_PREFIX}-{N}` (e.g., SDLC-0001)
 
@@ -295,7 +368,7 @@ A PM tool is REQUIRED for ticket tracking. Please configure one:
 
 1. GitHub Issues (recommended): pm.tool: github
 2. Trello: pm.tool: trello (+ Trello MCP credentials)
-3. Asana: pm.tool: asana (+ Asana MCP credentials)
+3. Asana: pm.tool: asana (+ ASANA_ACCESS_TOKEN, ASANA_WORKSPACE_ID, ASANA_PROJECT_ID in .env)
 4. Linear: pm.tool: linear (+ Linear MCP credentials)
 
 Update config.yaml and run /ticket again.
@@ -308,7 +381,7 @@ Update config.yaml and run /ticket again.
 - Don't update PRD for failed tasks
 - Suggest: check credentials, retry, or switch to `pm.tool: none`
 
-### If MCP not available for configured tool:
+### If MCP not available for configured tool (Trello, Linear):
 
 ```
 ERROR: {tool} MCP not available but pm.tool: {tool} in config.yaml
@@ -317,6 +390,19 @@ Options:
 1. Install the MCP plugin: claude plugin install {tool}
 2. Switch to a different tool in config.yaml
 3. Use pm.tool: none for local tracking
+```
+
+### If Asana credentials missing:
+
+```
+ERROR: Missing Asana credentials
+
+Asana requires environment variables to be set:
+- ASANA_ACCESS_TOKEN: Personal Access Token from Asana
+- ASANA_WORKSPACE_ID: Workspace GID
+- ASANA_PROJECT_ID: Project GID where tasks will be created
+
+Set these in your .env file and try again.
 ```
 
 ---

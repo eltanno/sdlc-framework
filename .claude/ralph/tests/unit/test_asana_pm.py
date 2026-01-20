@@ -18,8 +18,7 @@ SDLC-0056: AsanaPM close_ticket with section move
 SDLC-0057: AsanaPM add_blocked_label with comment
 """
 
-import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -2301,7 +2300,6 @@ class TestAsanaPMGetOpenTickets:
     ):
         """Given task with blocked tag, when get_open_tickets is called, then task is excluded from OPEN results."""
         from core.asana_pm import AsanaPM
-        from core.pm import TicketStatus
 
         # Mock: GET returns task with blocked tag
         mock_response = MagicMock()
@@ -2717,3 +2715,548 @@ class TestAsanaPMAssignToSelf:
         put_call = mock_httpx_client.return_value.__enter__.return_value.put.call_args
         url = put_call.args[0] if put_call.args else ""
         assert "https://app.asana.com/api/1.0/tasks/task-99999" in url
+
+
+# =============================================================================
+# SDLC-0060: Task Creation Methods for /ticket command
+# =============================================================================
+
+
+class TestAsanaPMCreateTask:
+    """Tests for AsanaPM.create_task method.
+
+    SDLC-0060: Implement task creation for /ticket slash command.
+    """
+
+    def test_create_task_creates_new_asana_task(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task details, when create_task is called, then new task is created."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: POST /tasks succeeds
+        mock_response = MagicMock()
+        mock_response.status_code = 201
+        mock_response.json.return_value = {
+            "data": {
+                "gid": "new-task-gid",
+                "name": "[SDLC-0001] Test Task",
+                "notes": "Task description",
+            }
+        }
+        mock_httpx_client.return_value.__enter__.return_value.post.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        result = pm.create_task(
+            name="[SDLC-0001] Test Task",
+            notes="Task description",
+        )
+
+        assert result == "new-task-gid"
+
+    def test_create_task_sends_correct_name_and_notes(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task name and notes, when create_task is called, then correct data is sent."""
+        from core.asana_pm import AsanaPM
+
+        mock_response = MagicMock()
+        mock_response.status_code = 201
+        mock_response.json.return_value = {
+            "data": {"gid": "task-gid", "name": "Test", "notes": "Notes"}
+        }
+        mock_httpx_client.return_value.__enter__.return_value.post.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        pm.create_task(
+            name="[SDLC-0067] Feature Implementation",
+            notes="## Description\n\nImplement feature X",
+        )
+
+        # Verify POST was called with correct data
+        post_call = mock_httpx_client.return_value.__enter__.return_value.post.call_args
+        json_body = post_call.kwargs.get("json", {})
+        data = json_body.get("data", {})
+        assert data.get("name") == "[SDLC-0067] Feature Implementation"
+        assert "Implement feature X" in data.get("notes", "")
+
+    def test_create_task_uses_correct_project_id(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given project ID from env, when create_task is called, then task is added to project."""
+        from core.asana_pm import AsanaPM
+
+        mock_response = MagicMock()
+        mock_response.status_code = 201
+        mock_response.json.return_value = {"data": {"gid": "task-gid"}}
+        mock_httpx_client.return_value.__enter__.return_value.post.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        pm.create_task(name="Test Task", notes="Description")
+
+        # Verify project ID is included
+        post_call = mock_httpx_client.return_value.__enter__.return_value.post.call_args
+        json_body = post_call.kwargs.get("json", {})
+        data = json_body.get("data", {})
+        # Project ID should be in the projects list
+        assert "project-12345" in str(data)
+
+    def test_create_task_adds_task_tag(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given create_task is called, then 'task' tag is added to the created task."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET returns existing task tag
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = {
+            "data": [{"gid": "task-tag-gid", "name": "task"}]
+        }
+
+        # Mock: POST /tasks succeeds
+        mock_post_task_response = MagicMock()
+        mock_post_task_response.status_code = 201
+        mock_post_task_response.json.return_value = {"data": {"gid": "new-task-gid"}}
+
+        # Mock: POST /tasks/{task_id}/addTag succeeds
+        mock_post_tag_response = MagicMock()
+        mock_post_tag_response.status_code = 200
+        mock_post_tag_response.json.return_value = {"data": {}}
+
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_get_response
+        )
+        mock_httpx_client.return_value.__enter__.return_value.post.side_effect = [
+            mock_post_task_response,
+            mock_post_tag_response,
+        ]
+
+        pm = AsanaPM()
+        pm.create_task(name="Test Task", notes="Description", add_task_tag=True)
+
+        # Verify addTag was called
+        post_calls = mock_httpx_client.return_value.__enter__.return_value.post.call_args_list
+        add_tag_call = [c for c in post_calls if "addTag" in str(c)]
+        assert len(add_tag_call) > 0
+
+    def test_create_task_raises_pm_error_on_failure(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given API fails, when create_task is called, then PMError is raised."""
+        from core.asana_pm import AsanaPM
+        from core.pm import PMError
+
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_response.json.return_value = {"errors": [{"message": "Server error"}]}
+        mock_httpx_client.return_value.__enter__.return_value.post.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        with pytest.raises(PMError):
+            pm.create_task(name="Test Task", notes="Description")
+
+    def test_create_task_calls_tasks_endpoint(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task details, when create_task is called, then /tasks endpoint is used."""
+        from core.asana_pm import AsanaPM
+
+        mock_response = MagicMock()
+        mock_response.status_code = 201
+        mock_response.json.return_value = {"data": {"gid": "task-gid"}}
+        mock_httpx_client.return_value.__enter__.return_value.post.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        pm.create_task(name="Test Task", notes="Description")
+
+        # Verify correct endpoint
+        post_call = mock_httpx_client.return_value.__enter__.return_value.post.call_args
+        url = post_call.args[0] if post_call.args else ""
+        assert "/tasks" in url
+
+
+class TestAsanaPMCreateSubtask:
+    """Tests for AsanaPM.create_subtask method.
+
+    SDLC-0060: Implement subtask creation for acceptance criteria.
+    """
+
+    def test_create_subtask_creates_subtask_under_parent(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given parent task ID, when create_subtask is called, then subtask is created."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: POST /tasks/{parent_id}/subtasks succeeds
+        mock_response = MagicMock()
+        mock_response.status_code = 201
+        mock_response.json.return_value = {
+            "data": {
+                "gid": "subtask-gid",
+                "name": "Acceptance Criterion 1",
+            }
+        }
+        mock_httpx_client.return_value.__enter__.return_value.post.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        result = pm.create_subtask(
+            parent_task_id="parent-task-gid",
+            name="Acceptance Criterion 1",
+        )
+
+        assert result == "subtask-gid"
+
+    def test_create_subtask_uses_correct_endpoint(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given parent task ID, when create_subtask is called, then subtasks endpoint is used."""
+        from core.asana_pm import AsanaPM
+
+        mock_response = MagicMock()
+        mock_response.status_code = 201
+        mock_response.json.return_value = {"data": {"gid": "subtask-gid"}}
+        mock_httpx_client.return_value.__enter__.return_value.post.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        pm.create_subtask(parent_task_id="parent-123", name="Subtask name")
+
+        # Verify correct endpoint
+        post_call = mock_httpx_client.return_value.__enter__.return_value.post.call_args
+        url = post_call.args[0] if post_call.args else ""
+        assert "/tasks/parent-123/subtasks" in url
+
+    def test_create_subtask_sends_correct_name(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given subtask name, when create_subtask is called, then name is sent correctly."""
+        from core.asana_pm import AsanaPM
+
+        mock_response = MagicMock()
+        mock_response.status_code = 201
+        mock_response.json.return_value = {"data": {"gid": "subtask-gid"}}
+        mock_httpx_client.return_value.__enter__.return_value.post.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        pm.create_subtask(
+            parent_task_id="parent-123",
+            name="User can login with valid credentials",
+        )
+
+        # Verify name is sent
+        post_call = mock_httpx_client.return_value.__enter__.return_value.post.call_args
+        json_body = post_call.kwargs.get("json", {})
+        data = json_body.get("data", {})
+        assert data.get("name") == "User can login with valid credentials"
+
+    def test_create_subtask_raises_pm_error_on_failure(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given API fails, when create_subtask is called, then PMError is raised."""
+        from core.asana_pm import AsanaPM
+        from core.pm import PMError
+
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        mock_response.json.return_value = {"errors": [{"message": "Parent not found"}]}
+        mock_httpx_client.return_value.__enter__.return_value.post.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        with pytest.raises(PMError):
+            pm.create_subtask(parent_task_id="nonexistent", name="Subtask")
+
+    def test_create_subtask_handles_multiple_subtasks(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given multiple subtasks, when create_subtask is called multiple times, then all are created."""
+        from core.asana_pm import AsanaPM
+
+        # Create responses for multiple subtasks
+        responses = []
+        for i in range(3):
+            mock_response = MagicMock()
+            mock_response.status_code = 201
+            mock_response.json.return_value = {"data": {"gid": f"subtask-{i}"}}
+            responses.append(mock_response)
+
+        mock_httpx_client.return_value.__enter__.return_value.post.side_effect = responses
+
+        pm = AsanaPM()
+        subtask_ids = []
+        for i in range(3):
+            subtask_id = pm.create_subtask(
+                parent_task_id="parent-123",
+                name=f"Acceptance Criterion {i + 1}",
+            )
+            subtask_ids.append(subtask_id)
+
+        assert subtask_ids == ["subtask-0", "subtask-1", "subtask-2"]
+
+
+class TestAsanaPMAddDependencies:
+    """Tests for AsanaPM.add_dependencies method.
+
+    SDLC-0060: Implement dependency linking for /ticket command.
+    """
+
+    def test_add_dependencies_sets_task_dependencies(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task and dependency IDs, when add_dependencies is called, then dependencies are set."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: POST /tasks/{task_id}/addDependencies succeeds
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"data": {}}
+        mock_httpx_client.return_value.__enter__.return_value.post.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        result = pm.add_dependencies(
+            task_id="task-3",
+            dependency_ids=["task-1", "task-2"],
+        )
+
+        assert result is True
+
+    def test_add_dependencies_uses_correct_endpoint(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task ID, when add_dependencies is called, then addDependencies endpoint is used."""
+        from core.asana_pm import AsanaPM
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"data": {}}
+        mock_httpx_client.return_value.__enter__.return_value.post.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        pm.add_dependencies(task_id="task-123", dependency_ids=["dep-1"])
+
+        # Verify correct endpoint
+        post_call = mock_httpx_client.return_value.__enter__.return_value.post.call_args
+        url = post_call.args[0] if post_call.args else ""
+        assert "/tasks/task-123/addDependencies" in url
+
+    def test_add_dependencies_sends_correct_dependency_gids(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given dependency IDs, when add_dependencies is called, then IDs are sent in request."""
+        from core.asana_pm import AsanaPM
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"data": {}}
+        mock_httpx_client.return_value.__enter__.return_value.post.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        pm.add_dependencies(
+            task_id="task-3",
+            dependency_ids=["task-1-gid", "task-2-gid"],
+        )
+
+        # Verify dependency IDs are sent
+        post_call = mock_httpx_client.return_value.__enter__.return_value.post.call_args
+        json_body = post_call.kwargs.get("json", {})
+        data = json_body.get("data", {})
+        assert "task-1-gid" in str(data)
+        assert "task-2-gid" in str(data)
+
+    def test_add_dependencies_returns_true_on_empty_list(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given empty dependency list, when add_dependencies is called, then True is returned without API call."""
+        from core.asana_pm import AsanaPM
+
+        pm = AsanaPM()
+        result = pm.add_dependencies(task_id="task-123", dependency_ids=[])
+
+        assert result is True
+        # No API call should be made
+        assert not mock_httpx_client.return_value.__enter__.return_value.post.called
+
+    def test_add_dependencies_returns_false_on_failure(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given API fails, when add_dependencies is called, then False is returned."""
+        from core.asana_pm import AsanaPM
+
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_response.json.return_value = {"errors": [{"message": "Server error"}]}
+        mock_httpx_client.return_value.__enter__.return_value.post.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        result = pm.add_dependencies(task_id="task-123", dependency_ids=["dep-1"])
+
+        assert result is False
+
+
+class TestAsanaPMEnsureRequiredTags:
+    """Tests for AsanaPM.ensure_required_tags method.
+
+    SDLC-0060: Create required tags (task, blocked, ralph-0 through ralph-5) if they don't exist.
+    """
+
+    def test_ensure_required_tags_creates_missing_tags(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given tags don't exist, when ensure_required_tags is called, then tags are created."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET /workspaces/{workspace_id}/tags returns empty (no tags)
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = {"data": []}
+
+        # Mock: POST /workspaces/{workspace_id}/tags creates each tag
+        mock_post_response = MagicMock()
+        mock_post_response.status_code = 201
+        mock_post_response.json.return_value = {"data": {"gid": "new-tag-gid", "name": "tag"}}
+
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_get_response
+        )
+        mock_httpx_client.return_value.__enter__.return_value.post.return_value = (
+            mock_post_response
+        )
+
+        pm = AsanaPM()
+        result = pm.ensure_required_tags()
+
+        assert result is True
+        # Should have created: task, blocked, ralph-0 through ralph-5 = 8 tags
+        assert mock_httpx_client.return_value.__enter__.return_value.post.call_count >= 8
+
+    def test_ensure_required_tags_skips_existing_tags(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given some tags exist, when ensure_required_tags is called, then only missing tags are created."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET returns some existing tags
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = {
+            "data": [
+                {"gid": "task-gid", "name": "task"},
+                {"gid": "blocked-gid", "name": "blocked"},
+            ]
+        }
+
+        # Mock: POST creates missing tags
+        mock_post_response = MagicMock()
+        mock_post_response.status_code = 201
+        mock_post_response.json.return_value = {"data": {"gid": "new-tag-gid"}}
+
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_get_response
+        )
+        mock_httpx_client.return_value.__enter__.return_value.post.return_value = (
+            mock_post_response
+        )
+
+        pm = AsanaPM()
+        result = pm.ensure_required_tags()
+
+        assert result is True
+        # Should have created only ralph-0 through ralph-5 = 6 tags (task and blocked exist)
+        assert mock_httpx_client.return_value.__enter__.return_value.post.call_count == 6
+
+    def test_ensure_required_tags_creates_ralph_tags_0_through_5(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given ralph tags don't exist, when ensure_required_tags is called, then ralph-0 through ralph-5 are created."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET returns task and blocked tags (but no ralph tags)
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = {
+            "data": [
+                {"gid": "task-gid", "name": "task"},
+                {"gid": "blocked-gid", "name": "blocked"},
+            ]
+        }
+
+        # Track created tags
+        created_tags = []
+
+        def mock_post_side_effect(url, **kwargs):
+            mock_response = MagicMock()
+            mock_response.status_code = 201
+            json_body = kwargs.get("json", {})
+            tag_name = json_body.get("data", {}).get("name", "")
+            created_tags.append(tag_name)
+            mock_response.json.return_value = {
+                "data": {"gid": f"{tag_name}-gid", "name": tag_name}
+            }
+            return mock_response
+
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_get_response
+        )
+        mock_httpx_client.return_value.__enter__.return_value.post.side_effect = (
+            mock_post_side_effect
+        )
+
+        pm = AsanaPM()
+        pm.ensure_required_tags()
+
+        # Verify ralph-0 through ralph-5 were created
+        for i in range(6):
+            assert f"ralph-{i}" in created_tags, f"ralph-{i} was not created"
+
+    def test_ensure_required_tags_returns_false_on_failure(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given tag creation fails, when ensure_required_tags is called, then False is returned."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET returns empty
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = {"data": []}
+
+        # Mock: POST fails
+        mock_post_response = MagicMock()
+        mock_post_response.status_code = 500
+        mock_post_response.json.return_value = {"errors": [{"message": "Server error"}]}
+
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_get_response
+        )
+        mock_httpx_client.return_value.__enter__.return_value.post.return_value = (
+            mock_post_response
+        )
+
+        pm = AsanaPM()
+        result = pm.ensure_required_tags()
+
+        assert result is False
