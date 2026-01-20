@@ -965,6 +965,286 @@ class TestAdditionalCoverage:
         assert "block_reason" in result
 
 
+class TestRalphStateV2:
+    """Tests for the v2 RalphState dataclass and schema.
+
+    V2 Schema stores supplemental data only - status comes from PM tool.
+    """
+
+    def test_ralph_state_creation_with_ticket_ids(self):
+        """Given ticket IDs, RalphState stores them as a list of strings."""
+        from core.state import RalphState
+
+        ralph = RalphState(
+            tickets=["SDLC-0001", "SDLC-0002", "SDLC-0003"],
+            dependencies={},
+            attempts={},
+            blocked={},
+            source="github",
+        )
+
+        assert ralph.tickets == ["SDLC-0001", "SDLC-0002", "SDLC-0003"]
+        assert isinstance(ralph.tickets, list)
+        assert all(isinstance(t, str) for t in ralph.tickets)
+
+    def test_ralph_state_stores_dependencies_as_map(self):
+        """Given dependencies, RalphState stores them as dict[str, list[str]]."""
+        from core.state import RalphState
+
+        ralph = RalphState(
+            tickets=["SDLC-0001", "SDLC-0002"],
+            dependencies={"SDLC-0002": ["SDLC-0001"]},
+            attempts={},
+            blocked={},
+            source="github",
+        )
+
+        assert ralph.dependencies == {"SDLC-0002": ["SDLC-0001"]}
+        assert isinstance(ralph.dependencies, dict)
+
+    def test_ralph_state_stores_attempts_as_map(self):
+        """Given attempt counts, RalphState stores them as dict[str, int]."""
+        from core.state import RalphState
+
+        ralph = RalphState(
+            tickets=["SDLC-0001"],
+            dependencies={},
+            attempts={"SDLC-0001": 2},
+            blocked={},
+            source="github",
+        )
+
+        assert ralph.attempts == {"SDLC-0001": 2}
+        assert ralph.attempts["SDLC-0001"] == 2
+
+    def test_ralph_state_stores_blocked_reasons_as_map(self):
+        """Given blocked tickets, RalphState stores reasons as dict[str, str]."""
+        from core.state import RalphState
+
+        ralph = RalphState(
+            tickets=["SDLC-0001", "SDLC-0002"],
+            dependencies={},
+            attempts={},
+            blocked={"SDLC-0001": "Failed 3 times, needs manual intervention"},
+            source="github",
+        )
+
+        assert ralph.blocked == {"SDLC-0001": "Failed 3 times, needs manual intervention"}
+        assert isinstance(ralph.blocked["SDLC-0001"], str)
+
+    def test_ralph_state_stores_source_pm_tool(self):
+        """Given a source PM tool, RalphState stores it."""
+        from core.state import RalphState
+
+        ralph = RalphState(
+            tickets=[],
+            dependencies={},
+            attempts={},
+            blocked={},
+            source="trello",
+        )
+
+        assert ralph.source == "trello"
+
+    def test_ralph_state_to_dict_serialization(self):
+        """Given a RalphState, to_dict returns proper JSON-serializable dict."""
+        from core.state import RalphState
+
+        ralph = RalphState(
+            tickets=["SDLC-0001", "SDLC-0002"],
+            dependencies={"SDLC-0002": ["SDLC-0001"]},
+            attempts={"SDLC-0001": 1},
+            blocked={"SDLC-0002": "Blocked"},
+            source="github",
+        )
+
+        result = ralph.to_dict()
+
+        assert result == {
+            "tickets": ["SDLC-0001", "SDLC-0002"],
+            "dependencies": {"SDLC-0002": ["SDLC-0001"]},
+            "attempts": {"SDLC-0001": 1},
+            "blocked": {"SDLC-0002": "Blocked"},
+            "source": "github",
+        }
+
+    def test_ralph_state_defaults_to_empty_collections(self):
+        """Given minimal args, RalphState defaults to empty collections."""
+        from core.state import RalphState
+
+        ralph = RalphState(source="github")
+
+        assert ralph.tickets == []
+        assert ralph.dependencies == {}
+        assert ralph.attempts == {}
+        assert ralph.blocked == {}
+
+    def test_ralph_state_from_dict_deserialization(self):
+        """Given a dict, RalphState.from_dict creates the dataclass."""
+        from core.state import RalphState
+
+        data = {
+            "tickets": ["SDLC-0001"],
+            "dependencies": {},
+            "attempts": {"SDLC-0001": 2},
+            "blocked": {},
+            "source": "github",
+        }
+
+        ralph = RalphState.from_dict(data)
+
+        assert ralph.tickets == ["SDLC-0001"]
+        assert ralph.attempts == {"SDLC-0001": 2}
+        assert ralph.source == "github"
+
+
+class TestWorkflowStateV2Integration:
+    """Tests for WorkflowState with v2 RalphState integration."""
+
+    def test_workflow_state_includes_ralph_field(self):
+        """Given v2 workflow state, it includes the ralph field."""
+        from core.state import WorkflowState, RalphState
+
+        ralph = RalphState(
+            tickets=["SDLC-0001"],
+            dependencies={},
+            attempts={},
+            blocked={},
+            source="github",
+        )
+
+        state = WorkflowState(
+            version="2.0",
+            prd_path=Path("docs/prds/test.md"),
+            plan_path=Path("docs/plans/test.md"),
+            tickets=[],  # Empty for v2 - just IDs in ralph
+            ralph=ralph,
+        )
+
+        assert state.ralph is not None
+        assert state.ralph.tickets == ["SDLC-0001"]
+        assert state.version == "2.0"
+
+    def test_workflow_state_v2_to_dict_includes_ralph(self):
+        """Given v2 state, to_dict serializes ralph field."""
+        from core.state import WorkflowState, RalphState
+
+        ralph = RalphState(
+            tickets=["SDLC-0001"],
+            dependencies={},
+            attempts={"SDLC-0001": 1},
+            blocked={},
+            source="github",
+        )
+
+        state = WorkflowState(
+            version="2.0",
+            prd_path=Path("docs/prds/test.md"),
+            plan_path=Path("docs/plans/test.md"),
+            tickets=[],
+            ralph=ralph,
+        )
+
+        result = state.to_dict()
+
+        assert "ralph" in result
+        assert result["ralph"]["tickets"] == ["SDLC-0001"]
+        assert result["ralph"]["source"] == "github"
+
+    def test_workflow_state_ralph_can_be_none_for_v1(self):
+        """Given v1 state, ralph field can be None."""
+        from core.state import WorkflowState, Ticket
+
+        state = WorkflowState(
+            version="1.0",
+            prd_path=Path("docs/prds/test.md"),
+            plan_path=Path("docs/plans/test.md"),
+            tickets=[Ticket(id="TASK-001", title="Test", status="pending", dependencies=[])],
+            ralph=None,
+        )
+
+        assert state.ralph is None
+
+    def test_load_workflow_state_v2_parses_ralph(self, tmp_path: Path):
+        """Given v2 state file, load_workflow_state parses ralph section."""
+        from core.state import load_workflow_state
+
+        state = {
+            "version": "2.0",
+            "prd_path": "docs/prds/test.md",
+            "plan_path": "docs/plans/test.md",
+            "tickets": [],
+            "ralph": {
+                "tickets": ["SDLC-0001", "SDLC-0002"],
+                "dependencies": {"SDLC-0002": ["SDLC-0001"]},
+                "attempts": {"SDLC-0001": 1},
+                "blocked": {},
+                "source": "github",
+            },
+        }
+        state_file = tmp_path / "workflow-state.json"
+        state_file.write_text(json.dumps(state))
+
+        result = load_workflow_state(state_file)
+
+        assert result.version == "2.0"
+        assert result.ralph is not None
+        assert result.ralph.tickets == ["SDLC-0001", "SDLC-0002"]
+        assert result.ralph.dependencies == {"SDLC-0002": ["SDLC-0001"]}
+        assert result.ralph.source == "github"
+
+    def test_save_workflow_state_v2_writes_ralph(self, tmp_path: Path):
+        """Given v2 state, save_workflow_state writes ralph section."""
+        from core.state import WorkflowState, RalphState, save_workflow_state
+
+        ralph = RalphState(
+            tickets=["SDLC-0001"],
+            dependencies={},
+            attempts={"SDLC-0001": 2},
+            blocked={},
+            source="trello",
+        )
+
+        state = WorkflowState(
+            version="2.0",
+            prd_path=Path("docs/prds/test.md"),
+            plan_path=Path("docs/plans/test.md"),
+            tickets=[],
+            ralph=ralph,
+        )
+        state_file = tmp_path / "workflow-state.json"
+
+        save_workflow_state(state, state_file)
+
+        assert state_file.exists()
+        data = json.loads(state_file.read_text())
+        assert data["version"] == "2.0"
+        assert "ralph" in data
+        assert data["ralph"]["tickets"] == ["SDLC-0001"]
+        assert data["ralph"]["attempts"] == {"SDLC-0001": 2}
+        assert data["ralph"]["source"] == "trello"
+
+    def test_load_v1_state_sets_ralph_to_none(self, tmp_path: Path):
+        """Given v1 state file without ralph, load sets ralph to None."""
+        from core.state import load_workflow_state
+
+        state = {
+            "version": "1.0",
+            "prd_path": "docs/prds/test.md",
+            "plan_path": "docs/plans/test.md",
+            "tickets": [
+                {"id": "TASK-001", "title": "Test", "status": "pending", "dependencies": []}
+            ],
+        }
+        state_file = tmp_path / "workflow-state.json"
+        state_file.write_text(json.dumps(state))
+
+        result = load_workflow_state(state_file)
+
+        assert result.version == "1.0"
+        assert result.ralph is None
+
+
 class TestDataclasses:
     """Tests for state dataclasses."""
 
