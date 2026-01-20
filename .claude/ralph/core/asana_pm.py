@@ -503,17 +503,65 @@ class AsanaPM:
     def get_open_tickets(self, ticket_ids: list[str]) -> list[TicketInfo]:
         """Get information about open tasks from the provided list.
 
+        Fetches each task by ID and returns TicketInfo objects only for tasks
+        that are OPEN (not completed and not blocked). Tasks that don't exist
+        or fail to fetch are skipped gracefully.
+
         Args:
             ticket_ids: List of task GIDs to check
 
         Returns:
             List of TicketInfo for tasks that are open
+
+        SDLC-0058: AsanaPM remaining methods
         """
-        # Stub implementation - will be completed in SDLC-0058
-        raise NotImplementedError("get_open_tickets will be implemented in SDLC-0058")
+        if not ticket_ids:
+            return []
+
+        open_tickets: list[TicketInfo] = []
+
+        for ticket_id in ticket_ids:
+            try:
+                # Fetch task data
+                task_data = self._get(f"/tasks/{ticket_id}")
+
+                # Check completion status
+                completed = task_data.get("completed", False)
+                if completed:
+                    continue  # Skip closed tasks
+
+                # Check for blocked tag
+                tags = task_data.get("tags", [])
+                tag_names = [tag.get("name", "") for tag in tags]
+
+                is_blocked = any(
+                    name.lower() == self._blocked_label.lower() for name in tag_names
+                )
+                if is_blocked:
+                    continue  # Skip blocked tasks
+
+                # Task is open - create TicketInfo
+                open_tickets.append(
+                    TicketInfo(
+                        id=ticket_id,
+                        title=task_data.get("name", ""),
+                        status=TicketStatus.OPEN,
+                        labels=tag_names,
+                    )
+                )
+            except PMError as e:
+                # Skip tasks that fail to fetch (e.g., not found)
+                logger.warning(f"Failed to fetch ticket {ticket_id}: {e}")
+                continue
+
+        return open_tickets
 
     def remove_label(self, ticket_id: str, label: str) -> bool:
         """Remove a tag from a task.
+
+        Looks up the tag by name and removes it from the task using the
+        Asana removeTag endpoint. If the tag doesn't exist in the workspace,
+        returns False (can't remove a non-existent tag).
 
         Args:
             ticket_id: Task GID in Asana
@@ -521,18 +569,91 @@ class AsanaPM:
 
         Returns:
             True if removal succeeded, False otherwise
+
+        SDLC-0058: AsanaPM remaining methods
         """
-        # Stub implementation - will be completed in SDLC-0058
-        raise NotImplementedError("remove_label will be implemented in SDLC-0058")
+        try:
+            # Look up the tag (don't create if it doesn't exist)
+            tag_gid = self._find_tag(label)
+            if tag_gid is None:
+                logger.warning(
+                    f"Cannot remove tag '{label}' - tag doesn't exist in workspace"
+                )
+                return False
+
+            # Remove the tag from the task
+            self._post(f"/tasks/{ticket_id}/removeTag", {"tag": tag_gid})
+
+            logger.info(f"Successfully removed label '{label}' from ticket {ticket_id}")
+            return True
+        except PMError as e:
+            logger.warning(
+                f"Failed to remove label '{label}' from ticket {ticket_id}: {e}"
+            )
+            return False
+
+    def _find_tag(self, name: str) -> str | None:
+        """Find a tag by name in the workspace without creating it.
+
+        Uses case-insensitive matching. Unlike _get_or_create_tag, this method
+        does NOT create the tag if it doesn't exist.
+
+        Args:
+            name: Tag name to find
+
+        Returns:
+            Tag GID if found, None otherwise
+
+        SDLC-0058: Helper for remove_label
+        """
+        # Check cache first (case-insensitive key)
+        cache_key = name.lower()
+        if cache_key in self._tag_cache:
+            return self._tag_cache[cache_key]
+
+        # Query workspace tags
+        endpoint = f"/workspaces/{self._workspace_id}/tags"
+        tags = self._get(endpoint)
+
+        # Handle case where tags is a list (from API response)
+        if isinstance(tags, list):
+            tags_list = tags
+        else:
+            tags_list = []
+
+        # Search for existing tag (case-insensitive)
+        for tag in tags_list:
+            tag_name = tag.get("name", "")
+            if tag_name.lower() == name.lower():
+                tag_gid = tag.get("gid", "")
+                # Cache with lowercase key
+                self._tag_cache[cache_key] = tag_gid
+                return tag_gid
+
+        # Tag doesn't exist
+        return None
 
     def assign_to_self(self, ticket_id: str) -> bool:
         """Assign a task to the current user.
+
+        Uses the Asana special value "me" to assign the task to the user
+        associated with the access token.
 
         Args:
             ticket_id: Task GID in Asana
 
         Returns:
             True if assignment succeeded, False otherwise
+
+        SDLC-0058: AsanaPM remaining methods
         """
-        # Stub implementation - will be completed in SDLC-0058
-        raise NotImplementedError("assign_to_self will be implemented in SDLC-0058")
+        try:
+            # Update the task with assignee="me"
+            # "me" is a special Asana value that refers to the authenticated user
+            self._put(f"/tasks/{ticket_id}", {"assignee": "me"})
+
+            logger.info(f"Successfully assigned ticket {ticket_id} to self")
+            return True
+        except PMError as e:
+            logger.warning(f"Failed to assign ticket {ticket_id} to self: {e}")
+            return False

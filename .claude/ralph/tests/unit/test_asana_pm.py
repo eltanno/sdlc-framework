@@ -2212,3 +2212,508 @@ class TestAsanaPMAddBlockedLabel:
             json_body = stories_call[0].kwargs.get("json", {})
             comment_text = json_body.get("data", {}).get("text", "")
             assert comment_text.startswith("Blocked:")
+
+
+# =============================================================================
+# SDLC-0058: Remaining Methods Tests (get_open_tickets, remove_label, assign_to_self)
+# =============================================================================
+
+
+class TestAsanaPMGetOpenTickets:
+    """Tests for AsanaPM.get_open_tickets method.
+
+    SDLC-0058: Implement get_open_tickets to filter open tasks from a list of IDs.
+    """
+
+    def test_get_open_tickets_returns_open_tasks_from_list(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given list of task IDs with some open, when get_open_tickets is called, then only open tasks returned."""
+        from core.asana_pm import AsanaPM
+        from core.pm import TicketStatus
+
+        # Mock: GET for first task (open)
+        mock_task_1_response = MagicMock()
+        mock_task_1_response.status_code = 200
+        mock_task_1_response.json.return_value = {
+            "data": {
+                "gid": "task-1",
+                "name": "[SDLC-0001] First Task",
+                "completed": False,
+                "tags": [],
+            }
+        }
+
+        # Mock: GET for second task (completed/closed)
+        mock_task_2_response = MagicMock()
+        mock_task_2_response.status_code = 200
+        mock_task_2_response.json.return_value = {
+            "data": {
+                "gid": "task-2",
+                "name": "[SDLC-0002] Second Task",
+                "completed": True,
+                "tags": [],
+            }
+        }
+
+        # Mock: GET for third task (open)
+        mock_task_3_response = MagicMock()
+        mock_task_3_response.status_code = 200
+        mock_task_3_response.json.return_value = {
+            "data": {
+                "gid": "task-3",
+                "name": "[SDLC-0003] Third Task",
+                "completed": False,
+                "tags": [],
+            }
+        }
+
+        mock_httpx_client.return_value.__enter__.return_value.get.side_effect = [
+            mock_task_1_response,
+            mock_task_2_response,
+            mock_task_3_response,
+        ]
+
+        pm = AsanaPM()
+        result = pm.get_open_tickets(["task-1", "task-2", "task-3"])
+
+        assert len(result) == 2
+        assert result[0].id == "task-1"
+        assert result[0].status == TicketStatus.OPEN
+        assert result[1].id == "task-3"
+        assert result[1].status == TicketStatus.OPEN
+
+    def test_get_open_tickets_returns_empty_list_for_empty_input(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given empty list, when get_open_tickets is called, then empty list returned."""
+        from core.asana_pm import AsanaPM
+
+        pm = AsanaPM()
+        result = pm.get_open_tickets([])
+
+        assert result == []
+        # No API calls should be made
+        assert not mock_httpx_client.return_value.__enter__.return_value.get.called
+
+    def test_get_open_tickets_excludes_blocked_tasks(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task with blocked tag, when get_open_tickets is called, then task is excluded from OPEN results."""
+        from core.asana_pm import AsanaPM
+        from core.pm import TicketStatus
+
+        # Mock: GET returns task with blocked tag
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": {
+                "gid": "task-1",
+                "name": "[SDLC-0001] Blocked Task",
+                "completed": False,
+                "tags": [{"gid": "blocked-tag-gid", "name": "blocked"}],
+            }
+        }
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        result = pm.get_open_tickets(["task-1"])
+
+        # Should return empty since the only task is blocked
+        assert len(result) == 0
+
+    def test_get_open_tickets_returns_ticket_info_with_title(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given open task, when get_open_tickets is called, then TicketInfo includes title."""
+        from core.asana_pm import AsanaPM
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": {
+                "gid": "task-1",
+                "name": "[SDLC-0001] Important Feature",
+                "completed": False,
+                "tags": [],
+            }
+        }
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        result = pm.get_open_tickets(["task-1"])
+
+        assert len(result) == 1
+        assert result[0].title == "[SDLC-0001] Important Feature"
+
+    def test_get_open_tickets_returns_ticket_info_with_labels(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given open task with tags, when get_open_tickets is called, then TicketInfo includes tag names as labels."""
+        from core.asana_pm import AsanaPM
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": {
+                "gid": "task-1",
+                "name": "[SDLC-0001] Task",
+                "completed": False,
+                "tags": [
+                    {"gid": "tag-1", "name": "priority-high"},
+                    {"gid": "tag-2", "name": "frontend"},
+                ],
+            }
+        }
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        result = pm.get_open_tickets(["task-1"])
+
+        assert len(result) == 1
+        assert "priority-high" in result[0].labels
+        assert "frontend" in result[0].labels
+
+    def test_get_open_tickets_handles_not_found_task_gracefully(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task ID that doesn't exist, when get_open_tickets is called, then task is skipped."""
+        from core.asana_pm import AsanaPM
+
+        # First task exists and is open
+        mock_task_1_response = MagicMock()
+        mock_task_1_response.status_code = 200
+        mock_task_1_response.json.return_value = {
+            "data": {
+                "gid": "task-1",
+                "name": "[SDLC-0001] Existing Task",
+                "completed": False,
+                "tags": [],
+            }
+        }
+
+        # Second task doesn't exist
+        mock_task_2_response = MagicMock()
+        mock_task_2_response.status_code = 404
+        mock_task_2_response.json.return_value = {
+            "errors": [{"message": "task not found"}]
+        }
+
+        mock_httpx_client.return_value.__enter__.return_value.get.side_effect = [
+            mock_task_1_response,
+            mock_task_2_response,
+        ]
+
+        pm = AsanaPM()
+        result = pm.get_open_tickets(["task-1", "nonexistent-task"])
+
+        # Should only return the existing task
+        assert len(result) == 1
+        assert result[0].id == "task-1"
+
+    def test_get_open_tickets_calls_correct_api_endpoint_for_each_task(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given list of task IDs, when get_open_tickets is called, then correct endpoints are called."""
+        from core.asana_pm import AsanaPM
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": {
+                "gid": "task-1",
+                "name": "Test",
+                "completed": False,
+                "tags": [],
+            }
+        }
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        pm.get_open_tickets(["task-1", "task-2"])
+
+        # Verify GET was called twice
+        assert mock_httpx_client.return_value.__enter__.return_value.get.call_count == 2
+
+        # Verify correct endpoints were called
+        calls = mock_httpx_client.return_value.__enter__.return_value.get.call_args_list
+        urls = [call.args[0] for call in calls]
+        assert any("/tasks/task-1" in url for url in urls)
+        assert any("/tasks/task-2" in url for url in urls)
+
+
+class TestAsanaPMRemoveLabel:
+    """Tests for AsanaPM.remove_label method.
+
+    SDLC-0058: Implement remove_label to remove a tag from a task.
+    """
+
+    def test_remove_label_removes_tag_from_task(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task with tag, when remove_label is called, then tag is removed."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET /workspaces/{workspace_id}/tags returns the tag
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = {
+            "data": [{"gid": "ralph-1-gid", "name": "ralph-1"}]
+        }
+
+        # Mock: POST /tasks/{task_id}/removeTag succeeds
+        mock_post_response = MagicMock()
+        mock_post_response.status_code = 200
+        mock_post_response.json.return_value = {"data": {}}
+
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_get_response
+        )
+        mock_httpx_client.return_value.__enter__.return_value.post.return_value = (
+            mock_post_response
+        )
+
+        pm = AsanaPM()
+        result = pm.remove_label("task-12345", "ralph-1")
+
+        assert result is True
+
+    def test_remove_label_calls_remove_tag_endpoint(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task ID and label, when remove_label is called, then removeTag endpoint is called."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET returns tag
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = {
+            "data": [{"gid": "ralph-1-gid", "name": "ralph-1"}]
+        }
+
+        # Mock: POST succeeds
+        mock_post_response = MagicMock()
+        mock_post_response.status_code = 200
+        mock_post_response.json.return_value = {"data": {}}
+
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_get_response
+        )
+        mock_httpx_client.return_value.__enter__.return_value.post.return_value = (
+            mock_post_response
+        )
+
+        pm = AsanaPM()
+        pm.remove_label("task-12345", "ralph-1")
+
+        # Verify POST was called with removeTag endpoint
+        post_calls = mock_httpx_client.return_value.__enter__.return_value.post.call_args_list
+        remove_tag_call = [c for c in post_calls if "removeTag" in str(c)]
+        assert len(remove_tag_call) > 0
+
+    def test_remove_label_sends_correct_tag_gid(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given label, when remove_label is called, then correct tag GID is sent in request."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET returns tag with specific GID
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = {
+            "data": [{"gid": "specific-tag-gid-123", "name": "ralph-2"}]
+        }
+
+        # Mock: POST succeeds
+        mock_post_response = MagicMock()
+        mock_post_response.status_code = 200
+        mock_post_response.json.return_value = {"data": {}}
+
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_get_response
+        )
+        mock_httpx_client.return_value.__enter__.return_value.post.return_value = (
+            mock_post_response
+        )
+
+        pm = AsanaPM()
+        pm.remove_label("task-12345", "ralph-2")
+
+        # Verify correct tag GID was sent
+        post_calls = mock_httpx_client.return_value.__enter__.return_value.post.call_args_list
+        remove_tag_call = [c for c in post_calls if "removeTag" in str(c)]
+        if remove_tag_call:
+            json_body = remove_tag_call[0].kwargs.get("json", {})
+            assert json_body.get("data", {}).get("tag") == "specific-tag-gid-123"
+
+    def test_remove_label_returns_false_on_api_failure(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given API fails when removing tag, when remove_label is called, then False is returned."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET returns tag
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = {
+            "data": [{"gid": "ralph-1-gid", "name": "ralph-1"}]
+        }
+
+        # Mock: POST fails with 500
+        mock_post_response = MagicMock()
+        mock_post_response.status_code = 500
+        mock_post_response.json.return_value = {"errors": [{"message": "Server error"}]}
+
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_get_response
+        )
+        mock_httpx_client.return_value.__enter__.return_value.post.return_value = (
+            mock_post_response
+        )
+
+        pm = AsanaPM()
+        result = pm.remove_label("task-12345", "ralph-1")
+
+        assert result is False
+
+    def test_remove_label_returns_false_when_tag_not_found(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given tag doesn't exist in workspace, when remove_label is called, then False is returned."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET returns empty tags list (tag doesn't exist)
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = {"data": []}
+
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_get_response
+        )
+
+        pm = AsanaPM()
+        result = pm.remove_label("task-12345", "nonexistent-tag")
+
+        # Should return False since tag doesn't exist (can't remove what doesn't exist)
+        assert result is False
+
+
+class TestAsanaPMAssignToSelf:
+    """Tests for AsanaPM.assign_to_self method.
+
+    SDLC-0058: Implement assign_to_self to assign a task to the current user.
+    """
+
+    def test_assign_to_self_assigns_task_to_me(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task ID, when assign_to_self is called, then task is assigned to 'me'."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: PUT /tasks/{task_id} succeeds
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": {
+                "gid": "task-12345",
+                "name": "Test Task",
+                "assignee": {"gid": "user-gid", "name": "Current User"},
+            }
+        }
+        mock_httpx_client.return_value.__enter__.return_value.put.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        result = pm.assign_to_self("task-12345")
+
+        assert result is True
+
+    def test_assign_to_self_calls_put_with_assignee_me(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task ID, when assign_to_self is called, then PUT is called with assignee='me'."""
+        from core.asana_pm import AsanaPM
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"data": {}}
+        mock_httpx_client.return_value.__enter__.return_value.put.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        pm.assign_to_self("task-12345")
+
+        # Verify PUT was called with correct endpoint and data
+        put_call = mock_httpx_client.return_value.__enter__.return_value.put.call_args
+        url = put_call.args[0] if put_call.args else ""
+        assert "/tasks/task-12345" in url
+
+        json_body = put_call.kwargs.get("json", {})
+        assert json_body.get("data", {}).get("assignee") == "me"
+
+    def test_assign_to_self_returns_false_on_api_failure(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given API fails, when assign_to_self is called, then False is returned."""
+        from core.asana_pm import AsanaPM
+
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_response.json.return_value = {"errors": [{"message": "Server error"}]}
+        mock_httpx_client.return_value.__enter__.return_value.put.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        result = pm.assign_to_self("task-12345")
+
+        assert result is False
+
+    def test_assign_to_self_returns_false_on_not_found(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task doesn't exist, when assign_to_self is called, then False is returned."""
+        from core.asana_pm import AsanaPM
+
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        mock_response.json.return_value = {"errors": [{"message": "task not found"}]}
+        mock_httpx_client.return_value.__enter__.return_value.put.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        result = pm.assign_to_self("nonexistent-task")
+
+        assert result is False
+
+    def test_assign_to_self_uses_correct_api_endpoint(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task ID, when assign_to_self is called, then correct API endpoint is used."""
+        from core.asana_pm import AsanaPM
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"data": {}}
+        mock_httpx_client.return_value.__enter__.return_value.put.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        pm.assign_to_self("task-99999")
+
+        # Verify correct endpoint
+        put_call = mock_httpx_client.return_value.__enter__.return_value.put.call_args
+        url = put_call.args[0] if put_call.args else ""
+        assert "https://app.asana.com/api/1.0/tasks/task-99999" in url
