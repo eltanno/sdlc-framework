@@ -6,6 +6,7 @@ via the ASANA_ACCESS_TOKEN environment variable.
 
 SDLC-0052: AsanaPM HTTP client and authentication
 SDLC-0053: AsanaPM tag management
+SDLC-0054: AsanaPM get_ticket_status method
 """
 
 import logging
@@ -286,6 +287,14 @@ class AsanaPM:
     def get_ticket_status(self, ticket_id: str) -> TicketStatus:
         """Get the current status of an Asana task.
 
+        Checks task completion status and blocked tag to determine state:
+        - If task has blocked tag -> BLOCKED
+        - If task is completed -> CLOSED
+        - Otherwise -> OPEN
+
+        Note: Blocked tag is checked first, so a blocked task returns BLOCKED
+        even if it's incomplete (which is the expected behavior).
+
         Args:
             ticket_id: Task GID in Asana
 
@@ -293,10 +302,26 @@ class AsanaPM:
             TicketStatus indicating current state
 
         Raises:
-            PMError: If operation fails
+            PMError: If operation fails (e.g., task not found)
         """
-        # Stub implementation - will be completed in SDLC-0054
-        raise NotImplementedError("get_ticket_status will be implemented in SDLC-0054")
+        # Fetch task with tags included
+        task_data = self._get(f"/tasks/{ticket_id}")
+
+        # Extract task completion status
+        completed = task_data.get("completed", False)
+
+        # Check for blocked tag (case-insensitive)
+        tags = task_data.get("tags", [])
+        for tag in tags:
+            tag_name = tag.get("name", "")
+            if tag_name.lower() == self._blocked_label.lower():
+                return TicketStatus.BLOCKED
+
+        # Check completion status
+        if completed:
+            return TicketStatus.CLOSED
+
+        return TicketStatus.OPEN
 
     def claim_ticket(self, ticket_id: str, label: str) -> bool:
         """Claim a task by adding a tag.
