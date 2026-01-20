@@ -12,7 +12,6 @@ Following TDD: Write failing tests first, then implement.
 """
 
 import json
-import shutil
 from pathlib import Path
 
 import pytest

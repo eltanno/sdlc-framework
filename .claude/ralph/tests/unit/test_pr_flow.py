@@ -8,10 +8,7 @@ Tests cover:
 - The complete PR flow from commit to merge
 """
 
-import subprocess
-from dataclasses import dataclass
-from typing import Any
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -346,7 +343,6 @@ class TestPrFlow:
     def test_pr_flow_reuses_existing_pr(self, mock_git_module, mock_github_module):
         """Given PR already exists, when running flow, then existing PR is used."""
         from commands import pr_flow
-        from core.github import PullRequestResult
 
         mock_git_module.get_current_branch.return_value = "feature/TASK-001-test"
         mock_git_module.is_dirty.return_value = False

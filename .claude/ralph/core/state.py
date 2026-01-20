@@ -1163,7 +1163,7 @@ def build_prompt(
     # Warn about unsubstituted placeholders
     remaining = re.findall(r"\{[A-Z_]+\}", content)
     if remaining:
-        print(f"WARNING: Unsubstituted placeholders remain:", file=sys.stderr)
+        print("WARNING: Unsubstituted placeholders remain:", file=sys.stderr)
         for placeholder in set(remaining):
             print(f"  - {placeholder}", file=sys.stderr)
 

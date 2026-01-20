@@ -12,12 +12,9 @@ These tests mock external CLI operations (Claude, gh, git).
 
 from __future__ import annotations
 
-import json
 import os
-from datetime import datetime
 from pathlib import Path
-from typing import Any
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -25,7 +22,6 @@ from core.state import (
     WorkflowState,
     Ticket,
     RalphState,
-    load_workflow_state,
     save_workflow_state,
 )
 from commands.orchestrator import (
@@ -322,7 +318,7 @@ class TestDryRunMode:
         self, orchestrator_workflow: tuple[Path, Path, Path, Path]
     ):
         """Given dry_run=True, when process_ticket runs, then Claude is not invoked."""
-        from commands.orchestrator import process_ticket, OrchestratorConfig
+        from commands.orchestrator import process_ticket
 
         prd_file, plan_file, state_file, config_file = orchestrator_workflow
         config = OrchestratorConfig()
@@ -348,7 +344,7 @@ class TestDryRunMode:
         self, single_ticket_workflow: tuple[Path, Path, Path, Path]
     ):
         """Given dry_run=True, when process_ticket runs, then result has dry_run status."""
-        from commands.orchestrator import process_ticket, OrchestratorConfig
+        from commands.orchestrator import process_ticket
 
         prd_file, plan_file, state_file, config_file = single_ticket_workflow
         config = OrchestratorConfig()
@@ -382,7 +378,7 @@ class TestHappyPath:
     ):
         """Given a single ticket that passes validation, when process_ticket runs,
         then the ticket is completed successfully."""
-        from commands.orchestrator import process_ticket, OrchestratorConfig
+        from commands.orchestrator import process_ticket
 
         prd_file, plan_file, state_file, config_file = single_ticket_workflow
         state_dir = tmp_path / "test_state"
@@ -430,7 +426,7 @@ class TestRetryFlow:
     ):
         """Given validation fails then passes, when process_ticket runs,
         then ticket is completed after retry."""
-        from commands.orchestrator import process_ticket, OrchestratorConfig
+        from commands.orchestrator import process_ticket
 
         prd_file, plan_file, state_file, config_file = single_ticket_workflow
         state_dir = tmp_path / "test_state"
@@ -483,7 +479,7 @@ class TestAllBlockedScenario:
     ):
         """Given max attempts exceeded, when process_ticket finishes,
         then ticket is marked blocked."""
-        from commands.orchestrator import process_ticket, OrchestratorConfig
+        from commands.orchestrator import process_ticket
 
         prd_file, plan_file, state_file, config_file = single_ticket_workflow
         config = OrchestratorConfig(max_attempts=2)
@@ -516,7 +512,7 @@ class TestAllBlockedScenario:
         self, single_ticket_workflow: tuple[Path, Path, Path, Path]
     ):
         """Given max attempts exceeded, when blocked, then block reason includes attempt count."""
-        from commands.orchestrator import process_ticket, OrchestratorConfig
+        from commands.orchestrator import process_ticket
 
         prd_file, plan_file, state_file, config_file = single_ticket_workflow
         config = OrchestratorConfig(max_attempts=3)
@@ -556,7 +552,7 @@ class TestTimeoutHandling:
         self, single_ticket_workflow: tuple[Path, Path, Path, Path], tmp_path: Path
     ):
         """Given Claude times out, when process_ticket runs, then retry is attempted."""
-        from commands.orchestrator import process_ticket, OrchestratorConfig
+        from commands.orchestrator import process_ticket
 
         prd_file, plan_file, state_file, config_file = single_ticket_workflow
         state_dir = tmp_path / "test_state"
@@ -710,7 +706,7 @@ class TestStateFileIntegration:
     ):
         """Given a ticket completes, when process_ticket finishes,
         then ticket_done is called to update state."""
-        from commands.orchestrator import process_ticket, OrchestratorConfig
+        from commands.orchestrator import process_ticket
 
         prd_file, plan_file, state_file, config_file = single_ticket_workflow
         state_dir = tmp_path / "test_state"

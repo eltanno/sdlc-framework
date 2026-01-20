@@ -12,7 +12,6 @@ from commands.parse_deps import (
     parse_dependencies,
     detect_circular_dependencies,
     DependencyGraph,
-    ParseError,
 )
 
 

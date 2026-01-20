@@ -15,7 +15,6 @@ Following TDD: Write failing tests first, then implement.
 import json
 import os
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -569,7 +568,7 @@ class TestTicketStatus:
         status is typically queried from the PM tool. This test verifies the
         function still works for legacy v1-style ticket objects.
         """
-        from core.state import load_workflow_state, save_workflow_state, update_ticket_status
+        from core.state import load_workflow_state, update_ticket_status
 
         # v2 state but with tickets list (for legacy support)
         state = {
@@ -730,7 +729,7 @@ class TestAdditionalCoverage:
 
     def test_get_latest_attempt_uses_default_base_dir(self, mocker):
         """Given no base_dir, get_latest_attempt uses the default."""
-        from core.state import get_latest_attempt, DEFAULT_STATE_DIRECTORY
+        from core.state import get_latest_attempt
 
         # Mock Path.exists to return False (no directory exists)
         mocker.patch("pathlib.Path.exists", return_value=False)

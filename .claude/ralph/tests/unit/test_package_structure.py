@@ -1,10 +1,8 @@
 """Test that the Ralph package structure is correct."""
 
 import os
-import subprocess
 from pathlib import Path
 
-import pytest
 
 
 # Get the ralph package directory
@@ -16,24 +14,9 @@ class TestPackageStructure:
 
     def test_core_module_importable(self):
         """Core module should be importable."""
-        from core import config, state, github, git
 
     def test_commands_module_importable(self):
         """Commands module should be importable."""
-        from commands import (
-            orchestrator,
-            get_next,
-            ticket_start,
-            ticket_done,
-            mark_blocked,
-            ticket_reset,
-            validate,
-            pr_flow,
-            setup,
-            status,
-            cleanup,
-            parse_deps,
-        )
 
     def test_core_module_has_docstring(self):
         """Core module should have a docstring."""

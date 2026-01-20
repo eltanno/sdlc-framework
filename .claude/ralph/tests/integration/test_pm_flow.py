@@ -11,18 +11,14 @@ These tests mock the gh CLI subprocess calls to simulate GitHub operations.
 
 from __future__ import annotations
 
-import json
-import time
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import patch
 
 import pytest
 
 from core.pm import (
-    GitHubPM,
     LocalPM,
-    PMTool,
     PMError,
     TicketStatus,
     TicketInfo,
@@ -37,10 +33,9 @@ from core.state import (
 from commands.get_next import (
     get_next_ticket,
     claim_ticket_with_race_detection,
-    RACE_DETECTION_SLEEP_SECONDS,
 )
-from commands.ticket_done import ticket_done, mark_ticket_done
-from commands.setup import run_setup, detect_ticket_mismatch, MismatchResult
+from commands.ticket_done import ticket_done
+from commands.setup import run_setup, detect_ticket_mismatch
 
 
 # ============================================================================

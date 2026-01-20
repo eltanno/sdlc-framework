@@ -14,11 +14,9 @@ from __future__ import annotations
 import json
 import pytest
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
-from datetime import datetime
 
 from commands import setup
-from core.state import WorkflowState, Ticket
+from core.state import WorkflowState
 
 
 class TestValidatePaths:
@@ -569,8 +567,7 @@ class TestSetupWithExistingState:
 
     def test_setup_detects_mismatch_with_existing_state(self, tmp_path: Path) -> None:
         """Given existing state with different tickets, when setup runs, then mismatch detected."""
-        import json
-        from core.state import RalphState, WorkflowState, save_workflow_state
+        from core.state import RalphState, save_workflow_state
 
         prd_path = tmp_path / "prd.md"
         plan_path = tmp_path / "plan.md"
@@ -619,8 +616,7 @@ class TestSetupWithExistingState:
         self, tmp_path: Path, capsys
     ) -> None:
         """Given mismatch in non-interactive mode, when setup runs, then warns and uses PRD."""
-        import json
-        from core.state import RalphState, WorkflowState, save_workflow_state, load_workflow_state
+        from core.state import RalphState, save_workflow_state, load_workflow_state
 
         prd_path = tmp_path / "prd.md"
         plan_path = tmp_path / "plan.md"
@@ -670,8 +666,7 @@ class TestSetupWithExistingState:
         self, tmp_path: Path, mocker
     ) -> None:
         """Given mismatch in interactive mode, when setup runs, then prompts user."""
-        import json
-        from core.state import RalphState, WorkflowState, save_workflow_state
+        from core.state import RalphState, save_workflow_state
 
         prd_path = tmp_path / "prd.md"
         plan_path = tmp_path / "plan.md"
@@ -712,8 +707,7 @@ class TestSetupWithExistingState:
         self, tmp_path: Path, mocker
     ) -> None:
         """Given mismatch and user rejects reset, when setup runs, then aborts."""
-        import json
-        from core.state import RalphState, WorkflowState, save_workflow_state
+        from core.state import RalphState, save_workflow_state
 
         prd_path = tmp_path / "prd.md"
         plan_path = tmp_path / "plan.md"
@@ -751,8 +745,7 @@ class TestSetupWithExistingState:
 
     def test_setup_no_mismatch_proceeds_normally(self, tmp_path: Path) -> None:
         """Given existing state matches PRD, when setup runs, then proceeds without reset."""
-        import json
-        from core.state import RalphState, WorkflowState, save_workflow_state, load_workflow_state
+        from core.state import RalphState, save_workflow_state, load_workflow_state
 
         prd_path = tmp_path / "prd.md"
         plan_path = tmp_path / "plan.md"
