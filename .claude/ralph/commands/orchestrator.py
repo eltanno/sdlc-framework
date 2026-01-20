@@ -130,6 +130,7 @@ class TicketResult:
         attempts: Number of attempts made
         pr_number: PR number if created
         block_reason: Reason if blocked
+        duration_seconds: Time taken to process this ticket
     """
 
     ticket_id: str
@@ -137,6 +138,7 @@ class TicketResult:
     attempts: int = 0
     pr_number: int | None = None
     block_reason: str | None = None
+    duration_seconds: float = 0.0
 
 
 @dataclass
@@ -455,6 +457,7 @@ def process_ticket(
     """
     ticket_id = ticket.id
     branch_name = f"feature/{ticket_id}-implementation"
+    start_time = time.time()
 
     # Get complexity for model selection
     complexity = getattr(ticket, "complexity", 3) or 3
@@ -467,6 +470,14 @@ def process_ticket(
             status="dry_run",
             attempts=0,
         )
+
+    def _format_duration(seconds: float) -> str:
+        """Format duration as human-readable string."""
+        if seconds < 60:
+            return f"{seconds:.1f}s"
+        minutes = int(seconds // 60)
+        secs = int(seconds % 60)
+        return f"{minutes}m {secs}s"
 
     # Get starting attempt number
     current_attempt = get_latest_attempt(ticket_id, config.state_directory) + 1
@@ -533,20 +544,26 @@ def process_ticket(
                     base_dir=config.state_directory,
                 )
 
+                duration = time.time() - start_time
+                logger.info(f"Ticket {ticket_id} completed in {_format_duration(duration)} ({current_attempt} attempt(s))")
                 return TicketResult(
                     ticket_id=ticket_id,
                     status="completed",
                     attempts=current_attempt,
                     pr_number=pr_result.pr_number,
+                    duration_seconds=duration,
                 )
 
             except PrFlowError as e:
                 # PR flow failed, but validation passed - treat as completed but note issue
+                duration = time.time() - start_time
+                logger.info(f"Ticket {ticket_id} completed with PR flow error in {_format_duration(duration)}")
                 return TicketResult(
                     ticket_id=ticket_id,
                     status="completed",
                     attempts=current_attempt,
                     block_reason=f"PR flow error: {e}",
+                    duration_seconds=duration,
                 )
 
         elif result.status == VALIDATION_FAILED:
@@ -565,8 +582,9 @@ def process_ticket(
             continue
 
     # Exceeded max attempts - mark as blocked
+    duration = time.time() - start_time
     block_reason = f"Exceeded {config.max_attempts} attempts"
-    logger.warning(f"Ticket {ticket_id} blocked: {block_reason}")
+    logger.warning(f"Ticket {ticket_id} blocked after {_format_duration(duration)}: {block_reason}")
 
     # Mark blocked in PM tool and state
     if pm_tool is not None:
@@ -596,6 +614,7 @@ def process_ticket(
         status="blocked",
         attempts=config.max_attempts,
         block_reason=block_reason,
+        duration_seconds=duration,
     )
 
 

@@ -386,12 +386,10 @@ def run_setup(
 
                 if interactive:
                     # Prompt user to confirm reset
-                    print(f"\nPRD tickets: {prd_tickets}", file=sys.stderr)
-                    print(f"State tickets: {state_tickets}", file=sys.stderr)
-                    print(f"Added: {tickets_added}", file=sys.stderr)
-                    print(f"Removed: {tickets_removed}", file=sys.stderr)
+                    logger.info(f"PRD tickets: {prd_tickets}, State tickets: {state_tickets}")
+                    logger.info(f"Added: {tickets_added}, Removed: {tickets_removed}")
 
-                    user_input = input("\nReset state to match PRD? (y/n): ").strip().lower()
+                    user_input = input("Reset state to match PRD? (y/n): ").strip().lower()
                     if user_input != "y":
                         return SetupResult(
                             success=False,

@@ -16,9 +16,12 @@ The cleanup command is called at the end of a ralph run to:
 from __future__ import annotations
 
 import json
+import logging
 import subprocess
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 def get_issue_counts() -> dict[str, int]:
@@ -359,8 +362,7 @@ def cleanup(
         Summary dictionary with status and counts
     """
     if verbose:
-        print("=== Ralph Cleanup ===")
-        print("Source: GitHub (querying for final counts...)")
+        logger.info("Cleanup starting - querying GitHub for final counts...")
 
     # Get counts from GitHub
     counts = get_issue_counts()
@@ -378,14 +380,7 @@ def cleanup(
     pending_tickets = get_pending_tickets()
 
     if verbose:
-        output = format_output(
-            counts=counts,
-            status=status,
-            completed_tickets=completed_tickets,
-            blocked_tickets=blocked_tickets,
-            pending_tickets=pending_tickets,
-        )
-        print(output)
+        logger.info(f"Cleanup {status}: total={counts.get('total', 0)}, closed={counts.get('closed', 0)}, blocked={counts.get('blocked', 0)}, pending={counts.get('pending', 0)}")
 
     # Generate and return summary
     return generate_summary(counts, status)
