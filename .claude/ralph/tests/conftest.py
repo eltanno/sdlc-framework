@@ -93,7 +93,7 @@ dev:
 
 @pytest.fixture
 def tmp_state(tmp_path: Path) -> Path:
-    """Create a temporary state file.
+    """Create a temporary state file in v2 format.
 
     Args:
         tmp_path: pytest's temporary directory fixture
@@ -102,7 +102,7 @@ def tmp_state(tmp_path: Path) -> Path:
         Path to the temporary state file
     """
     state_content: dict[str, Any] = {
-        "version": "1.0",
+        "version": "2.0",
         "prd_path": "docs/prds/test-prd.md",
         "plan_path": "docs/plans/test-plan.md",
         "tickets": [
@@ -114,6 +114,13 @@ def tmp_state(tmp_path: Path) -> Path:
                 "attempts": 0,
             }
         ],
+        "ralph": {
+            "tickets": ["TASK-001"],
+            "dependencies": {},
+            "attempts": {},
+            "blocked": {},
+            "source": "github",
+        },
         "current_ticket": None,
         "completed_count": 0,
         "blocked_count": 0,

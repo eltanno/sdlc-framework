@@ -240,7 +240,7 @@ class TestStartTicket:
             ticket_data["block_reason"] = block_reason
 
         state_content = {
-            "version": "1.0",
+            "version": "2.0",
             "prd_path": "docs/prds/test-prd.md",
             "plan_path": "docs/plans/test-plan.md",
             "tickets": [ticket_data],
