@@ -21,23 +21,21 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 import yaml
 
 logger = logging.getLogger(__name__)
 
-from commands.get_next import get_next_ticket, GetNextResult
+from commands.get_next import get_next_ticket
 from commands.mark_blocked import mark_blocked
-from commands.pr_flow import pr_flow, PrFlowResult, PrFlowError
+from commands.pr_flow import pr_flow, PrFlowError
 from commands.ticket_done import ticket_done
-from core.config import get_pm_tool_type, ConfigError, get_use_assignee
-from core.pm import PMTool, PMError, GitHubPM, LocalPM
+from core.config import get_pm_tool_type, ConfigError
+from core.pm import PMTool, GitHubPM, LocalPM
+from core.asana_pm import AsanaPM
 from core.state import (
-    WorkflowState,
     Ticket,
     load_workflow_state,
-    save_workflow_state,
     ensure_state_dir,
     get_latest_attempt,
     write_summary,
@@ -258,15 +256,18 @@ def create_pm_tool(config_file: Path | None = None) -> PMTool:
     if pm_tool_type == "github":
         logger.debug("Initializing GitHubPM")
         return GitHubPM()
+    elif pm_tool_type == "asana":
+        logger.debug("Initializing AsanaPM")
+        return AsanaPM()
     elif pm_tool_type == "none":
         logger.debug("Initializing LocalPM (degraded mode)")
         return LocalPM()
     else:
-        # For future PM tools (trello, asana, linear), raise ConfigError
+        # For future PM tools (trello, linear), raise ConfigError
         # until they're implemented
         raise ConfigError(
             f"PM tool '{pm_tool_type}' is not yet implemented. "
-            f"Supported tools: github, none",
+            f"Supported tools: github, asana, none",
             file_path=config_file
         )
 

@@ -648,6 +648,75 @@ dev:
 
         assert "pm.tool" in str(exc_info.value)
 
+    @pytest.fixture
+    def asana_config_yaml(self, tmp_path: Path) -> Path:
+        """Create a config.yaml with pm.tool: asana."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+ralph:
+  sonnet_threshold: 2
+  max_attempts: 3
+  state_directory: "docs/state"
+
+pm:
+  tool: asana
+
+dev:
+  test_command: "npm test"
+
+git:
+  default_branch: main
+""")
+        return config_file
+
+    @patch.dict(os.environ, {
+        "ASANA_ACCESS_TOKEN": "test-token",
+        "ASANA_WORKSPACE_ID": "workspace-123",
+        "ASANA_PROJECT_ID": "project-456",
+    })
+    def test_create_pm_tool_asana(self, asana_config_yaml: Path) -> None:
+        """Test that AsanaPM is created when pm.tool: asana.
+
+        SDLC-0059: Orchestrator factory integration.
+        FR-10 Acceptance Criteria:
+        - Given pm.tool: asana in config.yaml, when create_pm_tool() is called,
+          then AsanaPM instance is returned.
+        """
+        from commands.orchestrator import create_pm_tool
+        from core.asana_pm import AsanaPM
+
+        pm_tool = create_pm_tool(asana_config_yaml)
+
+        assert pm_tool is not None
+        assert isinstance(pm_tool, AsanaPM)
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_create_pm_tool_asana_missing_credentials_raises_auth_error(
+        self, asana_config_yaml: Path
+    ) -> None:
+        """Test that AsanaPM raises PMAuthError when credentials are missing.
+
+        SDLC-0059: Orchestrator factory integration.
+        FR-10 Acceptance Criteria:
+        - Given Asana credentials are missing, when AsanaPM is instantiated,
+          then PMAuthError is raised with helpful message listing required env vars.
+        """
+        from commands.orchestrator import create_pm_tool
+        from core.pm import PMAuthError
+
+        # Ensure Asana environment variables are NOT set
+        os.environ.pop("ASANA_ACCESS_TOKEN", None)
+        os.environ.pop("ASANA_WORKSPACE_ID", None)
+        os.environ.pop("ASANA_PROJECT_ID", None)
+
+        with pytest.raises(PMAuthError) as exc_info:
+            create_pm_tool(asana_config_yaml)
+
+        error_message = str(exc_info.value)
+        assert "ASANA_ACCESS_TOKEN" in error_message
+        assert "ASANA_WORKSPACE_ID" in error_message
+        assert "ASANA_PROJECT_ID" in error_message
+
     @patch("commands.orchestrator.get_next_ticket")
     @patch("commands.orchestrator.load_workflow_state")
     @patch("commands.orchestrator.create_pm_tool")
