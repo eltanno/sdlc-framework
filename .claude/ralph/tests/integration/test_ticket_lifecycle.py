@@ -13,8 +13,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -29,7 +27,7 @@ from core.state import (
     ensure_state_dir,
 )
 from commands.get_next import get_next_ticket
-from commands.ticket_done import mark_ticket_done, ticket_done
+from commands.ticket_done import mark_ticket_done
 from commands.ticket_reset import reset_ticket, TicketResetError
 
 

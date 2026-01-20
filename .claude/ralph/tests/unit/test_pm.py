@@ -7,8 +7,6 @@ Tests cover:
 - GitHubPM implementation with mocked subprocess calls
 """
 
-import subprocess
-from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -492,9 +490,8 @@ class TestPMToolProtocolConformance:
 
     def test_github_pm_conforms_to_protocol(self):
         """Given GitHubPM class, when checking Protocol, then it conforms."""
-        from typing import runtime_checkable
 
-        from core.pm import GitHubPM, PMTool
+        from core.pm import GitHubPM
 
         # This should not raise - GitHubPM implements all Protocol methods
         pm = GitHubPM()
@@ -555,7 +552,7 @@ class TestLocalPMProtocolConformance:
 
     def test_local_pm_conforms_to_protocol(self):
         """Given LocalPM class, when checking Protocol, then it conforms."""
-        from core.pm import LocalPM, PMTool
+        from core.pm import LocalPM
 
         pm = LocalPM()
 

@@ -8,8 +8,6 @@ Tests cover:
 - Error handling for missing git
 """
 
-import subprocess
-from typing import Any
 from unittest.mock import MagicMock
 
 import pytest

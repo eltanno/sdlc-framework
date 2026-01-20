@@ -12,8 +12,7 @@ Following TDD: Write failing tests first, then implement.
 
 import json
 from pathlib import Path
-from typing import Any
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock
 
 import pytest
 

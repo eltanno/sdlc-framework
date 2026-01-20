@@ -11,9 +11,7 @@ These tests use temporary state files to simulate real workflows.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -24,7 +22,7 @@ from core.state import (
     load_workflow_state,
     save_workflow_state,
 )
-from commands.get_next import get_next_ticket, GetNextResult
+from commands.get_next import get_next_ticket
 
 
 # ============================================================================

@@ -7,7 +7,6 @@ single-codebase and monorepo project structures.
 import subprocess
 from pathlib import Path
 
-import pytest
 
 from commands import validate
 from core.config import Config, Codebase

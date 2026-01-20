@@ -13,17 +13,15 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 import pytest
 
 from commands.orchestrator import (
     OrchestratorConfig,
-    OrchestratorResult,
     TicketResult,
     load_config,
     run_orchestrator,
     process_ticket,
-    invoke_claude,
     parse_engineer_result,
     EngineerResult,
     VALIDATION_PASSED,
@@ -935,7 +933,6 @@ git:
         github_config_yaml: Path,
     ) -> None:
         """Test that PMError from get_next_ticket is handled gracefully."""
-        from core.pm import PMError
 
         # Setup
         mock_pm_tool = MagicMock()

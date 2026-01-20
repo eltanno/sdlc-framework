@@ -9,9 +9,7 @@ Tests for:
 
 import json
 from pathlib import Path
-from typing import Any
 
-import pytest
 
 from commands.status import (
     StatusResult,

@@ -9,11 +9,8 @@ Tests for the cleanup functionality that handles:
 
 import json
 import subprocess
-from pathlib import Path
-from typing import Any
 from unittest.mock import MagicMock
 
-import pytest
 
 # We'll import the module we're building
 from commands import cleanup
