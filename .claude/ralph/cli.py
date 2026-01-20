@@ -136,8 +136,11 @@ def run_command(args: argparse.Namespace) -> int:
         return 1
 
     # State file is specific to this PRD (based on PRD filename)
+    # Store in tmp/ to avoid committing state files
     prd_name = args.prd.stem  # e.g., "2026-01-20-asana-pm-tool-integration"
-    state_file = Path(f"ralph-state-{prd_name}.json")
+    tmp_dir = Path("tmp")
+    tmp_dir.mkdir(exist_ok=True)
+    state_file = tmp_dir / f"ralph-state-{prd_name}.json"
 
     # Find config.yaml
     config_file = Path("config.yaml")

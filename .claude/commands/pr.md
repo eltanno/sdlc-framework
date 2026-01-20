@@ -268,9 +268,56 @@ EOF
 )"
 ```
 
-### 4. Update Asana Ticket
+### 4. Update PM Tool Ticket (Add PR Link)
 
-Add PR/MR link to the Asana ticket.
+After PR/MR is created successfully, update the ticket in the PM tool with the PR link.
+
+**Read PM tool configuration:**
+
+```bash
+# Get PM tool from config.yaml
+PM_TOOL=$(grep -E "^\s*tool:" config.yaml 2>/dev/null | head -1 | awk '{print $2}' || echo "github")
+```
+
+**For Asana (`pm.tool: asana`):**
+
+Use the `AsanaPM.add_pr_comment()` method to add a comment with the PR link:
+
+```python
+# Via Python (recommended - uses AsanaPM class)
+from core.asana_pm import AsanaPM
+
+try:
+    pm = AsanaPM()
+    # task_id is the Asana task GID (from the ticket)
+    # pr_url is the PR URL from step 3
+    success = pm.add_pr_comment(task_id, pr_url)
+    if not success:
+        print("Warning: Failed to update Asana task with PR link")
+except Exception as e:
+    print(f"Warning: Could not update Asana task: {e}")
+    # Continue - PR was created successfully, Asana update is optional
+```
+
+Or via Asana REST API directly:
+
+```bash
+# POST /tasks/{task_id}/stories with comment
+curl -X POST "https://app.asana.com/api/1.0/tasks/${TASK_ID}/stories" \
+  -H "Authorization: Bearer ${ASANA_ACCESS_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"data": {"text": "Pull Request: '"${PR_URL}"'"}}'
+```
+
+**For GitHub (`pm.tool: github`):**
+
+Add a comment to the GitHub issue:
+
+```bash
+gh issue comment $ISSUE_NUMBER --body "Pull Request: $PR_URL"
+```
+
+**Important:** If updating the PM tool fails, log a warning but do NOT fail the PR creation. The PR link is informational - the PR itself was already created successfully.
 
 ## Deliverable
 
@@ -285,13 +332,15 @@ URL: https://github.com/... or https://gitlab.com/...
 Branch: feature/TASK-XXX-description → main
 
 Linked:
-- Ticket: TASK-XXX (updated with PR/MR link)
+- Ticket: TASK-XXX (updated with PR/MR link) ✅ or ⚠️ (if update failed)
 - PRD: docs/prds/YYYY-MM-DD-feature.md
 
 Local Checks: ✅ Passed (typecheck, lint, tests, build)
 
 Next: Get review, then /validate
 ```
+
+**Note:** If Asana/GitHub ticket update failed, show ⚠️ with warning message but still report PR as created successfully.
 
 ---
 

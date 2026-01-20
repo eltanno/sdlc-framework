@@ -800,3 +800,39 @@ class AsanaPM:
         except PMError as e:
             logger.warning(f"Failed to ensure required tags: {e}")
             return False
+
+    # =========================================================================
+    # PR Link Comment Method (SDLC-0062)
+    # =========================================================================
+
+    def add_pr_comment(self, task_id: str, pr_url: str) -> bool:
+        """Add a comment to an Asana task with a PR link.
+
+        Posts a comment to the task via the Asana stories API containing
+        the pull request URL. Used by the /pr slash command to link PRs
+        to their corresponding Asana tasks.
+
+        Args:
+            task_id: GID of the Asana task to comment on
+            pr_url: URL of the pull request (e.g., https://github.com/org/repo/pull/42)
+
+        Returns:
+            True if comment was posted successfully, False otherwise
+            (failures are logged but do not raise exceptions)
+
+        SDLC-0062: Update /pr slash command - Add Asana task comment with PR link
+        """
+        try:
+            # Format the comment text with descriptive prefix
+            comment_text = f"Pull Request: {pr_url}"
+
+            # Post the comment via stories API
+            self._post(f"/tasks/{task_id}/stories", {"text": comment_text})
+
+            logger.info(f"Added PR comment to task {task_id}: {pr_url}")
+            return True
+        except PMError as e:
+            # Handle failures gracefully - log warning but don't raise
+            # Per PRD FR-7: "warning is logged but PR creation succeeds"
+            logger.warning(f"Failed to add PR comment to task {task_id}: {e}")
+            return False
