@@ -578,3 +578,259 @@ class TestAsanaPMTagManagement:
 
         pm = AsanaPM()
         assert pm._tag_cache == {}
+
+
+# =============================================================================
+# SDLC-0054: get_ticket_status Tests
+# =============================================================================
+
+
+class TestAsanaPMGetTicketStatus:
+    """Tests for AsanaPM.get_ticket_status method.
+
+    SDLC-0054: Implement status check via task completion state and blocked tag presence.
+    """
+
+    def test_get_ticket_status_returns_open_for_incomplete_task(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task is incomplete and has no blocked tag, when get_ticket_status is called, then OPEN is returned."""
+        from core.asana_pm import AsanaPM
+        from core.pm import TicketStatus
+
+        # Mock: GET /tasks/{task_id} returns incomplete task without blocked tag
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": {
+                "gid": "12345",
+                "name": "[SDLC-0054] Test Task",
+                "completed": False,
+                "tags": [{"gid": "tag-1", "name": "task"}],
+            }
+        }
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        status = pm.get_ticket_status("12345")
+
+        assert status == TicketStatus.OPEN
+
+    def test_get_ticket_status_returns_closed_for_completed_task(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task is completed, when get_ticket_status is called, then CLOSED is returned."""
+        from core.asana_pm import AsanaPM
+        from core.pm import TicketStatus
+
+        # Mock: GET /tasks/{task_id} returns completed task
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": {
+                "gid": "12345",
+                "name": "[SDLC-0054] Test Task",
+                "completed": True,
+                "tags": [],
+            }
+        }
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        status = pm.get_ticket_status("12345")
+
+        assert status == TicketStatus.CLOSED
+
+    def test_get_ticket_status_returns_blocked_when_blocked_tag_present(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task has blocked tag, when get_ticket_status is called, then BLOCKED is returned."""
+        from core.asana_pm import AsanaPM
+        from core.pm import TicketStatus
+
+        # Mock: GET /tasks/{task_id} returns task with blocked tag
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": {
+                "gid": "12345",
+                "name": "[SDLC-0054] Test Task",
+                "completed": False,
+                "tags": [
+                    {"gid": "tag-1", "name": "task"},
+                    {"gid": "blocked-tag-gid", "name": "blocked"},
+                ],
+            }
+        }
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        status = pm.get_ticket_status("12345")
+
+        assert status == TicketStatus.BLOCKED
+
+    def test_get_ticket_status_blocked_takes_precedence_over_open(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task is incomplete but has blocked tag, when get_ticket_status is called, then BLOCKED is returned."""
+        from core.asana_pm import AsanaPM
+        from core.pm import TicketStatus
+
+        # Mock: GET /tasks/{task_id} returns incomplete task WITH blocked tag
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": {
+                "gid": "12345",
+                "name": "[SDLC-0054] Test Task",
+                "completed": False,
+                "tags": [{"gid": "blocked-tag-gid", "name": "blocked"}],
+            }
+        }
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        status = pm.get_ticket_status("12345")
+
+        assert status == TicketStatus.BLOCKED
+
+    def test_get_ticket_status_uses_case_insensitive_blocked_tag_match(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task has Blocked tag (capitalized), when get_ticket_status is called, then BLOCKED is returned."""
+        from core.asana_pm import AsanaPM
+        from core.pm import TicketStatus
+
+        # Mock: GET /tasks/{task_id} returns task with capitalized blocked tag
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": {
+                "gid": "12345",
+                "name": "[SDLC-0054] Test Task",
+                "completed": False,
+                "tags": [{"gid": "blocked-tag-gid", "name": "Blocked"}],
+            }
+        }
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        status = pm.get_ticket_status("12345")
+
+        assert status == TicketStatus.BLOCKED
+
+    def test_get_ticket_status_calls_correct_api_endpoint(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task id, when get_ticket_status is called, then correct API endpoint is used."""
+        from core.asana_pm import AsanaPM
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": {
+                "gid": "12345",
+                "name": "Test Task",
+                "completed": False,
+                "tags": [],
+            }
+        }
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        pm.get_ticket_status("12345")
+
+        # Verify GET was called with correct endpoint
+        get_call_args = (
+            mock_httpx_client.return_value.__enter__.return_value.get.call_args
+        )
+        url = get_call_args.args[0] if get_call_args.args else ""
+        assert "/tasks/12345" in url
+
+    def test_get_ticket_status_raises_pm_error_for_not_found(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task doesn't exist, when get_ticket_status is called, then PMError is raised."""
+        from core.asana_pm import AsanaPM
+        from core.pm import PMError
+
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        mock_response.json.return_value = {
+            "errors": [{"message": "task not found"}]
+        }
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        with pytest.raises(PMError) as exc_info:
+            pm.get_ticket_status("nonexistent-task")
+
+        assert "not found" in str(exc_info.value).lower() or "404" in str(exc_info.value)
+
+    def test_get_ticket_status_returns_open_when_no_tags(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task has no tags at all, when get_ticket_status is called, then OPEN is returned."""
+        from core.asana_pm import AsanaPM
+        from core.pm import TicketStatus
+
+        # Mock: GET /tasks/{task_id} returns task with empty tags list
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": {
+                "gid": "12345",
+                "name": "[SDLC-0054] Test Task",
+                "completed": False,
+                "tags": [],
+            }
+        }
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        status = pm.get_ticket_status("12345")
+
+        assert status == TicketStatus.OPEN
+
+    def test_get_ticket_status_handles_custom_blocked_label(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given AsanaPM with custom blocked_label, when get_ticket_status is called, then custom label is checked."""
+        from core.asana_pm import AsanaPM
+        from core.pm import TicketStatus
+
+        # Mock: GET /tasks/{task_id} returns task with custom blocked tag
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": {
+                "gid": "12345",
+                "name": "[SDLC-0054] Test Task",
+                "completed": False,
+                "tags": [{"gid": "custom-tag-gid", "name": "needs-attention"}],
+            }
+        }
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM(blocked_label="needs-attention")
+        status = pm.get_ticket_status("12345")
+
+        assert status == TicketStatus.BLOCKED
