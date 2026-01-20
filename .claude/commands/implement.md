@@ -37,7 +37,7 @@ If no ticket ID provided:
 
 Before delegating, collect:
 
-1. **Ticket details** from Asana
+1. **Ticket details** from PM tool (see below)
 2. **Acceptance criteria** from PRD
 3. **Technical approach** from Plan (if relevant)
 4. **Current branch status**
@@ -46,6 +46,75 @@ Before delegating, collect:
 git branch --show-current
 git status --short
 ```
+
+### Fetch Ticket Details from PM Tool
+
+**Read PM tool configuration:**
+
+```bash
+# Get PM tool from config.yaml
+PM_TOOL=$(grep -E "^\s*tool:" config.yaml 2>/dev/null | head -1 | awk '{print $2}' || echo "github")
+```
+
+**For Asana (`pm.tool: asana`):**
+
+Use the `AsanaPM.get_task_details()` method to fetch task details including subtasks (acceptance criteria):
+
+```python
+# Via Python (recommended - uses AsanaPM class)
+from core.asana_pm import AsanaPM
+
+try:
+    pm = AsanaPM()
+    # task_id is the Asana task GID (from the ticket)
+    task_details = pm.get_task_details(task_id)
+
+    # task_details includes:
+    # - name: Task title
+    # - notes: Task description
+    # - subtasks: List of subtasks (acceptance criteria)
+    # - tags: Task tags
+    # - dependencies: Task dependencies
+    # - completed: Completion status
+
+    print(f"Task: {task_details['name']}")
+    print(f"Description: {task_details['notes']}")
+
+    if task_details.get('subtasks'):
+        print("Acceptance Criteria (subtasks):")
+        for subtask in task_details['subtasks']:
+            status = "✓" if subtask.get('completed') else "○"
+            print(f"  {status} {subtask['name']}")
+
+    if task_details.get('dependencies'):
+        print("Dependencies:")
+        for dep in task_details['dependencies']:
+            print(f"  - {dep['name']}")
+except Exception as e:
+    print(f"Warning: Could not fetch Asana task details: {e}")
+    # Continue - PRD still has acceptance criteria
+```
+
+Or via Asana REST API directly:
+
+```bash
+# GET /tasks/{task_id} - task details
+curl -s "https://app.asana.com/api/1.0/tasks/${TASK_ID}" \
+  -H "Authorization: Bearer ${ASANA_ACCESS_TOKEN}" | jq '.data'
+
+# GET /tasks/{task_id}/subtasks - acceptance criteria
+curl -s "https://app.asana.com/api/1.0/tasks/${TASK_ID}/subtasks" \
+  -H "Authorization: Bearer ${ASANA_ACCESS_TOKEN}" | jq '.data'
+```
+
+**For GitHub (`pm.tool: github`):**
+
+```bash
+# Get issue details
+gh issue view $ISSUE_NUMBER --json title,body,labels
+```
+
+**Important:** Include both the PM tool task details AND the PRD acceptance criteria in the engineer context. The PM tool may have additional context (subtasks, dependencies) not in the PRD.
 
 ## Delegation
 

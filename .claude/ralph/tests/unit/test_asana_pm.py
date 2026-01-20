@@ -3406,3 +3406,267 @@ class TestAsanaPMAddPrComment:
         params = list(sig.parameters.keys())
         # Should have task_id and pr_url parameters
         assert len(params) >= 2
+
+
+# =============================================================================
+# SDLC-0063: get_task_details for /implement command Tests
+# =============================================================================
+
+
+class TestAsanaPMGetTaskDetails:
+    """Tests for AsanaPM.get_task_details method.
+
+    SDLC-0063: Update /implement slash command - Add Asana task detail fetch
+    when pm.tool: asana. Include subtasks in context.
+    """
+
+    def test_get_task_details_returns_task_info(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given valid task ID, when get_task_details is called, then task info is returned."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET /tasks/{task_id} returns task details
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = {
+            "data": {
+                "gid": "task-12345",
+                "name": "[SDLC-0001] Implement Feature",
+                "notes": "Task description here",
+                "completed": False,
+            }
+        }
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_get_response
+        )
+
+        pm = AsanaPM()
+        result = pm.get_task_details("task-12345")
+
+        assert result is not None
+        assert result["gid"] == "task-12345"
+        assert result["name"] == "[SDLC-0001] Implement Feature"
+        assert result["notes"] == "Task description here"
+
+    def test_get_task_details_includes_subtasks(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task with subtasks, when get_task_details is called, then subtasks are included."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET /tasks/{task_id} returns task details
+        mock_task_response = MagicMock()
+        mock_task_response.status_code = 200
+        mock_task_response.json.return_value = {
+            "data": {
+                "gid": "task-12345",
+                "name": "[SDLC-0001] Implement Feature",
+                "notes": "Task description",
+                "completed": False,
+            }
+        }
+
+        # Mock: GET /tasks/{task_id}/subtasks returns acceptance criteria
+        mock_subtasks_response = MagicMock()
+        mock_subtasks_response.status_code = 200
+        mock_subtasks_response.json.return_value = {
+            "data": [
+                {"gid": "sub-1", "name": "Given X, when Y, then Z", "completed": False},
+                {"gid": "sub-2", "name": "Given A, when B, then C", "completed": True},
+            ]
+        }
+
+        # Configure mock to return different responses for different calls
+        mock_httpx_client.return_value.__enter__.return_value.get.side_effect = [
+            mock_task_response,
+            mock_subtasks_response,
+        ]
+
+        pm = AsanaPM()
+        result = pm.get_task_details("task-12345")
+
+        assert "subtasks" in result
+        assert len(result["subtasks"]) == 2
+        assert result["subtasks"][0]["name"] == "Given X, when Y, then Z"
+        assert result["subtasks"][1]["completed"] is True
+
+    def test_get_task_details_handles_no_subtasks(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task without subtasks, when get_task_details is called, then empty subtasks list."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET /tasks/{task_id} returns task details
+        mock_task_response = MagicMock()
+        mock_task_response.status_code = 200
+        mock_task_response.json.return_value = {
+            "data": {
+                "gid": "task-12345",
+                "name": "[SDLC-0001] Implement Feature",
+                "notes": "Task description",
+                "completed": False,
+            }
+        }
+
+        # Mock: GET /tasks/{task_id}/subtasks returns empty list
+        mock_subtasks_response = MagicMock()
+        mock_subtasks_response.status_code = 200
+        mock_subtasks_response.json.return_value = {"data": []}
+
+        mock_httpx_client.return_value.__enter__.return_value.get.side_effect = [
+            mock_task_response,
+            mock_subtasks_response,
+        ]
+
+        pm = AsanaPM()
+        result = pm.get_task_details("task-12345")
+
+        assert "subtasks" in result
+        assert result["subtasks"] == []
+
+    def test_get_task_details_calls_correct_endpoints(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task ID, when get_task_details is called, then correct API endpoints are used."""
+        from core.asana_pm import AsanaPM
+
+        # Mock responses
+        mock_task_response = MagicMock()
+        mock_task_response.status_code = 200
+        mock_task_response.json.return_value = {
+            "data": {"gid": "task-12345", "name": "Task", "notes": ""}
+        }
+
+        mock_subtasks_response = MagicMock()
+        mock_subtasks_response.status_code = 200
+        mock_subtasks_response.json.return_value = {"data": []}
+
+        mock_httpx_client.return_value.__enter__.return_value.get.side_effect = [
+            mock_task_response,
+            mock_subtasks_response,
+        ]
+
+        pm = AsanaPM()
+        pm.get_task_details("task-12345")
+
+        # Verify both calls were made
+        get_calls = mock_httpx_client.return_value.__enter__.return_value.get.call_args_list
+        assert len(get_calls) == 2
+
+        # First call: /tasks/{task_id}
+        first_url = get_calls[0].args[0]
+        assert "/tasks/task-12345" in first_url
+        assert "subtasks" not in first_url
+
+        # Second call: /tasks/{task_id}/subtasks
+        second_url = get_calls[1].args[0]
+        assert "/tasks/task-12345/subtasks" in second_url
+
+    def test_get_task_details_raises_error_for_invalid_task(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given non-existent task ID, when get_task_details is called, then PMError is raised."""
+        from core.asana_pm import AsanaPM
+        from core.pm import PMError
+
+        # Mock: GET /tasks/{task_id} returns 404
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        mock_response.json.return_value = {"errors": [{"message": "Not found"}]}
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        with pytest.raises(PMError) as exc_info:
+            pm.get_task_details("nonexistent-task")
+
+        assert "not found" in str(exc_info.value).lower() or "404" in str(exc_info.value)
+
+    def test_get_task_details_includes_tags(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task with tags, when get_task_details is called, then tags are included."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET /tasks/{task_id} returns task with tags
+        mock_task_response = MagicMock()
+        mock_task_response.status_code = 200
+        mock_task_response.json.return_value = {
+            "data": {
+                "gid": "task-12345",
+                "name": "[SDLC-0001] Implement Feature",
+                "notes": "Description",
+                "completed": False,
+                "tags": [
+                    {"gid": "tag-1", "name": "task"},
+                    {"gid": "tag-2", "name": "ralph-1"},
+                ],
+            }
+        }
+
+        mock_subtasks_response = MagicMock()
+        mock_subtasks_response.status_code = 200
+        mock_subtasks_response.json.return_value = {"data": []}
+
+        mock_httpx_client.return_value.__enter__.return_value.get.side_effect = [
+            mock_task_response,
+            mock_subtasks_response,
+        ]
+
+        pm = AsanaPM()
+        result = pm.get_task_details("task-12345")
+
+        assert "tags" in result
+        assert len(result["tags"]) == 2
+        assert result["tags"][0]["name"] == "task"
+
+    def test_get_task_details_includes_dependencies(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task with dependencies, when get_task_details is called, then dependencies are included."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET /tasks/{task_id} returns task with dependencies
+        mock_task_response = MagicMock()
+        mock_task_response.status_code = 200
+        mock_task_response.json.return_value = {
+            "data": {
+                "gid": "task-12345",
+                "name": "[SDLC-0002] Feature",
+                "notes": "Description",
+                "completed": False,
+                "dependencies": [
+                    {"gid": "dep-1", "name": "[SDLC-0001] First Task"},
+                ],
+            }
+        }
+
+        mock_subtasks_response = MagicMock()
+        mock_subtasks_response.status_code = 200
+        mock_subtasks_response.json.return_value = {"data": []}
+
+        mock_httpx_client.return_value.__enter__.return_value.get.side_effect = [
+            mock_task_response,
+            mock_subtasks_response,
+        ]
+
+        pm = AsanaPM()
+        result = pm.get_task_details("task-12345")
+
+        assert "dependencies" in result
+        assert len(result["dependencies"]) == 1
+        assert result["dependencies"][0]["name"] == "[SDLC-0001] First Task"
+
+    def test_get_task_details_method_exists(self, mock_env_asana):
+        """Given AsanaPM class, when checking for get_task_details, then method exists."""
+        from core.asana_pm import AsanaPM
+        import inspect
+
+        pm = AsanaPM()
+        assert hasattr(pm, "get_task_details")
+        sig = inspect.signature(pm.get_task_details)
+        params = list(sig.parameters.keys())
+        # Should have task_id parameter
+        assert "task_id" in params

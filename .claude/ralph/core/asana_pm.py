@@ -836,3 +836,69 @@ class AsanaPM:
             # Per PRD FR-7: "warning is logged but PR creation succeeds"
             logger.warning(f"Failed to add PR comment to task {task_id}: {e}")
             return False
+
+    # =========================================================================
+    # Task Details Method (SDLC-0063)
+    # =========================================================================
+
+    def get_task_details(self, task_id: str) -> dict[str, Any]:
+        """Get detailed information about an Asana task.
+
+        Fetches task details including name, notes/description, completion
+        status, tags, dependencies, and subtasks. Subtasks are typically
+        used as acceptance criteria in this workflow.
+
+        This method is used by the /implement slash command to provide
+        full context about a task before implementation begins.
+
+        Args:
+            task_id: GID of the Asana task to fetch
+
+        Returns:
+            Dictionary containing task details with keys:
+            - gid: Task GID
+            - name: Task title
+            - notes: Task description/notes
+            - completed: Boolean completion status
+            - tags: List of tag objects (if present)
+            - dependencies: List of dependency task objects (if present)
+            - subtasks: List of subtask objects (acceptance criteria)
+
+        Raises:
+            PMError: If task not found or API call fails
+
+        SDLC-0063: Update /implement slash command - Add Asana task detail fetch
+        """
+        # 1. Fetch the main task details
+        task_data = self._get(f"/tasks/{task_id}")
+
+        # 2. Fetch subtasks (acceptance criteria)
+        subtasks_data = self._get(f"/tasks/{task_id}/subtasks")
+
+        # Handle subtasks response (could be list directly or need extraction)
+        if isinstance(subtasks_data, list):
+            subtasks = subtasks_data
+        else:
+            subtasks = []
+
+        # 3. Combine task details with subtasks
+        result: dict[str, Any] = {
+            "gid": task_data.get("gid", ""),
+            "name": task_data.get("name", ""),
+            "notes": task_data.get("notes", ""),
+            "completed": task_data.get("completed", False),
+            "subtasks": subtasks,
+        }
+
+        # Include optional fields if present
+        if "tags" in task_data:
+            result["tags"] = task_data["tags"]
+        if "dependencies" in task_data:
+            result["dependencies"] = task_data["dependencies"]
+
+        logger.info(
+            f"Fetched task details for {task_id}: {result['name']} "
+            f"({len(subtasks)} subtasks)"
+        )
+
+        return result
