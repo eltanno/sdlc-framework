@@ -7,10 +7,12 @@ via the ASANA_ACCESS_TOKEN environment variable.
 SDLC-0052: AsanaPM HTTP client and authentication
 SDLC-0053: AsanaPM tag management
 SDLC-0054: AsanaPM get_ticket_status method
+SDLC-0055: AsanaPM claim_ticket and is_ticket_claimed methods
 """
 
 import logging
 import os
+import re
 from typing import Any
 
 import httpx
@@ -326,6 +328,9 @@ class AsanaPM:
     def claim_ticket(self, ticket_id: str, label: str) -> bool:
         """Claim a task by adding a tag.
 
+        Adds the specified ralph-* tag to the task. The tag is created
+        if it doesn't exist in the workspace.
+
         Args:
             ticket_id: Task GID in Asana
             label: Tag name to add (e.g., "ralph-1")
@@ -333,8 +338,18 @@ class AsanaPM:
         Returns:
             True if claim succeeded, False otherwise
         """
-        # Stub implementation - will be completed in SDLC-0055
-        raise NotImplementedError("claim_ticket will be implemented in SDLC-0055")
+        try:
+            # Get or create the tag
+            tag_gid = self._get_or_create_tag(label)
+
+            # Add the tag to the task
+            self._post(f"/tasks/{ticket_id}/addTag", {"tag": tag_gid})
+
+            logger.info(f"Successfully claimed ticket {ticket_id} with label {label}")
+            return True
+        except PMError as e:
+            logger.warning(f"Failed to claim ticket {ticket_id} with label {label}: {e}")
+            return False
 
     def close_ticket(self, ticket_id: str) -> bool:
         """Complete an Asana task.
@@ -364,14 +379,32 @@ class AsanaPM:
     def is_ticket_claimed(self, ticket_id: str) -> tuple[bool, str | None]:
         """Check if a task is claimed by any Ralph instance.
 
+        Looks for any tag starting with "ralph-" followed by a digit.
+        This matches the pattern used by claim_ticket (ralph-0 through ralph-5).
+
         Args:
             ticket_id: Task GID in Asana
 
         Returns:
-            Tuple of (is_claimed, claiming_label)
+            Tuple of (is_claimed, claiming_label) where claiming_label
+            is the ralph-* label if claimed, None otherwise
         """
-        # Stub implementation - will be completed in SDLC-0055
-        raise NotImplementedError("is_ticket_claimed will be implemented in SDLC-0055")
+        try:
+            # Fetch task with tags
+            task_data = self._get(f"/tasks/{ticket_id}")
+
+            # Check for ralph-N tags (where N is a digit)
+            tags = task_data.get("tags", [])
+            for tag in tags:
+                tag_name = tag.get("name", "")
+                # Match "ralph-" followed by one or more digits
+                if re.match(r"^ralph-\d+$", tag_name):
+                    return (True, tag_name)
+
+            return (False, None)
+        except PMError as e:
+            logger.warning(f"Failed to check claim status for ticket {ticket_id}: {e}")
+            return (False, None)
 
     def get_open_tickets(self, ticket_ids: list[str]) -> list[TicketInfo]:
         """Get information about open tasks from the provided list.
