@@ -12,6 +12,7 @@ This is a port of .claude/scripts/ralph-prd.sh to Python.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import subprocess
@@ -24,9 +25,14 @@ from typing import Any
 
 import yaml
 
+logger = logging.getLogger(__name__)
+
 from commands.get_next import get_next_ticket, GetNextResult
+from commands.mark_blocked import mark_blocked
 from commands.pr_flow import pr_flow, PrFlowResult, PrFlowError
 from commands.ticket_done import ticket_done
+from core.config import get_pm_tool_type, ConfigError, get_use_assignee
+from core.pm import PMTool, PMError, GitHubPM, LocalPM
 from core.state import (
     WorkflowState,
     Ticket,
@@ -70,6 +76,7 @@ class OrchestratorConfig:
         engineer_timeout: Timeout in minutes for engineer invocation
         validator_timeout: Timeout in minutes for validator invocation
         instance_label: Label for this ralph instance (from RALPH_LABEL env)
+        use_assignee: Whether to also assign issues to current user when claiming
         test_command: Command to run tests
         lint_command: Command to run linter
         typecheck_command: Command to run type checker
@@ -84,6 +91,7 @@ class OrchestratorConfig:
     engineer_timeout: int = DEFAULT_ENGINEER_TIMEOUT
     validator_timeout: int = DEFAULT_VALIDATOR_TIMEOUT
     instance_label: str = ""
+    use_assignee: bool = False
     test_command: str = ""
     lint_command: str = ""
     typecheck_command: str = ""
@@ -208,12 +216,57 @@ def load_config(
         engineer_timeout=ralph_config.get("engineer_timeout", DEFAULT_ENGINEER_TIMEOUT),
         validator_timeout=ralph_config.get("validator_timeout", DEFAULT_VALIDATOR_TIMEOUT),
         instance_label=instance_label,
+        use_assignee=ralph_config.get("use_assignee", False),
         test_command=dev_config.get("test_command", ""),
         lint_command=dev_config.get("lint_command", ""),
         typecheck_command=dev_config.get("typecheck_command", ""),
         build_command=dev_config.get("build_command", ""),
         default_branch=git_config.get("default_branch", "main"),
     )
+
+
+# ============================================================================
+# PM Tool Factory
+# ============================================================================
+
+
+def create_pm_tool(config_file: Path | None = None) -> PMTool:
+    """Create a PM tool instance based on configuration.
+
+    Reads the pm.tool setting from config.yaml and creates the appropriate
+    PM tool implementation.
+
+    Args:
+        config_file: Path to config.yaml (default: config.yaml in cwd)
+
+    Returns:
+        PMTool instance (GitHubPM, LocalPM, etc.)
+
+    Raises:
+        ConfigError: If pm.tool is not configured or has an invalid value
+    """
+    if config_file is None:
+        config_file = Path("config.yaml")
+
+    # Get PM tool type from config
+    pm_tool_type = get_pm_tool_type(config_file)
+    logger.info(f"Creating PM tool: {pm_tool_type}")
+
+    # Create appropriate PM tool instance
+    if pm_tool_type == "github":
+        logger.debug("Initializing GitHubPM")
+        return GitHubPM()
+    elif pm_tool_type == "none":
+        logger.debug("Initializing LocalPM (degraded mode)")
+        return LocalPM()
+    else:
+        # For future PM tools (trello, asana, linear), raise ConfigError
+        # until they're implemented
+        raise ConfigError(
+            f"PM tool '{pm_tool_type}' is not yet implemented. "
+            f"Supported tools: github, none",
+            file_path=config_file
+        )
 
 
 # ============================================================================
@@ -382,6 +435,8 @@ def process_ticket(
     plan_path: Path,
     state_file: Path,
     dry_run: bool = False,
+    pm_tool: PMTool | None = None,
+    ralph_label: str | None = None,
 ) -> TicketResult:
     """Process a single ticket through implementation and validation.
 
@@ -392,6 +447,8 @@ def process_ticket(
         plan_path: Path to plan document
         state_file: Path to workflow state file
         dry_run: If True, don't invoke Claude
+        pm_tool: Optional PM tool for ticket operations
+        ralph_label: Optional ralph instance label for concurrency control
 
     Returns:
         TicketResult with processing outcome
@@ -459,6 +516,8 @@ def process_ticket(
                     ticket_id=ticket_id,
                     pr_number=str(pr_result.pr_number) if pr_result.pr_number else None,
                     state_file=state_file,
+                    pm_tool=pm_tool,
+                    ralph_label=ralph_label,
                 )
 
                 # Write success summary
@@ -502,6 +561,25 @@ def process_ticket(
             continue
 
     # Exceeded max attempts - mark as blocked
+    block_reason = f"Exceeded {config.max_attempts} attempts"
+    logger.warning(f"Ticket {ticket_id} blocked: {block_reason}")
+
+    # Mark blocked in PM tool and state
+    if pm_tool is not None:
+        try:
+            mark_blocked(
+                ticket_id=ticket_id,
+                reason=block_reason,
+                state_file=state_file,
+                pm_tool=pm_tool,
+                ralph_label=ralph_label,
+            )
+            logger.debug(f"Marked ticket {ticket_id} as blocked in PM tool")
+        except Exception as e:
+            # Log but don't fail - we still want to return blocked status
+            # The state file update in mark_blocked might have succeeded
+            logger.error(f"Failed to mark ticket {ticket_id} as blocked in PM tool: {e}")
+
     write_summary(
         ticket_id=ticket_id,
         status="BLOCKED",
@@ -513,7 +591,7 @@ def process_ticket(
         ticket_id=ticket_id,
         status="blocked",
         attempts=config.max_attempts,
-        block_reason=f"Exceeded {config.max_attempts} attempts",
+        block_reason=block_reason,
     )
 
 
@@ -705,16 +783,32 @@ def run_orchestrator(
 
     # Load configuration
     config = load_config(config_file)
+    logger.debug(f"Loaded config: max_attempts={config.max_attempts}, use_assignee={config.use_assignee}")
+
+    # Create PM tool based on config
+    pm_tool = create_pm_tool(config_file)
+
+    # Read RALPH_LABEL from environment for concurrency control
+    ralph_label = os.environ.get("RALPH_LABEL", "") or None
+    if ralph_label:
+        logger.info(f"Running as instance: {ralph_label}")
+    else:
+        logger.debug("No RALPH_LABEL set, running without concurrency control")
 
     # Load workflow state
     state = load_workflow_state(state_file)
+    logger.debug(f"Loaded workflow state from {state_file}")
 
     # Ticket processing loop
     wait_retry_count = 0
 
     while True:
-        # Get next ticket
-        next_result = get_next_ticket(state)
+        # Get next ticket using PM tool for status queries
+        next_result = get_next_ticket(
+            state,
+            pm_tool=pm_tool,
+            ralph_label=ralph_label,
+        )
 
         # Handle waiting on dependencies
         if next_result.status == "waiting_on_dependencies":
@@ -748,6 +842,8 @@ def run_orchestrator(
             plan_path=plan_path,
             state_file=state_file,
             dry_run=dry_run,
+            pm_tool=pm_tool,
+            ralph_label=ralph_label,
         )
 
         result.ticket_results.append(ticket_result)

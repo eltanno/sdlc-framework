@@ -633,47 +633,47 @@ class TestCompletionScenarios:
 class TestDependencyWaiting:
     """Tests for dependency waiting behavior."""
 
-    def test_orchestrator_handles_waiting_on_dependencies(self, tmp_path: Path):
+    @patch("commands.orchestrator.get_next_ticket")
+    @patch("commands.orchestrator.load_workflow_state")
+    @patch("commands.orchestrator.create_pm_tool")
+    def test_orchestrator_handles_waiting_on_dependencies(
+        self,
+        mock_create_pm: MagicMock,
+        mock_load_state: MagicMock,
+        mock_get_next: MagicMock,
+        tmp_path: Path
+    ):
         """Given tickets waiting on dependencies that won't resolve, when max wait reached,
         then orchestrator exits."""
-        # Create workflow where TASK-001 is blocked and TASK-002 depends on it
+        # Setup PM tool mock
+        mock_create_pm.return_value = MagicMock()
+
+        # Create minimal files for config
         prd_file = tmp_path / "prd.md"
         prd_file.write_text("# Test PRD\n")
-
         plan_file = tmp_path / "plan.md"
         plan_file.write_text("# Test Plan\n")
 
-        tickets = [
-            Ticket(
-                id="TASK-001",
-                title="Blocked task",
-                status="blocked",
-                dependencies=[],
-                block_reason="Test block",
-            ),
-            Ticket(id="TASK-002", title="Waiting task", status="pending", dependencies=["TASK-001"]),
-        ]
-        ralph = RalphState(
-            tickets=["TASK-001", "TASK-002"],
-            dependencies={"TASK-002": ["TASK-001"]},
-            attempts={},
-            blocked={"TASK-001": "Test block"},
-            source="github",
-        )
-        state = WorkflowState(
+        # Setup mock state
+        mock_state = WorkflowState(
             version="2.0",
             prd_path=prd_file,
             plan_path=plan_file,
-            tickets=tickets,
-            blocked_count=1,
-            ralph=ralph,
+            tickets=[],
         )
-        state_file = tmp_path / "workflow-state.json"
-        save_workflow_state(state, state_file)
+        mock_load_state.return_value = mock_state
+
+        # Return waiting_on_dependencies status for max_wait_retries times, then complete
+        mock_get_next.side_effect = [
+            MagicMock(ticket=None, has_more=True, status="waiting_on_dependencies"),
+            MagicMock(ticket=None, has_more=False, status="complete"),
+        ]
 
         config_content = """
 ralph:
   max_attempts: 3
+pm:
+  tool: none
 """
         config_file = tmp_path / "config.yaml"
         config_file.write_text(config_content)
@@ -681,7 +681,7 @@ ralph:
         result = run_orchestrator(
             prd_path=prd_file,
             plan_path=plan_file,
-            state_file=state_file,
+            state_file=tmp_path / "state.json",
             config_file=config_file,
             dry_run=False,
             max_wait_retries=1,  # Only wait once
@@ -691,6 +691,7 @@ ralph:
         # TASK-002 is waiting on blocked TASK-001, so nothing gets processed
         # The orchestrator should exit after max wait retries
         assert result.completed_count == 0
+        assert result.status == "complete"
 
 
 # ============================================================================
