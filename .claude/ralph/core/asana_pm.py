@@ -9,6 +9,7 @@ SDLC-0053: AsanaPM tag management
 SDLC-0054: AsanaPM get_ticket_status method
 SDLC-0055: AsanaPM claim_ticket and is_ticket_claimed methods
 SDLC-0056: AsanaPM close_ticket with section move
+SDLC-0057: AsanaPM add_blocked_label with comment
 """
 
 import logging
@@ -439,15 +440,35 @@ class AsanaPM:
     def add_blocked_label(self, ticket_id: str, reason: str) -> bool:
         """Mark a task as blocked with a comment.
 
+        Adds the blocked tag to the task and posts a comment with the
+        reason for blocking via the Asana stories API.
+
         Args:
             ticket_id: Task GID in Asana
             reason: Reason why the task is blocked
 
         Returns:
             True if operation succeeded, False otherwise
+
+        SDLC-0057: AsanaPM add_blocked_label with comment
         """
-        # Stub implementation - will be completed in SDLC-0057
-        raise NotImplementedError("add_blocked_label will be implemented in SDLC-0057")
+        try:
+            # 1. Get or create the blocked tag
+            blocked_tag_gid = self._get_or_create_tag(self._blocked_label)
+
+            # 2. Add the blocked tag to the task
+            self._post(f"/tasks/{ticket_id}/addTag", {"tag": blocked_tag_gid})
+            logger.info(f"Added blocked tag to task {ticket_id}")
+
+            # 3. Post a comment with the reason via stories API
+            comment_text = f"Blocked: {reason}"
+            self._post(f"/tasks/{ticket_id}/stories", {"text": comment_text})
+            logger.info(f"Posted blocked reason comment to task {ticket_id}")
+
+            return True
+        except PMError as e:
+            logger.warning(f"Failed to add blocked label to ticket {ticket_id}: {e}")
+            return False
 
     def is_ticket_claimed(self, ticket_id: str) -> tuple[bool, str | None]:
         """Check if a task is claimed by any Ralph instance.
