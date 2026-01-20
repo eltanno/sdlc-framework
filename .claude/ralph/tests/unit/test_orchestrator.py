@@ -112,7 +112,7 @@ def sample_state_file(tmp_path: Path) -> Path:
     """Create a sample workflow-state.json file."""
     state_file = tmp_path / "workflow-state.json"
     state_data = {
-        "version": "1.0",
+        "version": "2.0",
         "prd_path": "docs/prds/sample.md",
         "plan_path": "docs/plans/sample.md",
         "tickets": [

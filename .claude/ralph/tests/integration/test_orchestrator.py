@@ -23,6 +23,7 @@ import pytest
 from core.state import (
     WorkflowState,
     Ticket,
+    RalphState,
     load_workflow_state,
     save_workflow_state,
 )
@@ -110,11 +111,19 @@ def orchestrator_workflow(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
         Ticket(id="TASK-001", title="First task", status="pending", dependencies=[]),
         Ticket(id="TASK-002", title="Second task", status="pending", dependencies=["TASK-001"]),
     ]
+    ralph = RalphState(
+        tickets=["TASK-001", "TASK-002"],
+        dependencies={"TASK-002": ["TASK-001"]},
+        attempts={},
+        blocked={},
+        source="github",
+    )
     state = WorkflowState(
-        version="1.0",
+        version="2.0",
         prd_path=prd_file,
         plan_path=plan_file,
         tickets=tickets,
+        ralph=ralph,
     )
     state_file = tmp_path / "workflow-state.json"
     save_workflow_state(state, state_file)
@@ -153,11 +162,19 @@ def single_ticket_workflow(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
     tickets = [
         Ticket(id="TASK-001", title="Only task", status="pending", dependencies=[]),
     ]
+    ralph = RalphState(
+        tickets=["TASK-001"],
+        dependencies={},
+        attempts={},
+        blocked={},
+        source="github",
+    )
     state = WorkflowState(
-        version="1.0",
+        version="2.0",
         prd_path=prd_file,
         plan_path=plan_file,
         tickets=tickets,
+        ralph=ralph,
     )
     state_file = tmp_path / "workflow-state.json"
     save_workflow_state(state, state_file)
@@ -636,12 +653,20 @@ class TestDependencyWaiting:
             ),
             Ticket(id="TASK-002", title="Waiting task", status="pending", dependencies=["TASK-001"]),
         ]
+        ralph = RalphState(
+            tickets=["TASK-001", "TASK-002"],
+            dependencies={"TASK-002": ["TASK-001"]},
+            attempts={},
+            blocked={"TASK-001": "Test block"},
+            source="github",
+        )
         state = WorkflowState(
-            version="1.0",
+            version="2.0",
             prd_path=prd_file,
             plan_path=plan_file,
             tickets=tickets,
             blocked_count=1,
+            ralph=ralph,
         )
         state_file = tmp_path / "workflow-state.json"
         save_workflow_state(state, state_file)

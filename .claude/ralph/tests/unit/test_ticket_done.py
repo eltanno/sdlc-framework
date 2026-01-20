@@ -27,7 +27,7 @@ class TestMarkTicketDone:
 
         # Setup state file with an in_progress ticket
         state = {
-            "version": "1.0",
+            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -58,7 +58,7 @@ class TestMarkTicketDone:
         from commands.ticket_done import mark_ticket_done
 
         state = {
-            "version": "1.0",
+            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -81,7 +81,7 @@ class TestMarkTicketDone:
         from commands.ticket_done import mark_ticket_done
 
         state = {
-            "version": "1.0",
+            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -103,7 +103,7 @@ class TestMarkTicketDone:
         from commands.ticket_done import mark_ticket_done
 
         state = {
-            "version": "1.0",
+            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -129,7 +129,7 @@ class TestMarkTicketDone:
         from commands.ticket_done import mark_ticket_done
 
         state = {
-            "version": "1.0",
+            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -159,7 +159,7 @@ class TestMarkTicketDone:
         from commands.ticket_done import mark_ticket_done
 
         state = {
-            "version": "1.0",
+            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -183,7 +183,7 @@ class TestMarkTicketDone:
         from commands.ticket_done import mark_ticket_done
 
         state = {
-            "version": "1.0",
+            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -339,7 +339,7 @@ class TestTicketDoneIntegration:
 
         # Setup state file
         state = {
-            "version": "1.0",
+            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -383,7 +383,7 @@ ralph:
 
         # Setup state file
         state = {
-            "version": "1.0",
+            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -427,7 +427,7 @@ ralph:
 
         # Setup state file
         state = {
-            "version": "1.0",
+            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -466,7 +466,7 @@ pm:
 
         # Setup state file without issue_number
         state = {
-            "version": "1.0",
+            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -518,7 +518,7 @@ class TestTicketDoneOutput:
 
         # Setup state file
         state = {
-            "version": "1.0",
+            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [

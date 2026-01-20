@@ -27,7 +27,7 @@ class TestMarkBlockedBasic:
 
         # Setup state file
         state = {
-            "version": "1.0",
+            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -73,7 +73,7 @@ class TestMarkBlockedBasic:
         from commands.mark_blocked import mark_blocked
 
         state = {
-            "version": "1.0",
+            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -108,7 +108,7 @@ class TestMarkBlockedStateUpdate:
         from core.state import load_workflow_state
 
         state = {
-            "version": "1.0",
+            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -138,7 +138,7 @@ class TestMarkBlockedStateUpdate:
         from core.state import load_workflow_state
 
         state = {
-            "version": "1.0",
+            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -168,7 +168,7 @@ class TestMarkBlockedStateUpdate:
         from core.state import load_workflow_state
 
         state = {
-            "version": "1.0",
+            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -198,7 +198,7 @@ class TestMarkBlockedStateUpdate:
         from core.state import load_workflow_state
 
         state = {
-            "version": "1.0",
+            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -231,7 +231,7 @@ class TestMarkBlockedGitHub:
         from commands.mark_blocked import mark_blocked
 
         state = {
-            "version": "1.0",
+            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -266,7 +266,7 @@ class TestMarkBlockedGitHub:
         from commands.mark_blocked import mark_blocked
 
         state = {
-            "version": "1.0",
+            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -295,7 +295,7 @@ class TestMarkBlockedGitHub:
         from commands.mark_blocked import mark_blocked
 
         state = {
-            "version": "1.0",
+            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -327,7 +327,7 @@ class TestMarkBlockedGitHub:
         from commands.mark_blocked import mark_blocked
 
         state = {
-            "version": "1.0",
+            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -359,7 +359,7 @@ class TestMarkBlockedGitHub:
         from commands.mark_blocked import mark_blocked
 
         state = {
-            "version": "1.0",
+            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -391,7 +391,7 @@ class TestMarkBlockedGitHub:
         from commands.mark_blocked import mark_blocked
 
         state = {
-            "version": "1.0",
+            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -429,7 +429,7 @@ class TestMarkBlockedWithoutGitHub:
         from core.state import load_workflow_state
 
         state = {
-            "version": "1.0",
+            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -462,7 +462,7 @@ class TestMarkBlockedWithoutGitHub:
         from core.state import load_workflow_state
 
         state = {
-            "version": "1.0",
+            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -510,7 +510,7 @@ class TestMarkBlockedErrorCases:
         from commands.mark_blocked import mark_blocked
 
         state = {
-            "version": "1.0",
+            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [

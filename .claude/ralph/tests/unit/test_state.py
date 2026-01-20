@@ -494,17 +494,21 @@ class TestTicketStatus:
     """Tests for ticket status tracking in workflow state."""
 
     def test_load_workflow_state_parses_json(self, tmp_path: Path):
-        """Given a valid state file, load_workflow_state returns parsed state."""
+        """Given a valid v2 state file, load_workflow_state returns parsed state."""
         from core.state import load_workflow_state
 
         state = {
-            "version": "1.0",
+            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
-            "tickets": [
-                {"id": "TASK-001", "title": "First", "status": "pending", "dependencies": []},
-                {"id": "TASK-002", "title": "Second", "status": "in_progress", "dependencies": ["TASK-001"]},
-            ],
+            "tickets": [],
+            "ralph": {
+                "tickets": ["TASK-001", "TASK-002"],
+                "dependencies": {"TASK-002": ["TASK-001"]},
+                "attempts": {},
+                "blocked": {},
+                "source": "github",
+            },
             "current_ticket": "TASK-002",
         }
         state_file = tmp_path / "workflow-state.json"
@@ -512,8 +516,9 @@ class TestTicketStatus:
 
         result = load_workflow_state(state_file)
 
-        assert result.version == "1.0"
-        assert len(result.tickets) == 2
+        assert result.version == "2.0"
+        assert result.ralph is not None
+        assert result.ralph.tickets == ["TASK-001", "TASK-002"]
         assert result.current_ticket == "TASK-002"
 
     def test_load_workflow_state_raises_on_missing_file(self, tmp_path: Path):
@@ -558,16 +563,29 @@ class TestTicketStatus:
         assert len(data["tickets"]) == 1
 
     def test_update_ticket_status_changes_status(self, tmp_path: Path):
-        """Given a ticket ID and new status, update_ticket_status updates it."""
+        """Given a v2 state file with tickets list, update_ticket_status updates it.
+
+        Note: In v2, the tickets list is kept for backward compatibility but
+        status is typically queried from the PM tool. This test verifies the
+        function still works for legacy v1-style ticket objects.
+        """
         from core.state import load_workflow_state, save_workflow_state, update_ticket_status
 
+        # v2 state but with tickets list (for legacy support)
         state = {
-            "version": "1.0",
+            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
                 {"id": "TASK-001", "title": "First", "status": "pending", "dependencies": []},
             ],
+            "ralph": {
+                "tickets": ["TASK-001"],
+                "dependencies": {},
+                "attempts": {},
+                "blocked": {},
+                "source": "github",
+            },
             "current_ticket": None,
         }
         state_file = tmp_path / "workflow-state.json"
@@ -583,13 +601,20 @@ class TestTicketStatus:
         from core.state import load_workflow_state, get_ticket_by_id
 
         state = {
-            "version": "1.0",
+            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
                 {"id": "TASK-001", "title": "First", "status": "pending", "dependencies": []},
                 {"id": "TASK-002", "title": "Second", "status": "pending", "dependencies": []},
             ],
+            "ralph": {
+                "tickets": ["TASK-001", "TASK-002"],
+                "dependencies": {},
+                "attempts": {},
+                "blocked": {},
+                "source": "github",
+            },
             "current_ticket": None,
         }
         state_file = tmp_path / "workflow-state.json"
@@ -1224,8 +1249,13 @@ class TestWorkflowStateV2Integration:
         assert data["ralph"]["attempts"] == {"SDLC-0001": 2}
         assert data["ralph"]["source"] == "trello"
 
-    def test_load_v1_state_sets_ralph_to_none(self, tmp_path: Path):
-        """Given v1 state file without ralph, load sets ralph to None."""
+    def test_load_v1_state_auto_migrates_to_v2(self, tmp_path: Path):
+        """Given v1 state file without ralph, load auto-migrates to v2.
+
+        Note: As of v2 migration, v1 files are auto-upgraded on load.
+        This test verifies backward compatibility - v1 files still load,
+        but are returned in v2 format.
+        """
         from core.state import load_workflow_state
 
         state = {
@@ -1241,8 +1271,289 @@ class TestWorkflowStateV2Integration:
 
         result = load_workflow_state(state_file)
 
-        assert result.version == "1.0"
-        assert result.ralph is None
+        # v1 files are auto-migrated to v2
+        assert result.version == "2.0"
+        assert result.ralph is not None
+        assert result.ralph.tickets == ["TASK-001"]
+
+
+class TestV1ToV2Migration:
+    """Tests for v1 to v2 state file migration.
+
+    v1 format:
+    {
+        "version": "1.0",
+        "prd_path": "...",
+        "plan_path": "...",
+        "tickets": [
+            {"id": "SDLC-0001", "title": "...", "status": "pending", "dependencies": [], "attempts": 0},
+            {"id": "SDLC-0002", "title": "...", "status": "blocked", "dependencies": ["SDLC-0001"], "attempts": 2, "block_reason": "Tests failed"}
+        ]
+    }
+
+    v2 format:
+    {
+        "version": "2.0",
+        "prd_path": "...",
+        "plan_path": "...",
+        "ralph": {
+            "tickets": ["SDLC-0001", "SDLC-0002"],
+            "dependencies": {"SDLC-0002": ["SDLC-0001"]},
+            "attempts": {"SDLC-0002": 2},
+            "blocked": {"SDLC-0002": "Tests failed"},
+            "source": "github"
+        }
+    }
+    """
+
+    def test_migrate_v1_to_v2_extracts_ticket_ids(self):
+        """Given v1 state with tickets, migrate_v1_to_v2 extracts ticket IDs."""
+        from core.state import migrate_v1_to_v2
+
+        v1_data = {
+            "version": "1.0",
+            "prd_path": "docs/prds/test.md",
+            "plan_path": "docs/plans/test.md",
+            "tickets": [
+                {"id": "SDLC-0001", "title": "First", "status": "pending", "dependencies": []},
+                {"id": "SDLC-0002", "title": "Second", "status": "pending", "dependencies": []},
+            ],
+        }
+
+        result = migrate_v1_to_v2(v1_data)
+
+        assert result["version"] == "2.0"
+        assert "ralph" in result
+        assert result["ralph"]["tickets"] == ["SDLC-0001", "SDLC-0002"]
+
+    def test_migrate_v1_to_v2_extracts_dependencies(self):
+        """Given v1 state with dependencies, migrate_v1_to_v2 extracts them as dict."""
+        from core.state import migrate_v1_to_v2
+
+        v1_data = {
+            "version": "1.0",
+            "prd_path": "docs/prds/test.md",
+            "plan_path": "docs/plans/test.md",
+            "tickets": [
+                {"id": "SDLC-0001", "title": "First", "status": "completed", "dependencies": []},
+                {"id": "SDLC-0002", "title": "Second", "status": "pending", "dependencies": ["SDLC-0001"]},
+                {"id": "SDLC-0003", "title": "Third", "status": "pending", "dependencies": ["SDLC-0001", "SDLC-0002"]},
+            ],
+        }
+
+        result = migrate_v1_to_v2(v1_data)
+
+        assert result["ralph"]["dependencies"] == {
+            "SDLC-0002": ["SDLC-0001"],
+            "SDLC-0003": ["SDLC-0001", "SDLC-0002"],
+        }
+
+    def test_migrate_v1_to_v2_preserves_attempts(self):
+        """Given v1 state with attempt counts, migrate_v1_to_v2 preserves them."""
+        from core.state import migrate_v1_to_v2
+
+        v1_data = {
+            "version": "1.0",
+            "prd_path": "docs/prds/test.md",
+            "plan_path": "docs/plans/test.md",
+            "tickets": [
+                {"id": "SDLC-0001", "title": "First", "status": "completed", "dependencies": [], "attempts": 1},
+                {"id": "SDLC-0002", "title": "Second", "status": "blocked", "dependencies": [], "attempts": 3},
+                {"id": "SDLC-0003", "title": "Third", "status": "pending", "dependencies": [], "attempts": 0},
+            ],
+        }
+
+        result = migrate_v1_to_v2(v1_data)
+
+        # Only non-zero attempts are stored
+        assert result["ralph"]["attempts"] == {
+            "SDLC-0001": 1,
+            "SDLC-0002": 3,
+        }
+
+    def test_migrate_v1_to_v2_migrates_blocked_reasons(self):
+        """Given v1 state with blocked tickets, migrate_v1_to_v2 extracts block reasons."""
+        from core.state import migrate_v1_to_v2
+
+        v1_data = {
+            "version": "1.0",
+            "prd_path": "docs/prds/test.md",
+            "plan_path": "docs/plans/test.md",
+            "tickets": [
+                {"id": "SDLC-0001", "title": "First", "status": "pending", "dependencies": []},
+                {"id": "SDLC-0002", "title": "Second", "status": "blocked", "dependencies": [], "block_reason": "Tests failed"},
+                {"id": "SDLC-0003", "title": "Third", "status": "blocked", "dependencies": [], "block_reason": "Lint errors"},
+            ],
+        }
+
+        result = migrate_v1_to_v2(v1_data)
+
+        assert result["ralph"]["blocked"] == {
+            "SDLC-0002": "Tests failed",
+            "SDLC-0003": "Lint errors",
+        }
+
+    def test_migrate_v1_to_v2_sets_default_source(self):
+        """Given v1 state, migrate_v1_to_v2 sets source to 'unknown' by default."""
+        from core.state import migrate_v1_to_v2
+
+        v1_data = {
+            "version": "1.0",
+            "prd_path": "docs/prds/test.md",
+            "plan_path": "docs/plans/test.md",
+            "tickets": [],
+        }
+
+        result = migrate_v1_to_v2(v1_data)
+
+        assert result["ralph"]["source"] == "unknown"
+
+    def test_migrate_v1_to_v2_preserves_paths(self):
+        """Given v1 state with paths, migrate_v1_to_v2 preserves them."""
+        from core.state import migrate_v1_to_v2
+
+        v1_data = {
+            "version": "1.0",
+            "prd_path": "docs/prds/feature.md",
+            "plan_path": "docs/plans/feature.md",
+            "tickets": [],
+        }
+
+        result = migrate_v1_to_v2(v1_data)
+
+        assert result["prd_path"] == "docs/prds/feature.md"
+        assert result["plan_path"] == "docs/plans/feature.md"
+
+    def test_migrate_v1_to_v2_handles_empty_tickets(self):
+        """Given v1 state with no tickets, migrate_v1_to_v2 produces empty collections."""
+        from core.state import migrate_v1_to_v2
+
+        v1_data = {
+            "version": "1.0",
+            "prd_path": "docs/prds/test.md",
+            "plan_path": "docs/plans/test.md",
+            "tickets": [],
+        }
+
+        result = migrate_v1_to_v2(v1_data)
+
+        assert result["ralph"]["tickets"] == []
+        assert result["ralph"]["dependencies"] == {}
+        assert result["ralph"]["attempts"] == {}
+        assert result["ralph"]["blocked"] == {}
+
+    def test_migrate_v1_to_v2_handles_blocked_without_reason(self):
+        """Given v1 blocked ticket without reason, migrate_v1_to_v2 uses default message."""
+        from core.state import migrate_v1_to_v2
+
+        v1_data = {
+            "version": "1.0",
+            "prd_path": "docs/prds/test.md",
+            "plan_path": "docs/plans/test.md",
+            "tickets": [
+                {"id": "SDLC-0001", "title": "First", "status": "blocked", "dependencies": []},
+            ],
+        }
+
+        result = migrate_v1_to_v2(v1_data)
+
+        assert "SDLC-0001" in result["ralph"]["blocked"]
+        # Should have some default reason, not empty
+        assert result["ralph"]["blocked"]["SDLC-0001"] != ""
+
+    def test_load_workflow_state_auto_migrates_v1(self, tmp_path: Path):
+        """Given a v1 state file, load_workflow_state auto-migrates to v2."""
+        from core.state import load_workflow_state
+
+        v1_state = {
+            "version": "1.0",
+            "prd_path": "docs/prds/test.md",
+            "plan_path": "docs/plans/test.md",
+            "tickets": [
+                {"id": "SDLC-0001", "title": "First", "status": "pending", "dependencies": []},
+                {"id": "SDLC-0002", "title": "Second", "status": "blocked", "dependencies": ["SDLC-0001"], "attempts": 2, "block_reason": "Tests failed"},
+            ],
+        }
+        state_file = tmp_path / "workflow-state.json"
+        state_file.write_text(json.dumps(v1_state))
+
+        result = load_workflow_state(state_file)
+
+        # Should return v2 format
+        assert result.version == "2.0"
+        assert result.ralph is not None
+        assert result.ralph.tickets == ["SDLC-0001", "SDLC-0002"]
+        assert result.ralph.dependencies == {"SDLC-0002": ["SDLC-0001"]}
+        assert result.ralph.attempts == {"SDLC-0002": 2}
+        assert result.ralph.blocked == {"SDLC-0002": "Tests failed"}
+
+    def test_load_workflow_state_keeps_v2_unchanged(self, tmp_path: Path):
+        """Given a v2 state file, load_workflow_state returns it unchanged."""
+        from core.state import load_workflow_state
+
+        v2_state = {
+            "version": "2.0",
+            "prd_path": "docs/prds/test.md",
+            "plan_path": "docs/plans/test.md",
+            "tickets": [],
+            "ralph": {
+                "tickets": ["SDLC-0001"],
+                "dependencies": {},
+                "attempts": {},
+                "blocked": {},
+                "source": "github",
+            },
+        }
+        state_file = tmp_path / "workflow-state.json"
+        state_file.write_text(json.dumps(v2_state))
+
+        result = load_workflow_state(state_file)
+
+        assert result.version == "2.0"
+        assert result.ralph.tickets == ["SDLC-0001"]
+        assert result.ralph.source == "github"
+
+    def test_load_workflow_state_logs_migration(self, tmp_path: Path, capsys):
+        """Given a v1 state file, load_workflow_state logs migration message."""
+        from core.state import load_workflow_state
+
+        v1_state = {
+            "version": "1.0",
+            "prd_path": "docs/prds/test.md",
+            "plan_path": "docs/plans/test.md",
+            "tickets": [
+                {"id": "SDLC-0001", "title": "First", "status": "pending", "dependencies": []},
+            ],
+        }
+        state_file = tmp_path / "workflow-state.json"
+        state_file.write_text(json.dumps(v1_state))
+
+        load_workflow_state(state_file)
+
+        captured = capsys.readouterr()
+        # Should log migration to stderr
+        assert "migrat" in captured.err.lower() or "1.0" in captured.err or "2.0" in captured.err
+
+    def test_load_workflow_state_detects_v1_without_version_field(self, tmp_path: Path):
+        """Given state without version field, load_workflow_state treats as v1."""
+        from core.state import load_workflow_state
+
+        # Very old v1 files might not have a version field
+        old_state = {
+            "prd_path": "docs/prds/test.md",
+            "plan_path": "docs/plans/test.md",
+            "tickets": [
+                {"id": "SDLC-0001", "title": "First", "status": "pending", "dependencies": []},
+            ],
+        }
+        state_file = tmp_path / "workflow-state.json"
+        state_file.write_text(json.dumps(old_state))
+
+        result = load_workflow_state(state_file)
+
+        # Should be migrated to v2
+        assert result.version == "2.0"
+        assert result.ralph is not None
 
 
 class TestDataclasses:

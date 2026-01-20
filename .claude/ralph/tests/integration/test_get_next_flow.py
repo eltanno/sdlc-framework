@@ -20,6 +20,7 @@ import pytest
 from core.state import (
     WorkflowState,
     Ticket,
+    RalphState,
     load_workflow_state,
     save_workflow_state,
 )
@@ -38,11 +39,19 @@ def empty_workflow(tmp_path: Path) -> tuple[Path, WorkflowState]:
     Returns:
         Tuple of (state_file_path, workflow_state)
     """
+    ralph = RalphState(
+        tickets=[],
+        dependencies={},
+        attempts={},
+        blocked={},
+        source="github",
+    )
     state = WorkflowState(
-        version="1.0",
+        version="2.0",
         prd_path=Path("docs/prds/test.md"),
         plan_path=Path("docs/plans/test.md"),
         tickets=[],
+        ralph=ralph,
     )
     state_file = tmp_path / "workflow-state.json"
     save_workflow_state(state, state_file)
@@ -61,11 +70,19 @@ def simple_workflow(tmp_path: Path) -> tuple[Path, WorkflowState]:
         Ticket(id="TASK-002", title="Second task", status="pending", dependencies=[]),
         Ticket(id="TASK-003", title="Third task", status="pending", dependencies=[]),
     ]
+    ralph = RalphState(
+        tickets=["TASK-001", "TASK-002", "TASK-003"],
+        dependencies={},
+        attempts={},
+        blocked={},
+        source="github",
+    )
     state = WorkflowState(
-        version="1.0",
+        version="2.0",
         prd_path=Path("docs/prds/test.md"),
         plan_path=Path("docs/plans/test.md"),
         tickets=tickets,
+        ralph=ralph,
     )
     state_file = tmp_path / "workflow-state.json"
     save_workflow_state(state, state_file)
@@ -89,11 +106,19 @@ def dependency_workflow(tmp_path: Path) -> tuple[Path, WorkflowState]:
         Ticket(id="TASK-002", title="Second task", status="pending", dependencies=["TASK-001"]),
         Ticket(id="TASK-003", title="Third task", status="pending", dependencies=["TASK-001", "TASK-002"]),
     ]
+    ralph = RalphState(
+        tickets=["TASK-001", "TASK-002", "TASK-003"],
+        dependencies={"TASK-002": ["TASK-001"], "TASK-003": ["TASK-001", "TASK-002"]},
+        attempts={},
+        blocked={},
+        source="github",
+    )
     state = WorkflowState(
-        version="1.0",
+        version="2.0",
         prd_path=Path("docs/prds/test.md"),
         plan_path=Path("docs/plans/test.md"),
         tickets=tickets,
+        ralph=ralph,
     )
     state_file = tmp_path / "workflow-state.json"
     save_workflow_state(state, state_file)
@@ -113,13 +138,21 @@ def mixed_status_workflow(tmp_path: Path) -> tuple[Path, WorkflowState]:
         Ticket(id="TASK-003", title="Pending task", status="pending", dependencies=[]),
         Ticket(id="TASK-004", title="In progress task", status="in_progress", dependencies=[]),
     ]
+    ralph = RalphState(
+        tickets=["TASK-001", "TASK-002", "TASK-003", "TASK-004"],
+        dependencies={},
+        attempts={},
+        blocked={"TASK-002": "Test block"},
+        source="github",
+    )
     state = WorkflowState(
-        version="1.0",
+        version="2.0",
         prd_path=Path("docs/prds/test.md"),
         plan_path=Path("docs/plans/test.md"),
         tickets=tickets,
         completed_count=1,
         blocked_count=1,
+        ralph=ralph,
     )
     state_file = tmp_path / "workflow-state.json"
     save_workflow_state(state, state_file)

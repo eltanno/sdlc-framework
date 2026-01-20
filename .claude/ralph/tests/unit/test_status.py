@@ -36,7 +36,7 @@ class TestGetWorkflowStatus:
     def test_returns_ticket_counts_by_status(self, tmp_path: Path) -> None:
         """Given an active workflow, should return ticket counts by status."""
         state_data = {
-            "version": "1.0",
+            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -66,7 +66,7 @@ class TestGetWorkflowStatus:
     def test_returns_current_ticket_when_in_progress(self, tmp_path: Path) -> None:
         """Given a ticket is in progress, should return current ticket info."""
         state_data = {
-            "version": "1.0",
+            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -89,7 +89,7 @@ class TestGetWorkflowStatus:
     def test_returns_total_ticket_count(self, tmp_path: Path) -> None:
         """Given an active workflow, should return total ticket count."""
         state_data = {
-            "version": "1.0",
+            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -111,7 +111,7 @@ class TestGetWorkflowStatus:
     def test_returns_blocked_tickets_with_reasons(self, tmp_path: Path) -> None:
         """Given blocked tickets exist, should return them with reasons."""
         state_data = {
-            "version": "1.0",
+            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -137,7 +137,7 @@ class TestGetWorkflowStatus:
     def test_returns_prd_and_plan_paths(self, tmp_path: Path) -> None:
         """Given an active workflow, should return PRD and plan paths."""
         state_data = {
-            "version": "1.0",
+            "version": "2.0",
             "prd_path": "docs/prds/feature-x.md",
             "plan_path": "docs/plans/feature-x.md",
             "tickets": [
@@ -285,7 +285,7 @@ class TestEdgeCases:
     def test_handles_empty_tickets_list(self, tmp_path: Path) -> None:
         """Given workflow with no tickets, should return empty counts."""
         state_data = {
-            "version": "1.0",
+            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [],
@@ -322,7 +322,7 @@ class TestEdgeCases:
     def test_handles_blocked_ticket_without_reason(self, tmp_path: Path) -> None:
         """Given blocked ticket without reason, should use default message."""
         state_data = {
-            "version": "1.0",
+            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -343,7 +343,7 @@ class TestEdgeCases:
     def test_handles_current_ticket_not_in_tickets_list(self, tmp_path: Path) -> None:
         """Given current_ticket ID that doesn't match any ticket, should return None."""
         state_data = {
-            "version": "1.0",
+            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
