@@ -41,7 +41,7 @@ DEFAULT_STATE_DIRECTORY = Path("docs/state")
 
 @dataclass
 class Ticket:
-    """Represents a ticket in the workflow.
+    """Represents a ticket in the workflow (v1 schema).
 
     Attributes:
         id: Unique ticket identifier (e.g., "TASK-001")
@@ -67,17 +67,77 @@ class Ticket:
 
 
 @dataclass
+class RalphState:
+    """Represents Ralph's supplemental state data (v2 schema).
+
+    V2 schema stores only supplemental data - ticket status comes from the PM tool.
+    This dataclass tracks:
+    - Which tickets exist (IDs only, not full objects)
+    - Dependencies between tickets
+    - Attempt counts per ticket
+    - Blocked status and reasons
+    - Source PM tool type
+
+    Attributes:
+        tickets: List of ticket IDs (strings only, not full ticket objects)
+        dependencies: Map of ticket ID to list of dependency ticket IDs
+        attempts: Map of ticket ID to attempt count
+        blocked: Map of ticket ID to block reason
+        source: PM tool type (e.g., "github", "trello", "asana")
+    """
+
+    source: str
+    tickets: list[str] = field(default_factory=list)
+    dependencies: dict[str, list[str]] = field(default_factory=dict)
+    attempts: dict[str, int] = field(default_factory=dict)
+    blocked: dict[str, str] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "tickets": self.tickets,
+            "dependencies": self.dependencies,
+            "attempts": self.attempts,
+            "blocked": self.blocked,
+            "source": self.source,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "RalphState":
+        """Create RalphState from a dictionary.
+
+        Args:
+            data: Dictionary containing ralph state data
+
+        Returns:
+            RalphState instance
+        """
+        return cls(
+            tickets=data.get("tickets", []),
+            dependencies=data.get("dependencies", {}),
+            attempts=data.get("attempts", {}),
+            blocked=data.get("blocked", {}),
+            source=data.get("source", "unknown"),
+        )
+
+
+@dataclass
 class WorkflowState:
     """Represents the overall workflow state.
 
+    Supports both v1 and v2 schemas:
+    - v1: Uses tickets list with full Ticket objects (including status)
+    - v2: Uses ralph field with RalphState (status from PM tool)
+
     Attributes:
-        version: State file format version
+        version: State file format version ("1.0" or "2.0")
         prd_path: Path to the PRD document
         plan_path: Path to the plan document
-        tickets: List of tickets in the workflow
+        tickets: List of tickets in the workflow (v1 schema, kept for backward compat)
         current_ticket: ID of the currently active ticket (or None)
         completed_count: Number of completed tickets
         blocked_count: Number of blocked tickets
+        ralph: Ralph's supplemental state data (v2 schema, None for v1)
     """
 
     version: str
@@ -87,10 +147,11 @@ class WorkflowState:
     current_ticket: str | None = None
     completed_count: int = 0
     blocked_count: int = 0
+    ralph: RalphState | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
-        return {
+        result = {
             "version": self.version,
             "prd_path": str(self.prd_path),
             "plan_path": str(self.plan_path),
@@ -99,6 +160,10 @@ class WorkflowState:
             "completed_count": self.completed_count,
             "blocked_count": self.blocked_count,
         }
+        # Include ralph field only if present (v2 schema)
+        if self.ralph is not None:
+            result["ralph"] = self.ralph.to_dict()
+        return result
 
 
 # ============================================================================
@@ -853,6 +918,10 @@ def generate_summary_md(summary_data: dict[str, Any]) -> str:
 def load_workflow_state(state_file: Path) -> WorkflowState:
     """Load workflow state from a JSON file.
 
+    Supports both v1 and v2 schemas:
+    - v1: Full ticket objects with status stored locally
+    - v2: ralph section with ticket IDs only, status from PM tool
+
     Args:
         state_file: Path to the state file
 
@@ -871,6 +940,7 @@ def load_workflow_state(state_file: Path) -> WorkflowState:
     except json.JSONDecodeError as e:
         raise ValueError(f"Invalid JSON in state file: {e}")
 
+    # Parse tickets (v1 schema - may be empty for v2)
     tickets = [
         Ticket(
             id=t["id"],
@@ -883,6 +953,10 @@ def load_workflow_state(state_file: Path) -> WorkflowState:
         for t in data.get("tickets", [])
     ]
 
+    # Parse ralph section (v2 schema - None for v1)
+    ralph_data = data.get("ralph")
+    ralph = RalphState.from_dict(ralph_data) if ralph_data is not None else None
+
     return WorkflowState(
         version=data.get("version", "1.0"),
         prd_path=Path(data["prd_path"]),
@@ -891,6 +965,7 @@ def load_workflow_state(state_file: Path) -> WorkflowState:
         current_ticket=data.get("current_ticket"),
         completed_count=data.get("completed_count", 0),
         blocked_count=data.get("blocked_count", 0),
+        ralph=ralph,
     )
 
 
