@@ -913,8 +913,25 @@ class TestGetNextTicketWithPMTool:
             TicketInfo(id="TASK-001", title="Claimed by other", status=TicketStatus.OPEN, labels=["ralph-2"]),
             TicketInfo(id="TASK-002", title="Not claimed", status=TicketStatus.OPEN, labels=[]),
         ]
-        # TASK-001 is claimed by ralph-2
-        mock_pm.is_ticket_claimed.side_effect = lambda tid: (True, "ralph-2") if tid == "TASK-001" else (False, None)
+        mock_pm.claim_ticket.return_value = True  # Claim succeeds
+
+        # Track claim state to simulate the claim flow correctly:
+        # - TASK-001: always claimed by ralph-2
+        # - TASK-002: not claimed before our claim, then claimed by us after
+        claimed_tickets = {"TASK-001": "ralph-2"}
+
+        def mock_claim(ticket_id, label):
+            claimed_tickets[ticket_id] = label
+            return True
+
+        def mock_is_claimed(ticket_id):
+            label = claimed_tickets.get(ticket_id)
+            if label:
+                return (True, label)
+            return (False, None)
+
+        mock_pm.claim_ticket.side_effect = mock_claim
+        mock_pm.is_ticket_claimed.side_effect = mock_is_claimed
 
         # Simulate this instance being ralph-1 (not ralph-2)
         result = get_next_ticket(workflow, pm_tool=mock_pm, ralph_label="ralph-1")
@@ -993,3 +1010,295 @@ class TestGetNextTicketWithPMTool:
 
         assert result.ticket is not None
         assert result.ticket.id == "TASK-001"
+
+
+# =============================================================================
+# Tests: Label-Based Ticket Claiming with Race Detection
+# =============================================================================
+
+
+class TestClaimTicketWithRaceDetection:
+    """Test the claim_ticket_with_race_detection function.
+
+    This tests the race detection logic that:
+    1. Adds our label to claim a ticket
+    2. Sleeps briefly to allow other instances to also claim
+    3. Re-queries to verify we won the race
+    4. If race detected, releases claim and returns False
+    """
+
+    def test_claim_adds_label_via_pm_tool(self) -> None:
+        """Given a ticket ID and label, when claiming, then add label via PM tool."""
+        from commands.get_next import claim_ticket_with_race_detection
+
+        mock_pm = create_mock_pm_tool()
+        mock_pm.claim_ticket.return_value = True
+        mock_pm.is_ticket_claimed.return_value = (True, "ralph-1")
+
+        result = claim_ticket_with_race_detection(
+            pm_tool=mock_pm,
+            ticket_id="TASK-001",
+            ralph_label="ralph-1",
+        )
+
+        mock_pm.claim_ticket.assert_called_once_with("TASK-001", "ralph-1")
+        assert result is True
+
+    def test_claim_fails_if_pm_tool_fails(self) -> None:
+        """Given PM tool fails to add label, when claiming, then return False."""
+        from commands.get_next import claim_ticket_with_race_detection
+
+        mock_pm = create_mock_pm_tool()
+        mock_pm.claim_ticket.return_value = False
+
+        result = claim_ticket_with_race_detection(
+            pm_tool=mock_pm,
+            ticket_id="TASK-001",
+            ralph_label="ralph-1",
+        )
+
+        assert result is False
+
+    def test_claim_detects_race_from_other_instance(self) -> None:
+        """Given another instance added label during race window, when verifying, then release and return False."""
+        from commands.get_next import claim_ticket_with_race_detection
+
+        mock_pm = create_mock_pm_tool()
+        mock_pm.claim_ticket.return_value = True
+        # After sleep, re-query shows ANOTHER instance's label won
+        mock_pm.is_ticket_claimed.return_value = (True, "ralph-2")  # Not our label!
+        mock_pm.remove_label.return_value = True
+
+        result = claim_ticket_with_race_detection(
+            pm_tool=mock_pm,
+            ticket_id="TASK-001",
+            ralph_label="ralph-1",
+        )
+
+        # Should have released our label and returned False
+        mock_pm.remove_label.assert_called_once_with("TASK-001", "ralph-1")
+        assert result is False
+
+    def test_claim_succeeds_when_our_label_wins(self) -> None:
+        """Given our label is the only ralph-* label after race window, when verifying, then succeed."""
+        from commands.get_next import claim_ticket_with_race_detection
+
+        mock_pm = create_mock_pm_tool()
+        mock_pm.claim_ticket.return_value = True
+        # After sleep, re-query shows OUR label won
+        mock_pm.is_ticket_claimed.return_value = (True, "ralph-1")
+
+        result = claim_ticket_with_race_detection(
+            pm_tool=mock_pm,
+            ticket_id="TASK-001",
+            ralph_label="ralph-1",
+        )
+
+        assert result is True
+        # Should NOT have called remove_label
+        mock_pm.remove_label.assert_not_called()
+
+    def test_claim_waits_before_verifying(self, monkeypatch) -> None:
+        """Given successful label add, when verifying, then sleep before re-query."""
+        from commands.get_next import claim_ticket_with_race_detection
+        import time
+
+        sleep_calls = []
+        original_sleep = time.sleep
+
+        def mock_sleep(seconds):
+            sleep_calls.append(seconds)
+
+        monkeypatch.setattr(time, "sleep", mock_sleep)
+
+        mock_pm = create_mock_pm_tool()
+        mock_pm.claim_ticket.return_value = True
+        mock_pm.is_ticket_claimed.return_value = (True, "ralph-1")
+
+        claim_ticket_with_race_detection(
+            pm_tool=mock_pm,
+            ticket_id="TASK-001",
+            ralph_label="ralph-1",
+        )
+
+        # Should have slept for race detection window
+        assert len(sleep_calls) == 1
+        assert sleep_calls[0] >= 0.3  # At least 0.3 seconds
+
+    def test_claim_without_ralph_label_returns_true(self) -> None:
+        """Given no ralph_label provided, when claiming, then skip claim and return True."""
+        from commands.get_next import claim_ticket_with_race_detection
+
+        mock_pm = create_mock_pm_tool()
+
+        result = claim_ticket_with_race_detection(
+            pm_tool=mock_pm,
+            ticket_id="TASK-001",
+            ralph_label=None,
+        )
+
+        # Should return True without calling PM tool
+        assert result is True
+        mock_pm.claim_ticket.assert_not_called()
+
+
+class TestClaimTicketWithAssignee:
+    """Test the use_assignee configuration integration."""
+
+    def test_claim_assigns_to_self_when_use_assignee_true(self) -> None:
+        """Given use_assignee=True, when claiming ticket, then also assign to current user."""
+        from commands.get_next import claim_ticket_with_race_detection
+
+        mock_pm = create_mock_pm_tool()
+        mock_pm.claim_ticket.return_value = True
+        mock_pm.is_ticket_claimed.return_value = (True, "ralph-1")
+        mock_pm.assign_to_self.return_value = True
+
+        result = claim_ticket_with_race_detection(
+            pm_tool=mock_pm,
+            ticket_id="TASK-001",
+            ralph_label="ralph-1",
+            use_assignee=True,
+        )
+
+        assert result is True
+        mock_pm.assign_to_self.assert_called_once_with("TASK-001")
+
+    def test_claim_does_not_assign_when_use_assignee_false(self) -> None:
+        """Given use_assignee=False, when claiming ticket, then only use labels."""
+        from commands.get_next import claim_ticket_with_race_detection
+
+        mock_pm = create_mock_pm_tool()
+        mock_pm.claim_ticket.return_value = True
+        mock_pm.is_ticket_claimed.return_value = (True, "ralph-1")
+
+        result = claim_ticket_with_race_detection(
+            pm_tool=mock_pm,
+            ticket_id="TASK-001",
+            ralph_label="ralph-1",
+            use_assignee=False,
+        )
+
+        assert result is True
+        # Should not have called assign_to_self
+        assert not hasattr(mock_pm, 'assign_to_self') or not mock_pm.assign_to_self.called
+
+
+class TestGetNextTicketClaimIntegration:
+    """Test that get_next_ticket integrates with claim logic."""
+
+    def test_get_next_claims_ticket_before_returning(self) -> None:
+        """Given an unclaimed ticket, when get_next_ticket returns it, then it should be claimed."""
+        workflow = WorkflowState(
+            version="2.0",
+            prd_path="docs/prds/test.md",
+            plan_path="docs/plans/test.md",
+            tickets=[],
+            ralph=RalphState(
+                source="github",
+                tickets=["TASK-001"],
+                dependencies={},
+                attempts={},
+                blocked={},
+            ),
+        )
+        mock_pm = create_mock_pm_tool()
+        mock_pm.get_open_tickets.return_value = [
+            TicketInfo(id="TASK-001", title="Unclaimed", status=TicketStatus.OPEN, labels=[])
+        ]
+        mock_pm.claim_ticket.return_value = True
+        mock_pm.is_ticket_claimed.return_value = (True, "ralph-1")
+
+        result = get_next_ticket(workflow, pm_tool=mock_pm, ralph_label="ralph-1")
+
+        assert result.ticket is not None
+        assert result.ticket.id == "TASK-001"
+        # Verify claim was attempted
+        mock_pm.claim_ticket.assert_called_with("TASK-001", "ralph-1")
+
+    def test_get_next_retries_on_race_condition(self) -> None:
+        """Given race condition on first ticket, when claiming, then try next ticket."""
+        workflow = WorkflowState(
+            version="2.0",
+            prd_path="docs/prds/test.md",
+            plan_path="docs/plans/test.md",
+            tickets=[],
+            ralph=RalphState(
+                source="github",
+                tickets=["TASK-001", "TASK-002"],
+                dependencies={},
+                attempts={},
+                blocked={},
+            ),
+        )
+        mock_pm = create_mock_pm_tool()
+        mock_pm.get_open_tickets.return_value = [
+            TicketInfo(id="TASK-001", title="First", status=TicketStatus.OPEN, labels=[]),
+            TicketInfo(id="TASK-002", title="Second", status=TicketStatus.OPEN, labels=[]),
+        ]
+
+        # First claim succeeds but race check shows another instance won
+        claim_call_count = [0]
+
+        def mock_claim(ticket_id, label):
+            claim_call_count[0] += 1
+            return True
+
+        def mock_is_claimed(ticket_id):
+            # First ticket was won by ralph-2, second ticket we won
+            if ticket_id == "TASK-001":
+                return (True, "ralph-2")  # Race lost
+            return (True, "ralph-1")  # We won
+
+        mock_pm.claim_ticket.side_effect = mock_claim
+        mock_pm.is_ticket_claimed.side_effect = mock_is_claimed
+        mock_pm.remove_label.return_value = True
+
+        result = get_next_ticket(workflow, pm_tool=mock_pm, ralph_label="ralph-1")
+
+        # Should return TASK-002 after failing to claim TASK-001
+        assert result.ticket is not None
+        assert result.ticket.id == "TASK-002"
+
+    def test_get_next_returns_none_when_all_races_lost(self) -> None:
+        """Given all ticket claims lost to race conditions, when get_next runs, then return no ticket."""
+        workflow = WorkflowState(
+            version="2.0",
+            prd_path="docs/prds/test.md",
+            plan_path="docs/plans/test.md",
+            tickets=[],
+            ralph=RalphState(
+                source="github",
+                tickets=["TASK-001", "TASK-002"],
+                dependencies={},
+                attempts={},
+                blocked={},
+            ),
+        )
+        mock_pm = create_mock_pm_tool()
+        mock_pm.get_open_tickets.return_value = [
+            TicketInfo(id="TASK-001", title="First", status=TicketStatus.OPEN, labels=[]),
+            TicketInfo(id="TASK-002", title="Second", status=TicketStatus.OPEN, labels=[]),
+        ]
+        mock_pm.claim_ticket.return_value = True
+        mock_pm.remove_label.return_value = True
+
+        # Simulate race condition:
+        # - First call per ticket (before claim): not claimed
+        # - Second call per ticket (after claim): another instance won
+        call_counts = {}
+
+        def mock_is_claimed(ticket_id):
+            count = call_counts.get(ticket_id, 0)
+            call_counts[ticket_id] = count + 1
+            if count == 0:
+                return (False, None)  # First check - not claimed yet
+            return (True, "ralph-2")  # After claim - race lost
+
+        mock_pm.is_ticket_claimed.side_effect = mock_is_claimed
+
+        result = get_next_ticket(workflow, pm_tool=mock_pm, ralph_label="ralph-1")
+
+        # No ticket available - all lost to races
+        assert result.ticket is None
+        assert result.status == "waiting_on_claims"
