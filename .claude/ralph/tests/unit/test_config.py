@@ -8,9 +8,9 @@ Tests cover:
 - Instance label validation
 - Use assignee flag
 - Instance label prefix
+- PM tool type loading and validation
 """
 
-import os
 import pytest
 from pathlib import Path
 
@@ -21,7 +21,9 @@ from core.config import (
     get_instance_label,
     get_instance_label_prefix,
     get_use_assignee,
+    get_pm_tool_type,
     matches_instance_prefix,
+    VALID_PM_TOOLS,
 )
 
 
@@ -364,3 +366,135 @@ ralph:
         assert config.ralph.validator_model == "sonnet"
         assert config.ralph.engineer_timeout == 60
         assert config.ralph.validator_timeout == 15
+
+
+class TestGetPmToolType:
+    """Tests for get_pm_tool_type function."""
+
+    def test_get_pm_tool_type_github_returns_github(self, tmp_path: Path) -> None:
+        """Given pm.tool is 'github', when getting PM tool type, then returns 'github'."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+pm:
+  tool: github
+""")
+        result = get_pm_tool_type(config_file)
+
+        assert result == "github"
+
+    def test_get_pm_tool_type_trello_returns_trello(self, tmp_path: Path) -> None:
+        """Given pm.tool is 'trello', when getting PM tool type, then returns 'trello'."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+pm:
+  tool: trello
+""")
+        result = get_pm_tool_type(config_file)
+
+        assert result == "trello"
+
+    def test_get_pm_tool_type_asana_returns_asana(self, tmp_path: Path) -> None:
+        """Given pm.tool is 'asana', when getting PM tool type, then returns 'asana'."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+pm:
+  tool: asana
+""")
+        result = get_pm_tool_type(config_file)
+
+        assert result == "asana"
+
+    def test_get_pm_tool_type_linear_returns_linear(self, tmp_path: Path) -> None:
+        """Given pm.tool is 'linear', when getting PM tool type, then returns 'linear'."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+pm:
+  tool: linear
+""")
+        result = get_pm_tool_type(config_file)
+
+        assert result == "linear"
+
+    def test_get_pm_tool_type_none_returns_none(self, tmp_path: Path) -> None:
+        """Given pm.tool is 'none', when getting PM tool type, then returns 'none'."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+pm:
+  tool: none
+""")
+        result = get_pm_tool_type(config_file)
+
+        assert result == "none"
+
+    def test_get_pm_tool_type_missing_pm_section_raises_error(self, tmp_path: Path) -> None:
+        """Given config has no pm section, when getting PM tool type, then raises ConfigError."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+ralph:
+  instance_label_prefix: "ralph-"
+""")
+        with pytest.raises(ConfigError) as exc_info:
+            get_pm_tool_type(config_file)
+
+        assert "pm.tool" in str(exc_info.value).lower()
+        assert "not configured" in str(exc_info.value).lower() or "not set" in str(exc_info.value).lower()
+
+    def test_get_pm_tool_type_missing_tool_key_raises_error(self, tmp_path: Path) -> None:
+        """Given pm section exists but tool key missing, when getting PM tool type, then raises ConfigError."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+pm:
+  other_setting: value
+""")
+        with pytest.raises(ConfigError) as exc_info:
+            get_pm_tool_type(config_file)
+
+        assert "pm.tool" in str(exc_info.value).lower()
+
+    def test_get_pm_tool_type_invalid_value_raises_error(self, tmp_path: Path) -> None:
+        """Given pm.tool has invalid value, when getting PM tool type, then raises ConfigError."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+pm:
+  tool: jira
+""")
+        with pytest.raises(ConfigError) as exc_info:
+            get_pm_tool_type(config_file)
+
+        error_msg = str(exc_info.value).lower()
+        assert "jira" in error_msg
+        assert "invalid" in error_msg or "must be" in error_msg
+
+    def test_get_pm_tool_type_missing_config_file_raises_error(self, tmp_path: Path) -> None:
+        """Given config file doesn't exist, when getting PM tool type, then raises ConfigError."""
+        config_file = tmp_path / "nonexistent.yaml"
+
+        with pytest.raises(ConfigError) as exc_info:
+            get_pm_tool_type(config_file)
+
+        assert "not found" in str(exc_info.value).lower()
+
+    def test_get_pm_tool_type_empty_string_raises_error(self, tmp_path: Path) -> None:
+        """Given pm.tool is empty string, when getting PM tool type, then raises ConfigError."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+pm:
+  tool: ""
+""")
+        with pytest.raises(ConfigError) as exc_info:
+            get_pm_tool_type(config_file)
+
+        assert "pm.tool" in str(exc_info.value).lower()
+
+
+class TestValidPmTools:
+    """Tests for VALID_PM_TOOLS constant."""
+
+    def test_valid_pm_tools_contains_expected_values(self) -> None:
+        """VALID_PM_TOOLS should contain all supported PM tool types."""
+        expected = {"github", "trello", "asana", "linear", "none"}
+        assert VALID_PM_TOOLS == expected
+
+    def test_valid_pm_tools_is_frozen(self) -> None:
+        """VALID_PM_TOOLS should be a frozenset to prevent modification."""
+        assert isinstance(VALID_PM_TOOLS, frozenset)
