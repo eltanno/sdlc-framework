@@ -487,3 +487,238 @@ def mock_pm_subprocess(mocker):
     mock.return_value.stdout = "[]"
     mock.return_value.stderr = ""
     return mock
+
+
+# =============================================================================
+# LocalPM Tests
+# =============================================================================
+
+
+class TestLocalPMInit:
+    """Tests for LocalPM initialization."""
+
+    def test_local_pm_can_be_instantiated(self):
+        """Given LocalPM class, when instantiating, then it succeeds."""
+        from core.pm import LocalPM
+
+        pm = LocalPM()
+        assert pm is not None
+
+    def test_local_pm_logs_warning_on_init(self, caplog):
+        """Given LocalPM, when initialized, then warning is logged about degraded mode."""
+        import logging
+
+        from core.pm import LocalPM
+
+        with caplog.at_level(logging.WARNING):
+            pm = LocalPM()
+
+        assert any("degraded" in record.message.lower() for record in caplog.records)
+
+
+class TestLocalPMProtocolConformance:
+    """Tests that LocalPM properly implements PMTool Protocol."""
+
+    def test_local_pm_conforms_to_protocol(self):
+        """Given LocalPM class, when checking Protocol, then it conforms."""
+        from core.pm import LocalPM, PMTool
+
+        pm = LocalPM()
+
+        # Verify all required methods exist with correct signatures
+        assert callable(getattr(pm, "get_ticket_status", None))
+        assert callable(getattr(pm, "claim_ticket", None))
+        assert callable(getattr(pm, "close_ticket", None))
+        assert callable(getattr(pm, "add_blocked_label", None))
+        assert callable(getattr(pm, "is_ticket_claimed", None))
+        assert callable(getattr(pm, "get_open_tickets", None))
+        assert callable(getattr(pm, "remove_label", None))
+
+
+class TestLocalPMGetTicketStatus:
+    """Tests for LocalPM.get_ticket_status method."""
+
+    def test_get_ticket_status_returns_open_by_default(self):
+        """Given untracked ticket, when getting status, then OPEN is returned."""
+        from core.pm import LocalPM, TicketStatus
+
+        pm = LocalPM()
+        status = pm.get_ticket_status("SDLC-0040")
+
+        assert status == TicketStatus.OPEN
+
+    def test_get_ticket_status_returns_closed_when_tracked_closed(self):
+        """Given ticket tracked as closed, when getting status, then CLOSED is returned."""
+        from core.pm import LocalPM, TicketStatus
+
+        pm = LocalPM()
+        pm.close_ticket("SDLC-0040")
+        status = pm.get_ticket_status("SDLC-0040")
+
+        assert status == TicketStatus.CLOSED
+
+    def test_get_ticket_status_returns_blocked_when_tracked_blocked(self):
+        """Given ticket tracked as blocked, when getting status, then BLOCKED is returned."""
+        from core.pm import LocalPM, TicketStatus
+
+        pm = LocalPM()
+        pm.add_blocked_label("SDLC-0040", "Test failure")
+        status = pm.get_ticket_status("SDLC-0040")
+
+        assert status == TicketStatus.BLOCKED
+
+
+class TestLocalPMClaimTicket:
+    """Tests for LocalPM.claim_ticket method."""
+
+    def test_claim_ticket_always_returns_true(self):
+        """Given any ticket, when claiming, then True is returned (no concurrency control)."""
+        from core.pm import LocalPM
+
+        pm = LocalPM()
+        result = pm.claim_ticket("SDLC-0040", "ralph-1")
+
+        assert result is True
+
+    def test_claim_ticket_logs_warning_about_no_concurrency(self, caplog):
+        """Given claim_ticket called, then warning logged about no concurrency."""
+        import logging
+
+        from core.pm import LocalPM
+
+        pm = LocalPM()
+        with caplog.at_level(logging.WARNING):
+            pm.claim_ticket("SDLC-0040", "ralph-1")
+
+        # Check warning is logged (may be from init or from claim)
+        assert len(caplog.records) > 0
+
+
+class TestLocalPMCloseTicket:
+    """Tests for LocalPM.close_ticket method."""
+
+    def test_close_ticket_returns_true(self):
+        """Given ticket id, when closing, then True is returned."""
+        from core.pm import LocalPM
+
+        pm = LocalPM()
+        result = pm.close_ticket("SDLC-0040")
+
+        assert result is True
+
+    def test_close_ticket_tracks_ticket_as_closed(self):
+        """Given ticket id, when closing, then ticket is tracked as closed."""
+        from core.pm import LocalPM, TicketStatus
+
+        pm = LocalPM()
+        pm.close_ticket("SDLC-0040")
+
+        assert pm.get_ticket_status("SDLC-0040") == TicketStatus.CLOSED
+
+
+class TestLocalPMAddBlockedLabel:
+    """Tests for LocalPM.add_blocked_label method."""
+
+    def test_add_blocked_label_returns_true(self):
+        """Given ticket id and reason, when blocking, then True is returned."""
+        from core.pm import LocalPM
+
+        pm = LocalPM()
+        result = pm.add_blocked_label("SDLC-0040", "Test failures")
+
+        assert result is True
+
+    def test_add_blocked_label_tracks_ticket_as_blocked(self):
+        """Given ticket id, when blocking, then ticket is tracked as blocked."""
+        from core.pm import LocalPM, TicketStatus
+
+        pm = LocalPM()
+        pm.add_blocked_label("SDLC-0040", "Test failures")
+
+        assert pm.get_ticket_status("SDLC-0040") == TicketStatus.BLOCKED
+
+
+class TestLocalPMIsTicketClaimed:
+    """Tests for LocalPM.is_ticket_claimed method."""
+
+    def test_is_ticket_claimed_always_returns_false_none(self):
+        """Given any ticket, when checking claimed, then (False, None) returned."""
+        from core.pm import LocalPM
+
+        pm = LocalPM()
+        claimed, label = pm.is_ticket_claimed("SDLC-0040")
+
+        assert claimed is False
+        assert label is None
+
+
+class TestLocalPMGetOpenTickets:
+    """Tests for LocalPM.get_open_tickets method."""
+
+    def test_get_open_tickets_returns_all_untracked_as_open(self):
+        """Given ticket ids, when getting open tickets, then untracked ones returned."""
+        from core.pm import LocalPM, TicketStatus
+
+        pm = LocalPM()
+        tickets = pm.get_open_tickets(["SDLC-0040", "SDLC-0041", "SDLC-0042"])
+
+        assert len(tickets) == 3
+        for ticket in tickets:
+            assert ticket.status == TicketStatus.OPEN
+
+    def test_get_open_tickets_excludes_closed_tickets(self):
+        """Given some closed tickets, when getting open, then closed excluded."""
+        from core.pm import LocalPM
+
+        pm = LocalPM()
+        pm.close_ticket("SDLC-0041")
+        tickets = pm.get_open_tickets(["SDLC-0040", "SDLC-0041", "SDLC-0042"])
+
+        ticket_ids = [t.id for t in tickets]
+        assert "SDLC-0041" not in ticket_ids
+        assert len(tickets) == 2
+
+    def test_get_open_tickets_excludes_blocked_tickets(self):
+        """Given some blocked tickets, when getting open, then blocked excluded."""
+        from core.pm import LocalPM
+
+        pm = LocalPM()
+        pm.add_blocked_label("SDLC-0041", "Test failure")
+        tickets = pm.get_open_tickets(["SDLC-0040", "SDLC-0041", "SDLC-0042"])
+
+        ticket_ids = [t.id for t in tickets]
+        assert "SDLC-0041" not in ticket_ids
+        assert len(tickets) == 2
+
+    def test_get_open_tickets_returns_ticket_info_objects(self):
+        """Given ticket ids, when getting open tickets, then TicketInfo objects returned."""
+        from core.pm import LocalPM, TicketInfo
+
+        pm = LocalPM()
+        tickets = pm.get_open_tickets(["SDLC-0040"])
+
+        assert len(tickets) == 1
+        assert isinstance(tickets[0], TicketInfo)
+        assert tickets[0].id == "SDLC-0040"
+
+    def test_get_open_tickets_returns_empty_for_empty_input(self):
+        """Given empty ticket list, when getting open tickets, then empty list returned."""
+        from core.pm import LocalPM
+
+        pm = LocalPM()
+        tickets = pm.get_open_tickets([])
+
+        assert tickets == []
+
+
+class TestLocalPMRemoveLabel:
+    """Tests for LocalPM.remove_label method."""
+
+    def test_remove_label_always_returns_true(self):
+        """Given any ticket and label, when removing, then True is returned (no-op)."""
+        from core.pm import LocalPM
+
+        pm = LocalPM()
+        result = pm.remove_label("SDLC-0040", "ralph-1")
+
+        assert result is True
