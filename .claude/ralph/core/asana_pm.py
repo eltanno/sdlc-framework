@@ -5,6 +5,7 @@ Ralph to manage tasks in Asana projects. Authentication uses Bearer tokens
 via the ASANA_ACCESS_TOKEN environment variable.
 
 SDLC-0052: AsanaPM HTTP client and authentication
+SDLC-0053: AsanaPM tag management
 """
 
 import logging
@@ -220,6 +221,62 @@ class AsanaPM:
             )
         except httpx.TimeoutException as e:
             raise PMError(f"Request timeout: Asana API did not respond in time. {e}")
+
+    # =========================================================================
+    # Tag Management (SDLC-0053)
+    # =========================================================================
+
+    def _get_or_create_tag(self, name: str) -> str:
+        """Get or create a tag in the workspace, returning its GID.
+
+        Uses case-insensitive matching and caches results for performance.
+        Tags are workspace-scoped in Asana.
+
+        Args:
+            name: Tag name (e.g., "ralph-1", "blocked", "task")
+
+        Returns:
+            Tag GID as string
+
+        Raises:
+            PMError: If API call fails
+        """
+        # Check cache first (case-insensitive key)
+        cache_key = name.lower()
+        if cache_key in self._tag_cache:
+            logger.debug(f"Tag '{name}' found in cache: {self._tag_cache[cache_key]}")
+            return self._tag_cache[cache_key]
+
+        # Query workspace tags
+        endpoint = f"/workspaces/{self._workspace_id}/tags"
+        tags = self._get(endpoint)
+
+        # Handle case where tags is a list (from API response)
+        if isinstance(tags, list):
+            tags_list = tags
+        else:
+            # Fallback if response structure is different
+            tags_list = []
+
+        # Search for existing tag (case-insensitive)
+        for tag in tags_list:
+            tag_name = tag.get("name", "")
+            if tag_name.lower() == name.lower():
+                tag_gid = tag.get("gid", "")
+                # Cache with lowercase key
+                self._tag_cache[cache_key] = tag_gid
+                logger.debug(f"Tag '{name}' found in workspace: {tag_gid}")
+                return tag_gid
+
+        # Tag doesn't exist - create it
+        logger.info(f"Tag '{name}' not found in workspace, creating...")
+        create_endpoint = f"/workspaces/{self._workspace_id}/tags"
+        result = self._post(create_endpoint, {"name": name, "workspace": self._workspace_id})
+
+        tag_gid = result.get("gid", "")
+        self._tag_cache[cache_key] = tag_gid
+        logger.info(f"Tag '{name}' created with GID: {tag_gid}")
+        return tag_gid
 
     # =========================================================================
     # PMTool Protocol Methods (stub implementations for SDLC-0052)

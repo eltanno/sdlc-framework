@@ -1,4 +1,4 @@
-"""Unit tests for the AsanaPM HTTP client and authentication.
+"""Unit tests for the AsanaPM HTTP client, authentication, and tag management.
 
 Tests cover:
 - AsanaPM initialization with environment variables
@@ -6,8 +6,10 @@ Tests cover:
 - Error handling for missing credentials
 - Error handling for API failures
 - Base HTTP request functionality
+- Tag management (_get_or_create_tag)
 
 SDLC-0052: AsanaPM HTTP client and authentication
+SDLC-0053: AsanaPM tag management
 """
 
 import os
@@ -321,3 +323,258 @@ def mock_httpx_client(mocker):
     """Mock httpx.Client for API calls."""
     mock = mocker.patch("core.asana_pm.httpx.Client")
     return mock
+
+
+# =============================================================================
+# SDLC-0053: Tag Management Tests
+# =============================================================================
+
+
+class TestAsanaPMTagManagement:
+    """Tests for AsanaPM tag lookup and creation.
+
+    SDLC-0053: AsanaPM tag management
+    """
+
+    def test_get_or_create_tag_returns_existing_tag_gid(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given tag exists in workspace, when _get_or_create_tag is called, then existing tag GID is returned."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET /workspaces/{workspace_id}/tags returns the tag
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": [
+                {"gid": "existing-tag-gid-123", "name": "ralph-1"},
+                {"gid": "other-tag-gid", "name": "blocked"},
+            ]
+        }
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        tag_gid = pm._get_or_create_tag("ralph-1")
+
+        assert tag_gid == "existing-tag-gid-123"
+
+    def test_get_or_create_tag_creates_tag_when_not_exists(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given tag doesn't exist in workspace, when _get_or_create_tag is called, then tag is created."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET /workspaces/{workspace_id}/tags returns empty list
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = {"data": []}
+
+        # Mock: POST /workspaces/{workspace_id}/tags creates new tag
+        mock_post_response = MagicMock()
+        mock_post_response.status_code = 201
+        mock_post_response.json.return_value = {
+            "data": {"gid": "new-tag-gid-456", "name": "ralph-2"}
+        }
+
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_get_response
+        )
+        mock_httpx_client.return_value.__enter__.return_value.post.return_value = (
+            mock_post_response
+        )
+
+        pm = AsanaPM()
+        tag_gid = pm._get_or_create_tag("ralph-2")
+
+        assert tag_gid == "new-tag-gid-456"
+        # Verify POST was called to create the tag
+        mock_httpx_client.return_value.__enter__.return_value.post.assert_called()
+
+    def test_get_or_create_tag_caches_tag_gid(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given tag was previously looked up, when _get_or_create_tag is called again, then cached GID is returned."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET /workspaces/{workspace_id}/tags returns the tag
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": [{"gid": "cached-tag-gid", "name": "blocked"}]
+        }
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+
+        # First call
+        tag_gid_1 = pm._get_or_create_tag("blocked")
+        # Second call (should use cache)
+        tag_gid_2 = pm._get_or_create_tag("blocked")
+
+        assert tag_gid_1 == tag_gid_2 == "cached-tag-gid"
+        # GET should only be called once due to caching
+        assert (
+            mock_httpx_client.return_value.__enter__.return_value.get.call_count == 1
+        )
+
+    def test_get_or_create_tag_uses_case_insensitive_match(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given tag exists with different case, when _get_or_create_tag is called, then existing tag is used."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: Tags list returns "Blocked" (capitalized)
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": [{"gid": "blocked-tag-gid", "name": "Blocked"}]
+        }
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        tag_gid = pm._get_or_create_tag("blocked")  # lowercase
+
+        assert tag_gid == "blocked-tag-gid"
+
+    def test_get_or_create_tag_sends_correct_workspace_id(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given workspace ID in env, when _get_or_create_tag is called, then correct workspace is queried."""
+        from core.asana_pm import AsanaPM
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"data": []}
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_response
+        )
+
+        # Mock POST for tag creation
+        mock_post_response = MagicMock()
+        mock_post_response.status_code = 201
+        mock_post_response.json.return_value = {
+            "data": {"gid": "new-tag-gid", "name": "task"}
+        }
+        mock_httpx_client.return_value.__enter__.return_value.post.return_value = (
+            mock_post_response
+        )
+
+        pm = AsanaPM()
+        pm._get_or_create_tag("task")
+
+        # Verify GET was called with correct workspace ID
+        get_call_args = (
+            mock_httpx_client.return_value.__enter__.return_value.get.call_args
+        )
+        url = get_call_args.args[0] if get_call_args.args else ""
+        assert "workspace-12345" in url
+
+    def test_get_or_create_tag_creates_with_correct_payload(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given tag doesn't exist, when _get_or_create_tag creates tag, then correct payload is sent."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET returns empty (tag doesn't exist)
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = {"data": []}
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_get_response
+        )
+
+        # Mock: POST creates tag
+        mock_post_response = MagicMock()
+        mock_post_response.status_code = 201
+        mock_post_response.json.return_value = {
+            "data": {"gid": "new-tag-gid", "name": "ralph-3"}
+        }
+        mock_httpx_client.return_value.__enter__.return_value.post.return_value = (
+            mock_post_response
+        )
+
+        pm = AsanaPM()
+        pm._get_or_create_tag("ralph-3")
+
+        # Verify POST payload contains tag name and workspace
+        post_call_args = (
+            mock_httpx_client.return_value.__enter__.return_value.post.call_args
+        )
+        json_body = post_call_args.kwargs.get("json", {})
+        assert json_body.get("data", {}).get("name") == "ralph-3"
+        assert json_body.get("data", {}).get("workspace") == "workspace-12345"
+
+    def test_get_or_create_tag_handles_ralph_tags_0_through_5(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given ralph tags 0-5, when _get_or_create_tag is called, then all are handled correctly."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET returns empty
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = {"data": []}
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_get_response
+        )
+
+        # Track created tags
+        created_tags = []
+
+        def mock_post(*args, **kwargs):
+            tag_name = kwargs.get("json", {}).get("data", {}).get("name", "")
+            mock_post_response = MagicMock()
+            mock_post_response.status_code = 201
+            mock_post_response.json.return_value = {
+                "data": {"gid": f"gid-for-{tag_name}", "name": tag_name}
+            }
+            created_tags.append(tag_name)
+            return mock_post_response
+
+        mock_httpx_client.return_value.__enter__.return_value.post.side_effect = (
+            mock_post
+        )
+
+        pm = AsanaPM()
+
+        # Test all ralph tags from 0 to 5
+        for i in range(6):
+            tag_name = f"ralph-{i}"
+            # Clear cache between calls to force API lookup
+            pm._tag_cache = {}
+            tag_gid = pm._get_or_create_tag(tag_name)
+            assert tag_gid == f"gid-for-{tag_name}"
+
+    def test_get_or_create_tag_raises_pm_error_on_api_failure(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given API fails during tag lookup, when _get_or_create_tag is called, then PMError is raised."""
+        from core.asana_pm import AsanaPM
+        from core.pm import PMError
+
+        # Mock: GET fails with 500
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_response.json.return_value = {
+            "errors": [{"message": "Internal server error"}]
+        }
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        with pytest.raises(PMError):
+            pm._get_or_create_tag("ralph-1")
+
+    def test_tag_cache_is_empty_on_init(self, mock_env_asana):
+        """Given new AsanaPM instance, when checking tag cache, then it is empty."""
+        from core.asana_pm import AsanaPM
+
+        pm = AsanaPM()
+        assert pm._tag_cache == {}
