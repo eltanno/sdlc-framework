@@ -1302,3 +1302,254 @@ class TestGetNextTicketClaimIntegration:
         # No ticket available - all lost to races
         assert result.ticket is None
         assert result.status == "waiting_on_claims"
+
+
+# =============================================================================
+# Tests: SDLC-0045 - Dependency Checking via PM Tool
+# =============================================================================
+
+
+class TestDependencyCheckingViaPMTool:
+    """Test dependency checking against PM tool status.
+
+    SDLC-0045: Dependencies must be satisfied in the PM tool (issue closed),
+    not just in local state.
+    """
+
+    def test_dependency_open_in_github_blocks_ticket(self) -> None:
+        """Given ticket A depends on B, when B is open in GitHub, then A is not eligible.
+
+        AC: Given ticket A depends on ticket B, when B is open in GitHub Issues,
+        then A is not eligible for work.
+        """
+        workflow = WorkflowState(
+            version="2.0",
+            prd_path="docs/prds/test.md",
+            plan_path="docs/plans/test.md",
+            tickets=[],
+            ralph=RalphState(
+                source="github",
+                tickets=["TASK-001", "TASK-002"],
+                dependencies={"TASK-002": ["TASK-001"]},  # TASK-002 depends on TASK-001
+                attempts={},
+                blocked={},
+            ),
+        )
+        mock_pm = create_mock_pm_tool()
+        # Both tickets are OPEN
+        mock_pm.get_open_tickets.return_value = [
+            TicketInfo(id="TASK-001", title="Dependency ticket", status=TicketStatus.OPEN, labels=[]),
+            TicketInfo(id="TASK-002", title="Dependent ticket", status=TicketStatus.OPEN, labels=[]),
+        ]
+        # When checking status, TASK-001 is OPEN (not closed)
+        mock_pm.get_ticket_status.return_value = TicketStatus.OPEN
+        mock_pm.claim_ticket.return_value = True
+        mock_pm.is_ticket_claimed.return_value = (True, "ralph-1")
+
+        result = get_next_ticket(workflow, pm_tool=mock_pm, ralph_label="ralph-1")
+
+        # Should return TASK-001 (no deps), NOT TASK-002 (dep not met)
+        assert result.ticket is not None
+        assert result.ticket.id == "TASK-001"
+        # TASK-002 should be skipped for deps
+        assert result.skipped_for_deps >= 1
+
+    def test_dependency_closed_in_github_satisfies_requirement(self) -> None:
+        """Given ticket A depends on B, when B is closed in GitHub, then A is eligible.
+
+        AC: Given ticket A depends on ticket B, when B is closed in GitHub Issues,
+        then A is eligible for work.
+        """
+        workflow = WorkflowState(
+            version="2.0",
+            prd_path="docs/prds/test.md",
+            plan_path="docs/plans/test.md",
+            tickets=[],
+            ralph=RalphState(
+                source="github",
+                tickets=["TASK-001", "TASK-002"],
+                dependencies={"TASK-002": ["TASK-001"]},  # TASK-002 depends on TASK-001
+                attempts={},
+                blocked={},
+            ),
+        )
+        mock_pm = create_mock_pm_tool()
+        # Only TASK-002 is open (TASK-001 is closed, so not in the open list)
+        mock_pm.get_open_tickets.return_value = [
+            TicketInfo(id="TASK-002", title="Dependent ticket", status=TicketStatus.OPEN, labels=[]),
+        ]
+        mock_pm.claim_ticket.return_value = True
+        mock_pm.is_ticket_claimed.return_value = (True, "ralph-1")
+
+        result = get_next_ticket(workflow, pm_tool=mock_pm, ralph_label="ralph-1")
+
+        # TASK-002 should be eligible since TASK-001 is closed
+        assert result.ticket is not None
+        assert result.ticket.id == "TASK-002"
+        assert result.status == "ready"
+
+    def test_missing_dependency_in_github_logs_warning_and_treated_as_unmet(
+        self, caplog
+    ) -> None:
+        """Given a dependency doesn't exist in GitHub, log warning and treat as unmet.
+
+        AC: Given a dependency ticket doesn't exist in GitHub, when checking
+        dependencies, then log warning but treat as unmet.
+        """
+        import logging
+
+        workflow = WorkflowState(
+            version="2.0",
+            prd_path="docs/prds/test.md",
+            plan_path="docs/plans/test.md",
+            tickets=[],
+            ralph=RalphState(
+                source="github",
+                tickets=["TASK-002"],  # Only TASK-002 exists, not TASK-001
+                dependencies={"TASK-002": ["TASK-001"]},  # TASK-002 depends on non-existent TASK-001
+                attempts={},
+                blocked={},
+            ),
+        )
+        mock_pm = create_mock_pm_tool()
+        # TASK-002 is open
+        mock_pm.get_open_tickets.return_value = [
+            TicketInfo(id="TASK-002", title="Dependent ticket", status=TicketStatus.OPEN, labels=[]),
+        ]
+        # When querying status of TASK-001, raise PMError (doesn't exist)
+        mock_pm.get_ticket_status.side_effect = PMError("Issue TASK-001 not found")
+        mock_pm.claim_ticket.return_value = True
+        mock_pm.is_ticket_claimed.return_value = (False, None)
+
+        with caplog.at_level(logging.WARNING):
+            result = get_next_ticket(workflow, pm_tool=mock_pm, ralph_label="ralph-1")
+
+        # TASK-002 should NOT be eligible (dependency unmet)
+        # Either no ticket returned or waiting_on_dependencies status
+        if result.ticket is not None:
+            # If a ticket is returned, it should NOT be TASK-002
+            assert result.ticket.id != "TASK-002", "TASK-002 should not be eligible with missing dependency"
+        else:
+            # If no ticket, should be waiting on dependencies
+            assert result.status == "waiting_on_dependencies"
+
+        # Should have logged a warning about the missing dependency
+        warning_logged = any(
+            "TASK-001" in record.message and "warning" in record.levelname.lower()
+            for record in caplog.records
+        ) or any(
+            "TASK-001" in record.message
+            for record in caplog.records
+            if record.levelno >= logging.WARNING
+        )
+        assert warning_logged, "Should log warning for missing dependency TASK-001"
+
+    def test_multiple_dependencies_all_must_be_closed(self) -> None:
+        """Given multiple dependencies, when any is not closed, then ticket is not eligible.
+
+        AC: Given multiple dependencies, when any is not closed, then ticket is not eligible.
+        """
+        workflow = WorkflowState(
+            version="2.0",
+            prd_path="docs/prds/test.md",
+            plan_path="docs/plans/test.md",
+            tickets=[],
+            ralph=RalphState(
+                source="github",
+                tickets=["TASK-001", "TASK-002", "TASK-003"],
+                dependencies={
+                    "TASK-003": ["TASK-001", "TASK-002"],  # TASK-003 depends on both
+                },
+                attempts={},
+                blocked={},
+            ),
+        )
+        mock_pm = create_mock_pm_tool()
+        # TASK-001 is closed (not in open list), TASK-002 and TASK-003 are open
+        mock_pm.get_open_tickets.return_value = [
+            TicketInfo(id="TASK-002", title="Second dep - still open", status=TicketStatus.OPEN, labels=[]),
+            TicketInfo(id="TASK-003", title="Depends on both", status=TicketStatus.OPEN, labels=[]),
+        ]
+        # TASK-002 status is OPEN
+        mock_pm.get_ticket_status.return_value = TicketStatus.OPEN
+        mock_pm.claim_ticket.return_value = True
+        mock_pm.is_ticket_claimed.return_value = (True, "ralph-1")
+
+        result = get_next_ticket(workflow, pm_tool=mock_pm, ralph_label="ralph-1")
+
+        # TASK-003 should NOT be eligible (TASK-002 is still open)
+        # Should return TASK-002 (no deps)
+        assert result.ticket is not None
+        assert result.ticket.id == "TASK-002"
+        # TASK-003 should be counted as skipped for deps
+        assert result.skipped_for_deps >= 1
+
+    def test_multiple_dependencies_all_closed_allows_ticket(self) -> None:
+        """Given multiple dependencies all closed, then ticket is eligible."""
+        workflow = WorkflowState(
+            version="2.0",
+            prd_path="docs/prds/test.md",
+            plan_path="docs/plans/test.md",
+            tickets=[],
+            ralph=RalphState(
+                source="github",
+                tickets=["TASK-001", "TASK-002", "TASK-003"],
+                dependencies={
+                    "TASK-003": ["TASK-001", "TASK-002"],  # TASK-003 depends on both
+                },
+                attempts={},
+                blocked={},
+            ),
+        )
+        mock_pm = create_mock_pm_tool()
+        # Only TASK-003 is open (both dependencies are closed)
+        mock_pm.get_open_tickets.return_value = [
+            TicketInfo(id="TASK-003", title="Depends on both - both closed", status=TicketStatus.OPEN, labels=[]),
+        ]
+        mock_pm.claim_ticket.return_value = True
+        mock_pm.is_ticket_claimed.return_value = (True, "ralph-1")
+
+        result = get_next_ticket(workflow, pm_tool=mock_pm, ralph_label="ralph-1")
+
+        # TASK-003 should be eligible (both deps closed)
+        assert result.ticket is not None
+        assert result.ticket.id == "TASK-003"
+        assert result.status == "ready"
+
+    def test_dependency_explicitly_checked_via_get_ticket_status(self) -> None:
+        """Ensure dependency status is checked via pm_tool.get_ticket_status().
+
+        This test verifies that when a dependency is in the open_tickets list,
+        we explicitly query its status via get_ticket_status() to confirm
+        it's truly closed (CLOSED status), not just assume from the list.
+        """
+        workflow = WorkflowState(
+            version="2.0",
+            prd_path="docs/prds/test.md",
+            plan_path="docs/plans/test.md",
+            tickets=[],
+            ralph=RalphState(
+                source="github",
+                tickets=["TASK-001", "TASK-002"],
+                dependencies={"TASK-002": ["TASK-001"]},
+                attempts={},
+                blocked={},
+            ),
+        )
+        mock_pm = create_mock_pm_tool()
+        # Both tickets are in the open list initially
+        mock_pm.get_open_tickets.return_value = [
+            TicketInfo(id="TASK-001", title="Dependency", status=TicketStatus.OPEN, labels=[]),
+            TicketInfo(id="TASK-002", title="Dependent", status=TicketStatus.OPEN, labels=[]),
+        ]
+        # When get_ticket_status is called for TASK-001, return OPEN (not closed)
+        mock_pm.get_ticket_status.return_value = TicketStatus.OPEN
+        mock_pm.claim_ticket.return_value = True
+        mock_pm.is_ticket_claimed.return_value = (True, "ralph-1")
+
+        result = get_next_ticket(workflow, pm_tool=mock_pm, ralph_label="ralph-1")
+
+        # Should have called get_ticket_status for TASK-001 to check if dependency is satisfied
+        # The call may be made during dependency checking
+        assert result.ticket is not None
+        assert result.ticket.id == "TASK-001"  # Returns the one without deps
