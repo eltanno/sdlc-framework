@@ -788,15 +788,16 @@ def run_orchestrator(
     # Create PM tool based on config
     pm_tool = create_pm_tool(config_file)
 
-    # Read RALPH_LABEL from environment for concurrency control
-    ralph_label = os.environ.get("RALPH_LABEL", "") or None
+    # Get RALPH_LABEL from config (which reads from env or .env file)
+    ralph_label = config.instance_label or None
     if ralph_label:
         logger.info(f"Running as instance: {ralph_label}")
     else:
         raise RuntimeError(
-            "RALPH_LABEL environment variable is required.\n"
-            "Set it to identify this Ralph instance (e.g., ralph-0, ralph-1).\n"
-            "Example: RALPH_LABEL=ralph-0 .claude/ralph/ralph run ..."
+            "RALPH_LABEL is required.\n"
+            "Set it in environment or .env file to identify this Ralph instance.\n"
+            "Example: RALPH_LABEL=ralph-0 .claude/ralph/ralph run ...\n"
+            "Or add to .env: RALPH_LABEL=ralph-0"
         )
 
     # Load workflow state

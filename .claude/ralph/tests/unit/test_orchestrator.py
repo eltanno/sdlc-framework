@@ -969,7 +969,7 @@ git:
                     dry_run=False,
                 )
 
-        assert "RALPH_LABEL environment variable is required" in str(exc_info.value)
+        assert "RALPH_LABEL is required" in str(exc_info.value)
 
     @patch("commands.orchestrator.get_next_ticket")
     @patch("commands.orchestrator.load_workflow_state")
