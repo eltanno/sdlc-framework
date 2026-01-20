@@ -49,6 +49,8 @@ Identify:
 
 ### Step 1b: Check PM Tool for Ticket Status
 
+Check `pm.tool` in config.yaml and use the appropriate method to get ticket counts.
+
 **If `pm.tool: github` in config.yaml:**
 
 ```bash
@@ -61,6 +63,43 @@ echo "Tickets: $CLOSED closed, $OPEN open ($BLOCKED blocked)"
 
 # List blocked tickets with reasons
 gh issue list --state open --label blocked --json number,title,body --jq '.[] | "- #\(.number): \(.title)"'
+```
+
+**If `pm.tool: asana` in config.yaml:**
+
+Use the AsanaPM class to query Asana for ticket counts:
+
+```python
+# Query Asana for ticket status counts
+# Requires ASANA_ACCESS_TOKEN, ASANA_WORKSPACE_ID, ASANA_PROJECT_ID env vars
+
+from core.asana_pm import AsanaPM
+
+pm = AsanaPM()
+counts = pm.get_ticket_counts()
+
+print(f"Tickets: {counts['closed']} closed, {counts['open']} open ({counts['blocked']} blocked)")
+
+# List blocked tickets with titles
+for task in counts['blocked_tasks']:
+    print(f"- {task['gid']}: {task['name']}")
+```
+
+**Alternative: Direct Asana API call via curl (if Python is not available):**
+
+```bash
+# Get all tasks from the project
+# Requires: ASANA_ACCESS_TOKEN, ASANA_PROJECT_ID
+
+curl -s -H "Authorization: Bearer $ASANA_ACCESS_TOKEN" \
+  "https://app.asana.com/api/1.0/projects/$ASANA_PROJECT_ID/tasks?opt_fields=gid,name,completed,tags.name" \
+  | jq '{
+    total: (.data | length),
+    closed: ([.data[] | select(.completed == true)] | length),
+    blocked: ([.data[] | select(.completed == false) | select(.tags[]?.name | ascii_downcase == "blocked")] | length),
+    open: ([.data[] | select(.completed == false) | select((.tags[]?.name | ascii_downcase) != "blocked")] | length),
+    blocked_tasks: [.data[] | select(.completed == false) | select(.tags[]?.name | ascii_downcase == "blocked") | {gid, name}]
+  }'
 ```
 
 Include this summary in the report.
