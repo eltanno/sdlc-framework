@@ -834,3 +834,448 @@ class TestAsanaPMGetTicketStatus:
         status = pm.get_ticket_status("12345")
 
         assert status == TicketStatus.BLOCKED
+
+
+# =============================================================================
+# SDLC-0055: claim_ticket and is_ticket_claimed Tests
+# =============================================================================
+
+
+class TestAsanaPMClaimTicket:
+    """Tests for AsanaPM.claim_ticket method.
+
+    SDLC-0055: Implement claiming via ralph-* tags with race condition handling.
+    """
+
+    def test_claim_ticket_adds_tag_to_task(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task ID and ralph-1 label, when claim_ticket is called, then tag is added to task."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET /workspaces/{workspace_id}/tags returns existing ralph-1 tag
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = {
+            "data": [{"gid": "ralph-1-gid", "name": "ralph-1"}]
+        }
+
+        # Mock: POST /tasks/{task_id}/addTag succeeds
+        mock_post_response = MagicMock()
+        mock_post_response.status_code = 200
+        mock_post_response.json.return_value = {"data": {}}
+
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_get_response
+        )
+        mock_httpx_client.return_value.__enter__.return_value.post.return_value = (
+            mock_post_response
+        )
+
+        pm = AsanaPM()
+        result = pm.claim_ticket("task-12345", "ralph-1")
+
+        assert result is True
+
+    def test_claim_ticket_calls_add_tag_endpoint(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task ID and label, when claim_ticket is called, then addTag endpoint is called."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET returns existing tag
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = {
+            "data": [{"gid": "ralph-1-gid", "name": "ralph-1"}]
+        }
+
+        # Mock: POST succeeds
+        mock_post_response = MagicMock()
+        mock_post_response.status_code = 200
+        mock_post_response.json.return_value = {"data": {}}
+
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_get_response
+        )
+        mock_httpx_client.return_value.__enter__.return_value.post.return_value = (
+            mock_post_response
+        )
+
+        pm = AsanaPM()
+        pm.claim_ticket("task-12345", "ralph-1")
+
+        # Verify POST was called with addTag endpoint
+        post_calls = mock_httpx_client.return_value.__enter__.return_value.post.call_args_list
+        add_tag_call = [c for c in post_calls if "addTag" in str(c)]
+        assert len(add_tag_call) > 0
+
+    def test_claim_ticket_sends_correct_tag_gid(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given label, when claim_ticket is called, then correct tag GID is sent in request."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET returns existing tag with specific GID
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = {
+            "data": [{"gid": "tag-gid-123", "name": "ralph-2"}]
+        }
+
+        # Mock: POST succeeds
+        mock_post_response = MagicMock()
+        mock_post_response.status_code = 200
+        mock_post_response.json.return_value = {"data": {}}
+
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_get_response
+        )
+        mock_httpx_client.return_value.__enter__.return_value.post.return_value = (
+            mock_post_response
+        )
+
+        pm = AsanaPM()
+        pm.claim_ticket("task-12345", "ralph-2")
+
+        # Verify the tag GID was sent
+        post_calls = mock_httpx_client.return_value.__enter__.return_value.post.call_args_list
+        add_tag_call = [c for c in post_calls if "addTag" in str(c)]
+        if add_tag_call:
+            json_body = add_tag_call[0].kwargs.get("json", {})
+            assert json_body.get("data", {}).get("tag") == "tag-gid-123"
+
+    def test_claim_ticket_creates_tag_if_not_exists(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given tag doesn't exist, when claim_ticket is called, then tag is created first."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET returns empty tags list (tag doesn't exist)
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = {"data": []}
+
+        # Mock: POST for tag creation returns new tag
+        mock_create_tag_response = MagicMock()
+        mock_create_tag_response.status_code = 201
+        mock_create_tag_response.json.return_value = {
+            "data": {"gid": "new-tag-gid", "name": "ralph-3"}
+        }
+
+        # Mock: POST for addTag succeeds
+        mock_add_tag_response = MagicMock()
+        mock_add_tag_response.status_code = 200
+        mock_add_tag_response.json.return_value = {"data": {}}
+
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_get_response
+        )
+        # First POST creates tag, second POST adds tag to task
+        mock_httpx_client.return_value.__enter__.return_value.post.side_effect = [
+            mock_create_tag_response,
+            mock_add_tag_response,
+        ]
+
+        pm = AsanaPM()
+        result = pm.claim_ticket("task-12345", "ralph-3")
+
+        assert result is True
+        # Verify two POST calls were made
+        assert mock_httpx_client.return_value.__enter__.return_value.post.call_count == 2
+
+    def test_claim_ticket_returns_false_on_api_failure(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given API fails when adding tag, when claim_ticket is called, then False is returned."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET returns existing tag
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = {
+            "data": [{"gid": "ralph-1-gid", "name": "ralph-1"}]
+        }
+
+        # Mock: POST fails with 500
+        mock_post_response = MagicMock()
+        mock_post_response.status_code = 500
+        mock_post_response.json.return_value = {"errors": [{"message": "Server error"}]}
+
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_get_response
+        )
+        mock_httpx_client.return_value.__enter__.return_value.post.return_value = (
+            mock_post_response
+        )
+
+        pm = AsanaPM()
+        result = pm.claim_ticket("task-12345", "ralph-1")
+
+        assert result is False
+
+    def test_claim_ticket_handles_ralph_0_through_5(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given ralph labels 0-5, when claim_ticket is called with each, then all succeed."""
+        from core.asana_pm import AsanaPM
+
+        for i in range(6):
+            label = f"ralph-{i}"
+
+            # Mock: GET returns tag
+            mock_get_response = MagicMock()
+            mock_get_response.status_code = 200
+            mock_get_response.json.return_value = {
+                "data": [{"gid": f"gid-{label}", "name": label}]
+            }
+
+            # Mock: POST succeeds
+            mock_post_response = MagicMock()
+            mock_post_response.status_code = 200
+            mock_post_response.json.return_value = {"data": {}}
+
+            mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+                mock_get_response
+            )
+            mock_httpx_client.return_value.__enter__.return_value.post.return_value = (
+                mock_post_response
+            )
+
+            pm = AsanaPM()
+            result = pm.claim_ticket("task-12345", label)
+
+            assert result is True, f"claim_ticket failed for {label}"
+
+
+class TestAsanaPMIsTicketClaimed:
+    """Tests for AsanaPM.is_ticket_claimed method.
+
+    SDLC-0055: Check if task is claimed by any Ralph instance via ralph-* tags.
+    """
+
+    def test_is_ticket_claimed_returns_true_when_ralph_tag_present(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task has ralph-1 tag, when is_ticket_claimed is called, then (True, 'ralph-1') is returned."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET /tasks/{task_id} returns task with ralph-1 tag
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": {
+                "gid": "12345",
+                "name": "Test Task",
+                "completed": False,
+                "tags": [
+                    {"gid": "task-tag-gid", "name": "task"},
+                    {"gid": "ralph-1-gid", "name": "ralph-1"},
+                ],
+            }
+        }
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        is_claimed, label = pm.is_ticket_claimed("12345")
+
+        assert is_claimed is True
+        assert label == "ralph-1"
+
+    def test_is_ticket_claimed_returns_false_when_no_ralph_tag(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task has no ralph-* tags, when is_ticket_claimed is called, then (False, None) is returned."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET /tasks/{task_id} returns task without ralph tags
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": {
+                "gid": "12345",
+                "name": "Test Task",
+                "completed": False,
+                "tags": [
+                    {"gid": "task-tag-gid", "name": "task"},
+                    {"gid": "blocked-tag-gid", "name": "blocked"},
+                ],
+            }
+        }
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        is_claimed, label = pm.is_ticket_claimed("12345")
+
+        assert is_claimed is False
+        assert label is None
+
+    def test_is_ticket_claimed_returns_false_when_no_tags(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task has no tags at all, when is_ticket_claimed is called, then (False, None) is returned."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET /tasks/{task_id} returns task with empty tags list
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": {
+                "gid": "12345",
+                "name": "Test Task",
+                "completed": False,
+                "tags": [],
+            }
+        }
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        is_claimed, label = pm.is_ticket_claimed("12345")
+
+        assert is_claimed is False
+        assert label is None
+
+    def test_is_ticket_claimed_detects_any_ralph_tag_0_through_5(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task has ralph-N tag (N=0-5), when is_ticket_claimed is called, then (True, 'ralph-N') is returned."""
+        from core.asana_pm import AsanaPM
+
+        for i in range(6):
+            label = f"ralph-{i}"
+
+            # Mock: GET returns task with specific ralph tag
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {
+                "data": {
+                    "gid": "12345",
+                    "name": "Test Task",
+                    "completed": False,
+                    "tags": [{"gid": f"gid-{label}", "name": label}],
+                }
+            }
+            mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+                mock_response
+            )
+
+            pm = AsanaPM()
+            is_claimed, returned_label = pm.is_ticket_claimed("12345")
+
+            assert is_claimed is True, f"is_ticket_claimed failed for {label}"
+            assert returned_label == label
+
+    def test_is_ticket_claimed_returns_first_ralph_tag_if_multiple(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task has multiple ralph-* tags, when is_ticket_claimed is called, then first one is returned."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET returns task with multiple ralph tags
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": {
+                "gid": "12345",
+                "name": "Test Task",
+                "completed": False,
+                "tags": [
+                    {"gid": "ralph-2-gid", "name": "ralph-2"},
+                    {"gid": "ralph-1-gid", "name": "ralph-1"},
+                ],
+            }
+        }
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        is_claimed, label = pm.is_ticket_claimed("12345")
+
+        assert is_claimed is True
+        assert label == "ralph-2"  # First one in the list
+
+    def test_is_ticket_claimed_calls_correct_api_endpoint(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task id, when is_ticket_claimed is called, then correct API endpoint is used."""
+        from core.asana_pm import AsanaPM
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": {
+                "gid": "12345",
+                "name": "Test Task",
+                "completed": False,
+                "tags": [],
+            }
+        }
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        pm.is_ticket_claimed("12345")
+
+        # Verify GET was called with correct endpoint
+        get_call_args = (
+            mock_httpx_client.return_value.__enter__.return_value.get.call_args
+        )
+        url = get_call_args.args[0] if get_call_args.args else ""
+        assert "/tasks/12345" in url
+
+    def test_is_ticket_claimed_returns_false_on_api_error(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given API returns error, when is_ticket_claimed is called, then (False, None) is returned."""
+        from core.asana_pm import AsanaPM
+
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        mock_response.json.return_value = {"errors": [{"message": "Not found"}]}
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        is_claimed, label = pm.is_ticket_claimed("nonexistent")
+
+        assert is_claimed is False
+        assert label is None
+
+    def test_is_ticket_claimed_ignores_non_ralph_tags(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given task has 'ralph' tag (not 'ralph-N'), when is_ticket_claimed is called, then (False, None) is returned."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET returns task with 'ralph' tag but not 'ralph-N' pattern
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": {
+                "gid": "12345",
+                "name": "Test Task",
+                "completed": False,
+                "tags": [
+                    {"gid": "ralph-tag-gid", "name": "ralph"},
+                    {"gid": "ralphy-tag-gid", "name": "ralphy-1"},
+                ],
+            }
+        }
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = (
+            mock_response
+        )
+
+        pm = AsanaPM()
+        is_claimed, label = pm.is_ticket_claimed("12345")
+
+        assert is_claimed is False
+        assert label is None
