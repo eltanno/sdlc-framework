@@ -10,10 +10,13 @@ for easy mocking in tests.
 """
 
 import json
+import logging
 import subprocess
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Protocol
+
+logger = logging.getLogger(__name__)
 
 
 class TicketStatus(Enum):
@@ -457,3 +460,138 @@ class GitHubPM:
 
         result = _run_gh_command(args, check=False)
         return result.returncode == 0
+
+
+class LocalPM:
+    """Fallback PM tool for local-only operation without external PM system.
+
+    This implementation stores ticket state in memory only (degraded mode).
+    It does not provide concurrency control or persistent state tracking.
+
+    Use this when:
+    - No PM tool is configured (pm.tool: none in config)
+    - Operating in standalone mode without GitHub/Trello
+
+    Limitations:
+    - No concurrency control (claim_ticket always succeeds)
+    - State is lost when the process exits
+    - No real label/claim tracking
+    """
+
+    def __init__(self) -> None:
+        """Initialize LocalPM with warning about degraded functionality."""
+        logger.warning(
+            "LocalPM initialized: Running in degraded mode without PM tool. "
+            "No concurrency control or persistent state tracking available."
+        )
+        # Track closed and blocked tickets in memory
+        self._closed_tickets: set[str] = set()
+        self._blocked_tickets: set[str] = set()
+
+    def get_ticket_status(self, ticket_id: str) -> TicketStatus:
+        """Get the current status of a ticket based on local tracking.
+
+        Args:
+            ticket_id: Unique identifier for the ticket
+
+        Returns:
+            TicketStatus based on local state (OPEN by default)
+        """
+        if ticket_id in self._closed_tickets:
+            return TicketStatus.CLOSED
+        if ticket_id in self._blocked_tickets:
+            return TicketStatus.BLOCKED
+        return TicketStatus.OPEN
+
+    def claim_ticket(self, ticket_id: str, label: str) -> bool:
+        """Claim a ticket (always succeeds in local mode - no concurrency control).
+
+        Args:
+            ticket_id: Unique identifier for the ticket
+            label: Label to add (ignored in local mode)
+
+        Returns:
+            Always True (no real claiming mechanism)
+        """
+        logger.debug(
+            f"LocalPM.claim_ticket: No concurrency control in local mode. "
+            f"Ticket {ticket_id} with label {label} not actually claimed."
+        )
+        return True
+
+    def close_ticket(self, ticket_id: str) -> bool:
+        """Close a ticket by tracking it locally.
+
+        Args:
+            ticket_id: Unique identifier for the ticket
+
+        Returns:
+            True (always succeeds)
+        """
+        self._closed_tickets.add(ticket_id)
+        # Remove from blocked if it was blocked
+        self._blocked_tickets.discard(ticket_id)
+        return True
+
+    def add_blocked_label(self, ticket_id: str, reason: str) -> bool:
+        """Mark a ticket as blocked by tracking it locally.
+
+        Args:
+            ticket_id: Unique identifier for the ticket
+            reason: Reason why the ticket is blocked (logged)
+
+        Returns:
+            True (always succeeds)
+        """
+        logger.info(f"Ticket {ticket_id} blocked: {reason}")
+        self._blocked_tickets.add(ticket_id)
+        return True
+
+    def is_ticket_claimed(self, ticket_id: str) -> tuple[bool, str | None]:
+        """Check if a ticket is claimed (always returns False in local mode).
+
+        Args:
+            ticket_id: Unique identifier for the ticket
+
+        Returns:
+            Always (False, None) - no claiming mechanism in local mode
+        """
+        return (False, None)
+
+    def get_open_tickets(self, ticket_ids: list[str]) -> list[TicketInfo]:
+        """Get information about open tickets from the provided list.
+
+        Args:
+            ticket_ids: List of ticket IDs to check
+
+        Returns:
+            List of TicketInfo for tickets that are not closed/blocked
+        """
+        if not ticket_ids:
+            return []
+
+        tickets = []
+        for ticket_id in ticket_ids:
+            status = self.get_ticket_status(ticket_id)
+            if status == TicketStatus.OPEN:
+                tickets.append(
+                    TicketInfo(
+                        id=ticket_id,
+                        title=f"Local ticket {ticket_id}",
+                        status=TicketStatus.OPEN,
+                        labels=[],
+                    )
+                )
+        return tickets
+
+    def remove_label(self, ticket_id: str, label: str) -> bool:
+        """Remove a label from a ticket (no-op in local mode).
+
+        Args:
+            ticket_id: Unique identifier for the ticket
+            label: Label to remove (ignored)
+
+        Returns:
+            Always True (no real label mechanism)
+        """
+        return True
