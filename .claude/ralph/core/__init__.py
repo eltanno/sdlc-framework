@@ -5,8 +5,9 @@ This package contains the foundational modules used by Ralph commands:
 - state: Workflow state file management with atomic writes
 - github: GitHub CLI (gh) wrapper for issue and PR operations
 - git: Git CLI wrapper for repository operations
+- pm: PM tool abstraction layer (Protocol and implementations)
 """
 
-from core import config, state, github, git
+from core import config, git, github, pm, state
 
-__all__ = ["config", "state", "github", "git"]
+__all__ = ["config", "state", "github", "git", "pm"]
