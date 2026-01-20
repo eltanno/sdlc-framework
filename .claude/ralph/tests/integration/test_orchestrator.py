@@ -13,6 +13,7 @@ These tests mock external CLI operations (Claude, gh, git).
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -678,15 +679,17 @@ pm:
         config_file = tmp_path / "config.yaml"
         config_file.write_text(config_content)
 
-        result = run_orchestrator(
-            prd_path=prd_file,
-            plan_path=plan_file,
-            state_file=tmp_path / "state.json",
-            config_file=config_file,
-            dry_run=False,
-            max_wait_retries=1,  # Only wait once
-            wait_interval=0,  # Don't actually wait
-        )
+        # RALPH_LABEL is required
+        with patch.dict(os.environ, {"RALPH_LABEL": "ralph-test"}):
+            result = run_orchestrator(
+                prd_path=prd_file,
+                plan_path=plan_file,
+                state_file=tmp_path / "state.json",
+                config_file=config_file,
+                dry_run=False,
+                max_wait_retries=1,  # Only wait once
+                wait_interval=0,  # Don't actually wait
+            )
 
         # TASK-002 is waiting on blocked TASK-001, so nothing gets processed
         # The orchestrator should exit after max wait retries

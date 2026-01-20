@@ -1,0 +1,244 @@
+{
+  "version": "1.0",
+  "prd_path": "docs/prds/2026-01-20-asana-pm-tool-integration.md",
+  "plan_path": "docs/plans/2026-01-20-asana-pm-tool-integration.md",
+  "tickets": [
+    {
+      "id": "SDLC-0052",
+      "title": "SDLC-0052",
+      "status": "pending",
+      "dependencies": [],
+      "attempts": 0,
+      "block_reason": null
+    },
+    {
+      "id": "SDLC-0053",
+      "title": "SDLC-0053",
+      "status": "pending",
+      "dependencies": [
+        "SDLC-0052"
+      ],
+      "attempts": 0,
+      "block_reason": null
+    },
+    {
+      "id": "SDLC-0054",
+      "title": "SDLC-0054",
+      "status": "pending",
+      "dependencies": [
+        "SDLC-0052",
+        "SDLC-0053"
+      ],
+      "attempts": 0,
+      "block_reason": null
+    },
+    {
+      "id": "SDLC-0055",
+      "title": "SDLC-0055",
+      "status": "pending",
+      "dependencies": [
+        "SDLC-0052",
+        "SDLC-0053"
+      ],
+      "attempts": 0,
+      "block_reason": null
+    },
+    {
+      "id": "SDLC-0056",
+      "title": "SDLC-0056",
+      "status": "pending",
+      "dependencies": [
+        "SDLC-0052",
+        "SDLC-0053"
+      ],
+      "attempts": 0,
+      "block_reason": null
+    },
+    {
+      "id": "SDLC-0057",
+      "title": "SDLC-0057",
+      "status": "pending",
+      "dependencies": [
+        "SDLC-0052",
+        "SDLC-0053"
+      ],
+      "attempts": 0,
+      "block_reason": null
+    },
+    {
+      "id": "SDLC-0058",
+      "title": "SDLC-0058",
+      "status": "pending",
+      "dependencies": [
+        "SDLC-0052",
+        "SDLC-0057"
+      ],
+      "attempts": 0,
+      "block_reason": null
+    },
+    {
+      "id": "SDLC-0059",
+      "title": "SDLC-0059",
+      "status": "pending",
+      "dependencies": [
+        "SDLC-0058"
+      ],
+      "attempts": 0,
+      "block_reason": null
+    },
+    {
+      "id": "SDLC-0060",
+      "title": "SDLC-0060",
+      "status": "pending",
+      "dependencies": [
+        "SDLC-0059"
+      ],
+      "attempts": 0,
+      "block_reason": null
+    },
+    {
+      "id": "SDLC-0061",
+      "title": "SDLC-0061",
+      "status": "pending",
+      "dependencies": [
+        "SDLC-0059"
+      ],
+      "attempts": 0,
+      "block_reason": null
+    },
+    {
+      "id": "SDLC-0062",
+      "title": "SDLC-0062",
+      "status": "pending",
+      "dependencies": [
+        "SDLC-0059"
+      ],
+      "attempts": 0,
+      "block_reason": null
+    },
+    {
+      "id": "SDLC-0063",
+      "title": "SDLC-0063",
+      "status": "pending",
+      "dependencies": [
+        "SDLC-0059"
+      ],
+      "attempts": 0,
+      "block_reason": null
+    },
+    {
+      "id": "SDLC-0064",
+      "title": "SDLC-0064",
+      "status": "pending",
+      "dependencies": [
+        "SDLC-0059"
+      ],
+      "attempts": 0,
+      "block_reason": null
+    },
+    {
+      "id": "SDLC-0065",
+      "title": "SDLC-0065",
+      "status": "pending",
+      "dependencies": [
+        "SDLC-0052",
+        "SDLC-0058"
+      ],
+      "attempts": 0,
+      "block_reason": null
+    },
+    {
+      "id": "SDLC-0066",
+      "title": "SDLC-0066",
+      "status": "pending",
+      "dependencies": [
+        "SDLC-0065"
+      ],
+      "attempts": 0,
+      "block_reason": null
+    },
+    {
+      "id": "TC-1",
+      "title": "TC-1",
+      "status": "pending",
+      "dependencies": [],
+      "attempts": 0,
+      "block_reason": null
+    },
+    {
+      "id": "TC-2",
+      "title": "TC-2",
+      "status": "pending",
+      "dependencies": [],
+      "attempts": 0,
+      "block_reason": null
+    },
+    {
+      "id": "TC-3",
+      "title": "TC-3",
+      "status": "pending",
+      "dependencies": [],
+      "attempts": 0,
+      "block_reason": null
+    },
+    {
+      "id": "TC-4",
+      "title": "TC-4",
+      "status": "pending",
+      "dependencies": [],
+      "attempts": 0,
+      "block_reason": null
+    },
+    {
+      "id": "TC-5",
+      "title": "TC-5",
+      "status": "pending",
+      "dependencies": [],
+      "attempts": 0,
+      "block_reason": null
+    },
+    {
+      "id": "TC-6",
+      "title": "TC-6",
+      "status": "pending",
+      "dependencies": [],
+      "attempts": 0,
+      "block_reason": null
+    },
+    {
+      "id": "TC-7",
+      "title": "TC-7",
+      "status": "pending",
+      "dependencies": [],
+      "attempts": 0,
+      "block_reason": null
+    },
+    {
+      "id": "TC-8",
+      "title": "TC-8",
+      "status": "pending",
+      "dependencies": [],
+      "attempts": 0,
+      "block_reason": null
+    },
+    {
+      "id": "TC-9",
+      "title": "TC-9",
+      "status": "pending",
+      "dependencies": [],
+      "attempts": 0,
+      "block_reason": null
+    },
+    {
+      "id": "TC-10",
+      "title": "TC-10",
+      "status": "pending",
+      "dependencies": [],
+      "attempts": 0,
+      "block_reason": null
+    }
+  ],
+  "current_ticket": null,
+  "completed_count": 0,
+  "blocked_count": 0
+}

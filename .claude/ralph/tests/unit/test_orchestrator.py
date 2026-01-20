@@ -387,6 +387,12 @@ class TestProcessTicket:
 class TestRunOrchestrator:
     """Tests for run_orchestrator function."""
 
+    @pytest.fixture(autouse=True)
+    def set_ralph_label(self):
+        """Set RALPH_LABEL for all tests in this class."""
+        with patch.dict(os.environ, {"RALPH_LABEL": "ralph-test"}):
+            yield
+
     @patch("commands.orchestrator.process_ticket")
     @patch("commands.orchestrator.get_next_ticket")
     @patch("commands.orchestrator.load_workflow_state")
@@ -939,52 +945,31 @@ git:
         call_kwargs = mock_get_next.call_args[1]
         assert call_kwargs.get("ralph_label") == "ralph-42"
 
-    @patch("commands.orchestrator.get_next_ticket")
-    @patch("commands.orchestrator.load_workflow_state")
     @patch("commands.orchestrator.create_pm_tool")
-    def test_run_orchestrator_uses_empty_label_when_not_set(
+    def test_run_orchestrator_raises_error_when_ralph_label_not_set(
         self,
         mock_create_pm: MagicMock,
-        mock_load_state: MagicMock,
-        mock_get_next: MagicMock,
         tmp_path: Path,
         github_config_yaml: Path,
     ) -> None:
-        """Test that empty ralph_label is used when RALPH_LABEL not set."""
-        # Setup
+        """Test that RuntimeError is raised when RALPH_LABEL not set."""
         mock_pm_tool = MagicMock()
         mock_create_pm.return_value = mock_pm_tool
 
-        mock_state = WorkflowState(
-            version="2.0",
-            prd_path=tmp_path / "prd.md",
-            plan_path=tmp_path / "plan.md",
-            tickets=[],
-        )
-        mock_load_state.return_value = mock_state
-
-        mock_get_next.return_value = MagicMock(
-            ticket=None,
-            has_more=False,
-            status="complete",
-        )
-
-        # Ensure RALPH_LABEL is not set
+        # Ensure RALPH_LABEL is not set (override the autouse fixture)
         env = os.environ.copy()
         env.pop("RALPH_LABEL", None)
         with patch.dict(os.environ, env, clear=True):
-            run_orchestrator(
-                prd_path=tmp_path / "prd.md",
-                plan_path=tmp_path / "plan.md",
-                state_file=tmp_path / "state.json",
-                config_file=github_config_yaml,
-                dry_run=False,
-            )
+            with pytest.raises(RuntimeError) as exc_info:
+                run_orchestrator(
+                    prd_path=tmp_path / "prd.md",
+                    plan_path=tmp_path / "plan.md",
+                    state_file=tmp_path / "state.json",
+                    config_file=github_config_yaml,
+                    dry_run=False,
+                )
 
-        # Verify ralph_label was None or empty
-        call_kwargs = mock_get_next.call_args[1]
-        ralph_label = call_kwargs.get("ralph_label")
-        assert ralph_label is None or ralph_label == ""
+        assert "RALPH_LABEL environment variable is required" in str(exc_info.value)
 
     @patch("commands.orchestrator.get_next_ticket")
     @patch("commands.orchestrator.load_workflow_state")

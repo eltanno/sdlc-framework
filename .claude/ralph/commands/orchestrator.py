@@ -793,7 +793,11 @@ def run_orchestrator(
     if ralph_label:
         logger.info(f"Running as instance: {ralph_label}")
     else:
-        logger.debug("No RALPH_LABEL set, running without concurrency control")
+        raise RuntimeError(
+            "RALPH_LABEL environment variable is required.\n"
+            "Set it to identify this Ralph instance (e.g., ralph-0, ralph-1).\n"
+            "Example: RALPH_LABEL=ralph-0 .claude/ralph/ralph run ..."
+        )
 
     # Load workflow state
     state = load_workflow_state(state_file)
