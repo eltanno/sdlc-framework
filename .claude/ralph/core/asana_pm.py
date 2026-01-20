@@ -902,3 +902,82 @@ class AsanaPM:
         )
 
         return result
+
+    # =========================================================================
+    # Ticket Status Counts Method (SDLC-0064)
+    # =========================================================================
+
+    def get_ticket_counts(self) -> dict[str, Any]:
+        """Get counts of tickets by status for the configured project.
+
+        Fetches all tasks from the configured project and categorizes them
+        by status (open, closed, blocked). Blocked tasks are also returned
+        with their details (gid and name) for reporting.
+
+        This method is used by the /execution-report slash command to provide
+        ticket status summary.
+
+        Returns:
+            Dictionary containing:
+            - open: Count of open (incomplete, non-blocked) tasks
+            - closed: Count of completed tasks
+            - blocked: Count of blocked tasks (has blocked tag)
+            - total: Total task count
+            - blocked_tasks: List of blocked task details with gid and name
+
+        Raises:
+            PMError: If API call fails
+
+        SDLC-0064: Update /execution-report command - Add Asana task status query
+        """
+        # Fetch all tasks from the project with necessary fields
+        endpoint = f"/projects/{self._project_id}/tasks?opt_fields=gid,name,completed,tags,tags.name"
+        tasks_data = self._get(endpoint)
+
+        # Handle response (could be list directly or need extraction)
+        if isinstance(tasks_data, list):
+            tasks = tasks_data
+        else:
+            tasks = []
+
+        # Count tasks by status
+        open_count = 0
+        closed_count = 0
+        blocked_count = 0
+        blocked_tasks: list[dict[str, str]] = []
+
+        for task in tasks:
+            completed = task.get("completed", False)
+
+            # Check for blocked tag (case-insensitive)
+            tags = task.get("tags", [])
+            is_blocked = any(
+                tag.get("name", "").lower() == self._blocked_label.lower()
+                for tag in tags
+            )
+
+            if completed:
+                closed_count += 1
+            elif is_blocked:
+                blocked_count += 1
+                blocked_tasks.append({
+                    "gid": task.get("gid", ""),
+                    "name": task.get("name", ""),
+                })
+            else:
+                open_count += 1
+
+        total = open_count + closed_count + blocked_count
+
+        logger.info(
+            f"Ticket counts for project {self._project_id}: "
+            f"{open_count} open, {closed_count} closed, {blocked_count} blocked"
+        )
+
+        return {
+            "open": open_count,
+            "closed": closed_count,
+            "blocked": blocked_count,
+            "total": total,
+            "blocked_tasks": blocked_tasks,
+        }

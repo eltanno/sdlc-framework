@@ -3670,3 +3670,172 @@ class TestAsanaPMGetTaskDetails:
         params = list(sig.parameters.keys())
         # Should have task_id parameter
         assert "task_id" in params
+
+
+# =============================================================================
+# SDLC-0064: get_ticket_counts Tests (for /execution-report)
+# =============================================================================
+
+
+class TestAsanaPMGetTicketCounts:
+    """Tests for AsanaPM.get_ticket_counts method.
+
+    SDLC-0064: Update /execution-report command - Add Asana task status query for ticket counts.
+    """
+
+    def test_get_ticket_counts_returns_correct_counts(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given project with tasks in different states, when get_ticket_counts is called, then correct counts are returned."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET /projects/{project_id}/tasks returns tasks in different states
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": [
+                # Open task
+                {"gid": "1", "name": "[SDLC-0001] Open Task", "completed": False, "tags": []},
+                # Closed task
+                {"gid": "2", "name": "[SDLC-0002] Closed Task", "completed": True, "tags": []},
+                # Blocked task
+                {
+                    "gid": "3",
+                    "name": "[SDLC-0003] Blocked Task",
+                    "completed": False,
+                    "tags": [{"gid": "blocked-gid", "name": "blocked"}],
+                },
+                # Another open task
+                {"gid": "4", "name": "[SDLC-0004] Another Open", "completed": False, "tags": []},
+            ]
+        }
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = mock_response
+
+        pm = AsanaPM()
+        counts = pm.get_ticket_counts()
+
+        assert counts["open"] == 2
+        assert counts["closed"] == 1
+        assert counts["blocked"] == 1
+        assert counts["total"] == 4
+
+    def test_get_ticket_counts_returns_blocked_tasks_details(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given project with blocked tasks, when get_ticket_counts is called, then blocked task details are included."""
+        from core.asana_pm import AsanaPM
+
+        # Mock: GET /projects/{project_id}/tasks returns blocked tasks
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": [
+                {
+                    "gid": "1",
+                    "name": "[SDLC-0001] Blocked Feature",
+                    "completed": False,
+                    "tags": [{"gid": "blocked-gid", "name": "blocked"}],
+                },
+                {
+                    "gid": "2",
+                    "name": "[SDLC-0002] Also Blocked",
+                    "completed": False,
+                    "tags": [{"gid": "blocked-gid", "name": "Blocked"}],  # Capitalized
+                },
+            ]
+        }
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = mock_response
+
+        pm = AsanaPM()
+        counts = pm.get_ticket_counts()
+
+        assert counts["blocked"] == 2
+        assert len(counts["blocked_tasks"]) == 2
+        assert counts["blocked_tasks"][0]["gid"] == "1"
+        assert counts["blocked_tasks"][0]["name"] == "[SDLC-0001] Blocked Feature"
+        assert counts["blocked_tasks"][1]["gid"] == "2"
+
+    def test_get_ticket_counts_queries_correct_project(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given project ID in env, when get_ticket_counts is called, then correct project is queried."""
+        from core.asana_pm import AsanaPM
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"data": []}
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = mock_response
+
+        pm = AsanaPM()
+        pm.get_ticket_counts()
+
+        # Verify GET was called with correct project ID
+        get_call_args = mock_httpx_client.return_value.__enter__.return_value.get.call_args
+        url = get_call_args.args[0] if get_call_args.args else ""
+        assert "/projects/project-12345/tasks" in url
+
+    def test_get_ticket_counts_handles_empty_project(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given project with no tasks, when get_ticket_counts is called, then zero counts are returned."""
+        from core.asana_pm import AsanaPM
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"data": []}
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = mock_response
+
+        pm = AsanaPM()
+        counts = pm.get_ticket_counts()
+
+        assert counts["open"] == 0
+        assert counts["closed"] == 0
+        assert counts["blocked"] == 0
+        assert counts["total"] == 0
+        assert counts["blocked_tasks"] == []
+
+    def test_get_ticket_counts_uses_case_insensitive_blocked_tag_match(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given tasks with different cased blocked tags, when get_ticket_counts is called, then all are counted."""
+        from core.asana_pm import AsanaPM
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": [
+                {"gid": "1", "name": "Task 1", "completed": False, "tags": [{"name": "blocked"}]},
+                {"gid": "2", "name": "Task 2", "completed": False, "tags": [{"name": "Blocked"}]},
+                {"gid": "3", "name": "Task 3", "completed": False, "tags": [{"name": "BLOCKED"}]},
+            ]
+        }
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = mock_response
+
+        pm = AsanaPM()
+        counts = pm.get_ticket_counts()
+
+        assert counts["blocked"] == 3
+
+    def test_get_ticket_counts_raises_pm_error_on_api_failure(
+        self, mock_env_asana, mock_httpx_client
+    ):
+        """Given API fails, when get_ticket_counts is called, then PMError is raised."""
+        from core.asana_pm import AsanaPM
+        from core.pm import PMError
+
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_response.json.return_value = {"errors": [{"message": "Internal server error"}]}
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = mock_response
+
+        pm = AsanaPM()
+        with pytest.raises(PMError):
+            pm.get_ticket_counts()
+
+    def test_get_ticket_counts_method_exists(self, mock_env_asana):
+        """Given AsanaPM class, when checking for get_ticket_counts, then method exists."""
+        from core.asana_pm import AsanaPM
+
+        pm = AsanaPM()
+        assert hasattr(pm, "get_ticket_counts")
+        assert callable(getattr(pm, "get_ticket_counts", None))
