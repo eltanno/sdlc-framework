@@ -26,6 +26,10 @@ from typing import Any, Optional, Union
 import yaml
 
 
+# Valid PM tool types
+VALID_PM_TOOLS: frozenset[str] = frozenset({"github", "trello", "asana", "linear", "none"})
+
+
 class ConfigError(Exception):
     """Raised when configuration loading or validation fails.
 
@@ -300,3 +304,59 @@ def matches_instance_prefix(label: Optional[str], prefix: str) -> bool:
         return False
 
     return label.startswith(prefix)
+
+
+def get_pm_tool_type(config_path: Union[str, Path]) -> str:
+    """Get the configured project management tool type.
+
+    Reads pm.tool from the config file and validates it against
+    VALID_PM_TOOLS. This setting is required - there is no default.
+
+    Args:
+        config_path: Path to the config.yaml file.
+
+    Returns:
+        PM tool type string (github | trello | asana | linear | none).
+
+    Raises:
+        ConfigError: If config file is missing, pm.tool is not set,
+            or pm.tool has an invalid value.
+    """
+    path = Path(config_path)
+
+    if not path.exists():
+        raise ConfigError(
+            f"Configuration file not found: {path}",
+            file_path=path
+        )
+
+    try:
+        content = path.read_text(encoding="utf-8")
+        data = yaml.safe_load(content) or {}
+    except yaml.YAMLError as e:
+        raise ConfigError(
+            f"Failed to parse YAML: {e}",
+            file_path=path
+        ) from e
+
+    # Get pm section
+    pm_data = data.get("pm", {}) or {}
+    tool = pm_data.get("tool")
+
+    # Validate pm.tool is set
+    if tool is None or tool == "":
+        raise ConfigError(
+            "pm.tool is not configured. "
+            f"Must be one of: {', '.join(sorted(VALID_PM_TOOLS))}",
+            file_path=path
+        )
+
+    # Validate pm.tool value
+    if tool not in VALID_PM_TOOLS:
+        raise ConfigError(
+            f"Invalid pm.tool value: '{tool}'. "
+            f"Must be one of: {', '.join(sorted(VALID_PM_TOOLS))}",
+            file_path=path
+        )
+
+    return tool
