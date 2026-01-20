@@ -7,16 +7,22 @@ This module finds the next ticket based on:
 
 The get_next_ticket function returns a GetNextResult dataclass that contains:
 - The next ticket to work on (or None if no eligible tickets)
-- Status information (ready, complete, waiting_on_dependencies, all_blocked)
+- Status information (ready, complete, waiting_on_dependencies, all_blocked, error)
 - Counts of tickets by status
+
+When a PM tool is provided (v2 schema), ticket status is queried from the PM tool
+(e.g., GitHub Issues) rather than local state. This allows for:
+- Correct status when PM tool state differs from local state
+- Label-based concurrency control for parallel Ralph instances
+- Dependency checking against PM tool (closed = completed)
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from pathlib import Path
+from dataclasses import dataclass
 from typing import Any
 
+from core.pm import PMTool, PMError, TicketInfo, TicketStatus
 from core.state import WorkflowState, Ticket
 
 
@@ -126,7 +132,11 @@ def get_ticket_counts(tickets: list[Ticket]) -> dict[str, int]:
     return counts
 
 
-def get_next_ticket(state: WorkflowState) -> GetNextResult:
+def get_next_ticket(
+    state: WorkflowState,
+    pm_tool: PMTool | None = None,
+    ralph_label: str | None = None,
+) -> GetNextResult:
     """Find the next eligible ticket to work on.
 
     The selection algorithm:
@@ -135,8 +145,259 @@ def get_next_ticket(state: WorkflowState) -> GetNextResult:
     3. Skip blocked tickets
     4. Return first eligible ticket by order in the list
 
+    When pm_tool is provided (v2 schema), ticket status is queried from the PM tool:
+    - Open tickets in PM tool are considered pending
+    - Closed tickets in PM tool are considered completed
+    - Tickets with blocked label are skipped
+    - Tickets claimed by other Ralph instances (ralph-* labels) are skipped
+
     Args:
         state: The current workflow state
+        pm_tool: Optional PM tool for querying ticket status (v2 schema)
+        ralph_label: This Ralph instance's label (e.g., "ralph-1") for concurrency control
+
+    Returns:
+        GetNextResult containing the next ticket and status information
+    """
+    # If pm_tool is provided and we have ralph state (v2 schema), use PM tool
+    if pm_tool is not None and state.ralph is not None:
+        return _get_next_ticket_with_pm_tool(state, pm_tool, ralph_label)
+
+    # Otherwise, fall back to v1 behavior using local state
+    return _get_next_ticket_from_local_state(state)
+
+
+def _get_next_ticket_with_pm_tool(
+    state: WorkflowState,
+    pm_tool: PMTool,
+    ralph_label: str | None = None,
+) -> GetNextResult:
+    """Find the next eligible ticket using PM tool for status.
+
+    Args:
+        state: The current workflow state (v2 schema with ralph field)
+        pm_tool: PM tool for querying ticket status
+        ralph_label: This Ralph instance's label for concurrency control
+
+    Returns:
+        GetNextResult containing the next ticket and status information
+    """
+    # Get ticket IDs from ralph state
+    ticket_ids = state.ralph.tickets if state.ralph else []
+
+    # Handle empty workflow
+    if not ticket_ids:
+        return GetNextResult(
+            ticket=None,
+            status="complete",
+            message="No tickets in workflow",
+            has_more=False,
+            total=0,
+            pending=0,
+            completed=0,
+            blocked=0,
+            in_progress=0,
+            skipped_for_deps=0,
+        )
+
+    # Query PM tool for open tickets
+    try:
+        open_tickets = pm_tool.get_open_tickets(ticket_ids)
+    except PMError as e:
+        return GetNextResult(
+            ticket=None,
+            status="error",
+            message=f"Failed to query PM tool: {e}",
+            has_more=False,
+            total=len(ticket_ids),
+            pending=0,
+            completed=0,
+            blocked=0,
+            in_progress=0,
+            skipped_for_deps=0,
+        )
+
+    # Build lookup of open tickets
+    open_ticket_map: dict[str, TicketInfo] = {t.id: t for t in open_tickets}
+    open_ticket_ids = set(open_ticket_map.keys())
+
+    # Count tickets by status
+    blocked_count = sum(
+        1 for t in open_tickets if t.status == TicketStatus.BLOCKED
+    )
+    completed_count = len(ticket_ids) - len(open_tickets)
+    pending_count = len(open_tickets) - blocked_count
+
+    # Get dependencies from ralph state
+    dependencies = state.ralph.dependencies if state.ralph else {}
+
+    # Track tickets skipped due to dependencies
+    skipped_for_deps = 0
+
+    # First priority: check for in-progress tickets claimed by THIS instance
+    if ralph_label:
+        for ticket_id in ticket_ids:
+            if ticket_id not in open_ticket_ids:
+                continue
+            ticket_info = open_ticket_map[ticket_id]
+            if ticket_info.status == TicketStatus.BLOCKED:
+                continue
+
+            # Check if this ticket is claimed by us
+            if ralph_label in ticket_info.labels:
+                # Create a Ticket object for the result
+                ticket = Ticket(
+                    id=ticket_info.id,
+                    title=ticket_info.title,
+                    status="in_progress",
+                    dependencies=dependencies.get(ticket_id, []),
+                )
+                return GetNextResult(
+                    ticket=ticket,
+                    status="ready",
+                    message=f"Resuming in-progress ticket: {ticket_id}",
+                    has_more=True,
+                    total=len(ticket_ids),
+                    pending=pending_count,
+                    completed=completed_count,
+                    blocked=blocked_count,
+                    in_progress=1,
+                    skipped_for_deps=0,
+                )
+
+    # Second priority: find pending tickets with satisfied dependencies
+    for ticket_id in ticket_ids:
+        # Skip if not in open tickets (closed = completed)
+        if ticket_id not in open_ticket_ids:
+            continue
+
+        ticket_info = open_ticket_map[ticket_id]
+
+        # Skip blocked tickets
+        if ticket_info.status == TicketStatus.BLOCKED:
+            continue
+
+        # Skip tickets claimed by OTHER instances
+        if ralph_label:
+            is_claimed, claiming_label = pm_tool.is_ticket_claimed(ticket_id)
+            if is_claimed and claiming_label != ralph_label:
+                continue
+
+        # Check if dependencies are satisfied
+        ticket_deps = dependencies.get(ticket_id, [])
+        deps_satisfied = True
+
+        for dep_id in ticket_deps:
+            # Check if dependency is closed (completed)
+            if dep_id in open_ticket_ids:
+                # Dependency is still open - need to check its status
+                dep_status = pm_tool.get_ticket_status(dep_id)
+                if dep_status != TicketStatus.CLOSED:
+                    deps_satisfied = False
+                    break
+            # If not in open_ticket_ids, it's closed = completed
+
+        if deps_satisfied:
+            # Calculate skipped_for_deps for remaining tickets
+            for remaining_id in ticket_ids:
+                if remaining_id != ticket_id and remaining_id in open_ticket_ids:
+                    remaining_info = open_ticket_map[remaining_id]
+                    if remaining_info.status != TicketStatus.BLOCKED:
+                        remaining_deps = dependencies.get(remaining_id, [])
+                        for dep_id in remaining_deps:
+                            if dep_id in open_ticket_ids:
+                                dep_status = pm_tool.get_ticket_status(dep_id)
+                                if dep_status != TicketStatus.CLOSED:
+                                    skipped_for_deps += 1
+                                    break
+
+            # Create a Ticket object for the result
+            ticket = Ticket(
+                id=ticket_info.id,
+                title=ticket_info.title,
+                status="pending",
+                dependencies=ticket_deps,
+            )
+            return GetNextResult(
+                ticket=ticket,
+                status="ready",
+                message=f"Next ticket: {ticket_id}",
+                has_more=True,
+                total=len(ticket_ids),
+                pending=pending_count,
+                completed=completed_count,
+                blocked=blocked_count,
+                in_progress=0,
+                skipped_for_deps=skipped_for_deps,
+            )
+        else:
+            skipped_for_deps += 1
+
+    # No eligible tickets found - determine why
+    if blocked_count == len(open_tickets) and blocked_count > 0:
+        return GetNextResult(
+            ticket=None,
+            status="all_blocked",
+            message="All open tickets are blocked",
+            has_more=False,
+            total=len(ticket_ids),
+            pending=pending_count,
+            completed=completed_count,
+            blocked=blocked_count,
+            in_progress=0,
+            skipped_for_deps=skipped_for_deps,
+        )
+
+    if not open_tickets:
+        return GetNextResult(
+            ticket=None,
+            status="complete",
+            message="All tickets are complete",
+            has_more=False,
+            total=len(ticket_ids),
+            pending=0,
+            completed=len(ticket_ids),
+            blocked=0,
+            in_progress=0,
+            skipped_for_deps=skipped_for_deps,
+        )
+
+    if skipped_for_deps > 0:
+        return GetNextResult(
+            ticket=None,
+            status="waiting_on_dependencies",
+            message=f"All {skipped_for_deps} pending ticket(s) are waiting on dependencies",
+            has_more=True,
+            total=len(ticket_ids),
+            pending=pending_count,
+            completed=completed_count,
+            blocked=blocked_count,
+            in_progress=0,
+            skipped_for_deps=skipped_for_deps,
+        )
+
+    # Fallback: no pending tickets and not all complete
+    return GetNextResult(
+        ticket=None,
+        status="complete",
+        message="No pending tickets",
+        has_more=False,
+        total=len(ticket_ids),
+        pending=pending_count,
+        completed=completed_count,
+        blocked=blocked_count,
+        in_progress=0,
+        skipped_for_deps=skipped_for_deps,
+    )
+
+
+def _get_next_ticket_from_local_state(state: WorkflowState) -> GetNextResult:
+    """Find the next eligible ticket using local state (v1 schema).
+
+    This is the fallback behavior when no PM tool is provided.
+
+    Args:
+        state: The current workflow state (v1 schema with tickets list)
 
     Returns:
         GetNextResult containing the next ticket and status information

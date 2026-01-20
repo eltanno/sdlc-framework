@@ -6,6 +6,8 @@ based on status and dependency satisfaction.
 
 from __future__ import annotations
 
+from unittest.mock import Mock
+
 import pytest
 
 from commands.get_next import (
@@ -14,7 +16,8 @@ from commands.get_next import (
     is_ticket_eligible,
     get_ticket_counts,
 )
-from core.state import WorkflowState, Ticket
+from core.pm import PMTool, TicketInfo, TicketStatus, PMError
+from core.state import WorkflowState, RalphState, Ticket
 
 
 # =============================================================================
@@ -676,3 +679,317 @@ class TestEdgeCases:
         # Not all blocked (only 1 of 2), not all complete (only 1 of 2)
         # No pending tickets and no skipped_for_deps, so it's "complete"
         assert result.status == "complete"
+
+
+# =============================================================================
+# Tests: get_next_ticket - PM Tool Integration
+# =============================================================================
+
+
+def create_mock_pm_tool() -> Mock:
+    """Create a mock PM tool for testing."""
+    mock = Mock(spec=PMTool)
+    mock.get_open_tickets.return_value = []
+    mock.get_ticket_status.return_value = TicketStatus.OPEN
+    mock.is_ticket_claimed.return_value = (False, None)
+    return mock
+
+
+class TestGetNextTicketWithPMTool:
+    """Test get_next_ticket integration with PM tool."""
+
+    def test_accepts_pm_tool_parameter(self) -> None:
+        """get_next_ticket should accept an optional pm_tool parameter."""
+        workflow = WorkflowState(
+            version="2.0",
+            prd_path="docs/prds/test.md",
+            plan_path="docs/plans/test.md",
+            tickets=[],
+            ralph=RalphState(
+                source="github",
+                tickets=["TASK-001"],
+                dependencies={},
+                attempts={},
+                blocked={},
+            ),
+        )
+        mock_pm = create_mock_pm_tool()
+        mock_pm.get_open_tickets.return_value = [
+            TicketInfo(id="TASK-001", title="Test", status=TicketStatus.OPEN, labels=[])
+        ]
+
+        # Should not raise - accepts pm_tool parameter
+        result = get_next_ticket(workflow, pm_tool=mock_pm)
+
+        assert result is not None
+
+    def test_queries_pm_tool_for_open_tickets(self) -> None:
+        """Given tickets in ralph.tickets, when pm_tool provided, then query PM tool for open tickets."""
+        workflow = WorkflowState(
+            version="2.0",
+            prd_path="docs/prds/test.md",
+            plan_path="docs/plans/test.md",
+            tickets=[],
+            ralph=RalphState(
+                source="github",
+                tickets=["TASK-001", "TASK-002"],
+                dependencies={},
+                attempts={},
+                blocked={},
+            ),
+        )
+        mock_pm = create_mock_pm_tool()
+        mock_pm.get_open_tickets.return_value = [
+            TicketInfo(id="TASK-001", title="First Task", status=TicketStatus.OPEN, labels=[]),
+            TicketInfo(id="TASK-002", title="Second Task", status=TicketStatus.OPEN, labels=[]),
+        ]
+
+        result = get_next_ticket(workflow, pm_tool=mock_pm)
+
+        # Should have called get_open_tickets with ticket IDs from ralph.tickets
+        mock_pm.get_open_tickets.assert_called_once_with(["TASK-001", "TASK-002"])
+        assert result.ticket is not None
+        assert result.ticket.id == "TASK-001"
+
+    def test_open_issue_reported_as_pending(self) -> None:
+        """Given a ticket exists in GitHub Issues as open, when get_next_ticket runs, then it reports as pending."""
+        workflow = WorkflowState(
+            version="2.0",
+            prd_path="docs/prds/test.md",
+            plan_path="docs/plans/test.md",
+            tickets=[],
+            ralph=RalphState(
+                source="github",
+                tickets=["TASK-001"],
+                dependencies={},
+                attempts={},
+                blocked={},
+            ),
+        )
+        mock_pm = create_mock_pm_tool()
+        mock_pm.get_open_tickets.return_value = [
+            TicketInfo(id="TASK-001", title="Open Task", status=TicketStatus.OPEN, labels=[])
+        ]
+
+        result = get_next_ticket(workflow, pm_tool=mock_pm)
+
+        assert result.ticket is not None
+        assert result.ticket.id == "TASK-001"
+        assert result.status == "ready"
+
+    def test_closed_issue_treated_as_completed_for_dependencies(self) -> None:
+        """Given a ticket is closed in GitHub, when checking dependencies, then it's considered completed.
+
+        Optimization: If a ticket is not in the open_tickets list, it's inferred to be closed
+        without needing an additional API call. This test verifies that closed dependencies
+        (not in open_tickets) satisfy the dependency requirement.
+        """
+        workflow = WorkflowState(
+            version="2.0",
+            prd_path="docs/prds/test.md",
+            plan_path="docs/plans/test.md",
+            tickets=[],
+            ralph=RalphState(
+                source="github",
+                tickets=["TASK-001", "TASK-002"],
+                dependencies={"TASK-002": ["TASK-001"]},  # TASK-002 depends on TASK-001
+                attempts={},
+                blocked={},
+            ),
+        )
+        mock_pm = create_mock_pm_tool()
+        # Only TASK-002 is open (TASK-001 is closed, so not in list)
+        mock_pm.get_open_tickets.return_value = [
+            TicketInfo(id="TASK-002", title="Depends on TASK-001", status=TicketStatus.OPEN, labels=[])
+        ]
+
+        result = get_next_ticket(workflow, pm_tool=mock_pm)
+
+        # TASK-002 should be eligible since TASK-001 is closed (not in open list)
+        assert result.ticket is not None
+        assert result.ticket.id == "TASK-002"
+        assert result.status == "ready"
+        # No need to query get_ticket_status for TASK-001 since it's not in open_tickets
+        # (optimization - if not in open list, it's already closed)
+
+    def test_skips_blocked_tickets(self) -> None:
+        """Given a ticket has blocked label in GitHub, when get_next_ticket runs, then it skips the ticket."""
+        workflow = WorkflowState(
+            version="2.0",
+            prd_path="docs/prds/test.md",
+            plan_path="docs/plans/test.md",
+            tickets=[],
+            ralph=RalphState(
+                source="github",
+                tickets=["TASK-001", "TASK-002"],
+                dependencies={},
+                attempts={},
+                blocked={},
+            ),
+        )
+        mock_pm = create_mock_pm_tool()
+        mock_pm.get_open_tickets.return_value = [
+            TicketInfo(id="TASK-001", title="Blocked Task", status=TicketStatus.BLOCKED, labels=["blocked"]),
+            TicketInfo(id="TASK-002", title="Open Task", status=TicketStatus.OPEN, labels=[]),
+        ]
+
+        result = get_next_ticket(workflow, pm_tool=mock_pm)
+
+        # Should skip TASK-001 (blocked) and return TASK-002
+        assert result.ticket is not None
+        assert result.ticket.id == "TASK-002"
+        assert result.blocked >= 1
+
+    def test_pm_tool_error_reports_clear_error(self) -> None:
+        """Given GitHub API calls fail, when getting next ticket, then report clear error."""
+        workflow = WorkflowState(
+            version="2.0",
+            prd_path="docs/prds/test.md",
+            plan_path="docs/plans/test.md",
+            tickets=[],
+            ralph=RalphState(
+                source="github",
+                tickets=["TASK-001"],
+                dependencies={},
+                attempts={},
+                blocked={},
+            ),
+        )
+        mock_pm = create_mock_pm_tool()
+        mock_pm.get_open_tickets.side_effect = PMError("GitHub API rate limited")
+
+        result = get_next_ticket(workflow, pm_tool=mock_pm)
+
+        assert result.ticket is None
+        assert result.status == "error"
+        assert "error" in result.message.lower() or "failed" in result.message.lower()
+
+    def test_dependency_not_met_when_dep_is_open(self) -> None:
+        """Given ticket A depends on B and B is open, then A is not eligible."""
+        workflow = WorkflowState(
+            version="2.0",
+            prd_path="docs/prds/test.md",
+            plan_path="docs/plans/test.md",
+            tickets=[],
+            ralph=RalphState(
+                source="github",
+                tickets=["TASK-001", "TASK-002"],
+                dependencies={"TASK-002": ["TASK-001"]},
+                attempts={},
+                blocked={},
+            ),
+        )
+        mock_pm = create_mock_pm_tool()
+        # Both tickets are open
+        mock_pm.get_open_tickets.return_value = [
+            TicketInfo(id="TASK-001", title="First", status=TicketStatus.OPEN, labels=[]),
+            TicketInfo(id="TASK-002", title="Second (depends on first)", status=TicketStatus.OPEN, labels=[]),
+        ]
+        mock_pm.get_ticket_status.return_value = TicketStatus.OPEN
+
+        result = get_next_ticket(workflow, pm_tool=mock_pm)
+
+        # Should return TASK-001 (no deps), not TASK-002 (dep not met)
+        assert result.ticket is not None
+        assert result.ticket.id == "TASK-001"
+
+    def test_skips_tickets_claimed_by_other_instances(self) -> None:
+        """Given a ticket has ralph-* label from another instance, skip that ticket."""
+        workflow = WorkflowState(
+            version="2.0",
+            prd_path="docs/prds/test.md",
+            plan_path="docs/plans/test.md",
+            tickets=[],
+            ralph=RalphState(
+                source="github",
+                tickets=["TASK-001", "TASK-002"],
+                dependencies={},
+                attempts={},
+                blocked={},
+            ),
+        )
+        mock_pm = create_mock_pm_tool()
+        mock_pm.get_open_tickets.return_value = [
+            TicketInfo(id="TASK-001", title="Claimed by other", status=TicketStatus.OPEN, labels=["ralph-2"]),
+            TicketInfo(id="TASK-002", title="Not claimed", status=TicketStatus.OPEN, labels=[]),
+        ]
+        # TASK-001 is claimed by ralph-2
+        mock_pm.is_ticket_claimed.side_effect = lambda tid: (True, "ralph-2") if tid == "TASK-001" else (False, None)
+
+        # Simulate this instance being ralph-1 (not ralph-2)
+        result = get_next_ticket(workflow, pm_tool=mock_pm, ralph_label="ralph-1")
+
+        # Should skip TASK-001 (claimed by ralph-2) and return TASK-002
+        assert result.ticket is not None
+        assert result.ticket.id == "TASK-002"
+
+    def test_resumes_own_in_progress_ticket_first(self) -> None:
+        """Given a ticket has this instance's label, resume it first."""
+        workflow = WorkflowState(
+            version="2.0",
+            prd_path="docs/prds/test.md",
+            plan_path="docs/plans/test.md",
+            tickets=[],
+            ralph=RalphState(
+                source="github",
+                tickets=["TASK-001", "TASK-002"],
+                dependencies={},
+                attempts={},
+                blocked={},
+            ),
+        )
+        mock_pm = create_mock_pm_tool()
+        mock_pm.get_open_tickets.return_value = [
+            TicketInfo(id="TASK-001", title="Not claimed", status=TicketStatus.OPEN, labels=[]),
+            TicketInfo(id="TASK-002", title="In progress by this instance", status=TicketStatus.OPEN, labels=["ralph-1"]),
+        ]
+        # TASK-002 is claimed by ralph-1 (this instance)
+        mock_pm.is_ticket_claimed.side_effect = lambda tid: (True, "ralph-1") if tid == "TASK-002" else (False, None)
+
+        result = get_next_ticket(workflow, pm_tool=mock_pm, ralph_label="ralph-1")
+
+        # Should return TASK-002 first (resume own in-progress work)
+        assert result.ticket is not None
+        assert result.ticket.id == "TASK-002"
+        assert "resum" in result.message.lower()
+
+    def test_all_tickets_complete_when_none_open(self) -> None:
+        """Given no tickets are open in PM tool, return complete status."""
+        workflow = WorkflowState(
+            version="2.0",
+            prd_path="docs/prds/test.md",
+            plan_path="docs/plans/test.md",
+            tickets=[],
+            ralph=RalphState(
+                source="github",
+                tickets=["TASK-001", "TASK-002"],
+                dependencies={},
+                attempts={},
+                blocked={},
+            ),
+        )
+        mock_pm = create_mock_pm_tool()
+        mock_pm.get_open_tickets.return_value = []  # All closed
+
+        result = get_next_ticket(workflow, pm_tool=mock_pm)
+
+        assert result.ticket is None
+        assert result.status == "complete"
+
+    def test_falls_back_to_local_state_without_pm_tool(self) -> None:
+        """Given no pm_tool provided, fall back to v1 behavior using local state."""
+        # This tests backward compatibility
+        workflow = WorkflowState(
+            version="1.0",
+            prd_path="docs/prds/test.md",
+            plan_path="docs/plans/test.md",
+            tickets=[
+                Ticket(id="TASK-001", title="First", status="pending", dependencies=[]),
+            ],
+        )
+
+        # No pm_tool provided - should work with local state
+        result = get_next_ticket(workflow)
+
+        assert result.ticket is not None
+        assert result.ticket.id == "TASK-001"
