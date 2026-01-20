@@ -1,0 +1,19 @@
+{
+  "ticket_id": "SDLC-0060",
+  "final_status": "SUCCESS",
+  "total_attempts": 1,
+  "completed": "2026-01-20T21:45:31.205330",
+  "outcome": "Ticket completed successfully after 1 attempt(s). PR #125 merged.",
+  "attempt_history": [
+    {
+      "attempt": 1,
+      "status": "unknown",
+      "key_issues": "No state file"
+    }
+  ],
+  "branch": "feature/SDLC-0060-implementation",
+  "last_commit": "N/A",
+  "pr_number": "125",
+  "files_changed": [],
+  "lessons_learned": []
+}
