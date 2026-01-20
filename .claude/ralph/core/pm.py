@@ -167,6 +167,34 @@ class PMTool(Protocol):
         """
         ...
 
+    def remove_label(self, ticket_id: str, label: str) -> bool:
+        """Remove a label from a ticket.
+
+        Used for releasing claims during race condition recovery.
+
+        Args:
+            ticket_id: Unique identifier for the ticket
+            label: Label to remove
+
+        Returns:
+            True if removal succeeded, False otherwise
+        """
+        ...
+
+    def assign_to_self(self, ticket_id: str) -> bool:
+        """Assign a ticket to the current user.
+
+        Used when ralph.use_assignee is enabled to assign issues
+        in addition to labeling.
+
+        Args:
+            ticket_id: Unique identifier for the ticket
+
+        Returns:
+            True if assignment succeeded, False otherwise
+        """
+        ...
+
 
 def _run_gh_command(
     args: list[str],
@@ -461,6 +489,28 @@ class GitHubPM:
         result = _run_gh_command(args, check=False)
         return result.returncode == 0
 
+    def assign_to_self(self, ticket_id: str) -> bool:
+        """Assign an issue to the current authenticated user.
+
+        Uses @me to assign to the current user.
+
+        Args:
+            ticket_id: Issue number as string
+
+        Returns:
+            True if assignment succeeded, False otherwise
+        """
+        args = [
+            "issue",
+            "edit",
+            ticket_id,
+            "--add-assignee",
+            "@me",
+        ]
+
+        result = _run_gh_command(args, check=False)
+        return result.returncode == 0
+
 
 class LocalPM:
     """Fallback PM tool for local-only operation without external PM system.
@@ -594,4 +644,19 @@ class LocalPM:
         Returns:
             Always True (no real label mechanism)
         """
+        return True
+
+    def assign_to_self(self, ticket_id: str) -> bool:
+        """Assign a ticket to self (no-op in local mode).
+
+        Args:
+            ticket_id: Unique identifier for the ticket
+
+        Returns:
+            Always True (no real assignment mechanism)
+        """
+        logger.debug(
+            f"LocalPM.assign_to_self: No assignment mechanism in local mode. "
+            f"Ticket {ticket_id} not actually assigned."
+        )
         return True

@@ -424,6 +424,40 @@ class TestGitHubPMRemoveLabel:
         assert result is False
 
 
+class TestGitHubPMAssignToSelf:
+    """Tests for GitHubPM.assign_to_self method."""
+
+    def test_assign_to_self_adds_assignee(self, mock_pm_subprocess: MagicMock):
+        """Given ticket id, when assigning to self, then gh issue edit --add-assignee @me called."""
+        from core.pm import GitHubPM
+
+        mock_pm_subprocess.return_value.returncode = 0
+        mock_pm_subprocess.return_value.stdout = ""
+
+        pm = GitHubPM()
+        result = pm.assign_to_self("74")
+
+        assert result is True
+        call_args = mock_pm_subprocess.call_args[0][0]
+        assert "gh" in call_args
+        assert "issue" in call_args
+        assert "edit" in call_args
+        assert "--add-assignee" in call_args
+        assert "@me" in call_args
+
+    def test_assign_to_self_returns_false_on_failure(self, mock_pm_subprocess: MagicMock):
+        """Given gh command fails, when assigning to self, then False is returned."""
+        from core.pm import GitHubPM
+
+        mock_pm_subprocess.return_value.returncode = 1
+        mock_pm_subprocess.return_value.stderr = "assignment failed"
+
+        pm = GitHubPM()
+        result = pm.assign_to_self("74")
+
+        assert result is False
+
+
 class TestGitHubPMErrorHandling:
     """Tests for GitHubPM error handling."""
 
@@ -720,5 +754,18 @@ class TestLocalPMRemoveLabel:
 
         pm = LocalPM()
         result = pm.remove_label("SDLC-0040", "ralph-1")
+
+        assert result is True
+
+
+class TestLocalPMAssignToSelf:
+    """Tests for LocalPM.assign_to_self method."""
+
+    def test_assign_to_self_always_returns_true(self):
+        """Given any ticket, when assigning to self, then True is returned (no-op)."""
+        from core.pm import LocalPM
+
+        pm = LocalPM()
+        result = pm.assign_to_self("SDLC-0040")
 
         assert result is True
