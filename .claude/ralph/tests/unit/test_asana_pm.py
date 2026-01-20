@@ -3839,3 +3839,281 @@ class TestAsanaPMGetTicketCounts:
         pm = AsanaPM()
         assert hasattr(pm, "get_ticket_counts")
         assert callable(getattr(pm, "get_ticket_counts", None))
+
+
+# =============================================================================
+# SDLC-0065: Additional Edge Case Tests for Coverage
+# =============================================================================
+
+
+class TestAsanaPMTimeoutHandling:
+    """Tests for timeout exception handling in HTTP methods.
+
+    SDLC-0065: Unit tests for AsanaPM - timeout edge cases
+    """
+
+    def test_get_raises_pm_error_on_timeout(self, mock_env_asana, mock_httpx_client):
+        """Given timeout on GET request, when _get is called, then PMError is raised."""
+        import httpx
+        from core.asana_pm import AsanaPM
+        from core.pm import PMError
+
+        # Make GET raise TimeoutException
+        mock_httpx_client.return_value.__enter__.return_value.get.side_effect = (
+            httpx.TimeoutException("Request timed out")
+        )
+
+        pm = AsanaPM()
+        with pytest.raises(PMError) as exc_info:
+            pm._get("/tasks/12345")
+
+        assert "timeout" in str(exc_info.value).lower()
+
+    def test_post_raises_pm_error_on_timeout(self, mock_env_asana, mock_httpx_client):
+        """Given timeout on POST request, when _post is called, then PMError is raised."""
+        import httpx
+        from core.asana_pm import AsanaPM
+        from core.pm import PMError
+
+        # Make POST raise TimeoutException
+        mock_httpx_client.return_value.__enter__.return_value.post.side_effect = (
+            httpx.TimeoutException("Request timed out")
+        )
+
+        pm = AsanaPM()
+        with pytest.raises(PMError) as exc_info:
+            pm._post("/tasks/12345/addTag", {"tag": "tag-gid"})
+
+        assert "timeout" in str(exc_info.value).lower()
+
+    def test_put_raises_pm_error_on_timeout(self, mock_env_asana, mock_httpx_client):
+        """Given timeout on PUT request, when _put is called, then PMError is raised."""
+        import httpx
+        from core.asana_pm import AsanaPM
+        from core.pm import PMError
+
+        # Make PUT raise TimeoutException
+        mock_httpx_client.return_value.__enter__.return_value.put.side_effect = (
+            httpx.TimeoutException("Request timed out")
+        )
+
+        pm = AsanaPM()
+        with pytest.raises(PMError) as exc_info:
+            pm._put("/tasks/12345", {"completed": True})
+
+        assert "timeout" in str(exc_info.value).lower()
+
+    def test_put_raises_pm_error_on_connect_error(self, mock_env_asana, mock_httpx_client):
+        """Given connection error on PUT request, when _put is called, then PMError is raised."""
+        import httpx
+        from core.asana_pm import AsanaPM
+        from core.pm import PMError
+
+        # Make PUT raise ConnectError
+        mock_httpx_client.return_value.__enter__.return_value.put.side_effect = (
+            httpx.ConnectError("Connection failed")
+        )
+
+        pm = AsanaPM()
+        with pytest.raises(PMError) as exc_info:
+            pm._put("/tasks/12345", {"completed": True})
+
+        assert "connection" in str(exc_info.value).lower() or "network" in str(exc_info.value).lower()
+
+
+class TestAsanaPMResponseParsingEdgeCases:
+    """Tests for edge cases in response parsing.
+
+    SDLC-0065: Unit tests for AsanaPM - response parsing edge cases
+    """
+
+    def test_handle_response_error_with_malformed_json(self, mock_env_asana, mock_httpx_client):
+        """Given error response with invalid JSON, when handling error, then default error message is used."""
+        from core.asana_pm import AsanaPM
+        from core.pm import PMError
+
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_response.json.side_effect = ValueError("Invalid JSON")
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = mock_response
+
+        pm = AsanaPM()
+        with pytest.raises(PMError) as exc_info:
+            pm._get("/tasks/12345")
+
+        # Should still raise error with default message
+        assert "500" in str(exc_info.value)
+
+    def test_get_or_create_tag_handles_non_list_response(self, mock_env_asana, mock_httpx_client):
+        """Given tags API returns non-list data, when _get_or_create_tag is called, then tag is created."""
+        from core.asana_pm import AsanaPM
+
+        # First call: GET returns non-list (edge case)
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = {"data": {"unexpected": "format"}}
+
+        # Second call: POST to create tag
+        mock_post_response = MagicMock()
+        mock_post_response.status_code = 201
+        mock_post_response.json.return_value = {"data": {"gid": "new-tag-gid", "name": "ralph-1"}}
+
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = mock_get_response
+        mock_httpx_client.return_value.__enter__.return_value.post.return_value = mock_post_response
+
+        pm = AsanaPM()
+        tag_gid = pm._get_or_create_tag("ralph-1")
+
+        # Should create tag since list was empty
+        assert tag_gid == "new-tag-gid"
+
+    def test_find_done_section_handles_non_list_response(self, mock_env_asana, mock_httpx_client):
+        """Given sections API returns non-list data, when _find_done_section is called, then None is returned."""
+        from core.asana_pm import AsanaPM
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"data": {"unexpected": "format"}}
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = mock_response
+
+        pm = AsanaPM()
+        result = pm._find_done_section()
+
+        assert result is None
+
+    def test_find_tag_handles_non_list_response(self, mock_env_asana, mock_httpx_client):
+        """Given tags API returns non-list data, when _find_tag is called, then None is returned."""
+        from core.asana_pm import AsanaPM
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"data": {"unexpected": "format"}}
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = mock_response
+
+        pm = AsanaPM()
+        result = pm._find_tag("ralph-1")
+
+        assert result is None
+
+    def test_find_tag_returns_cached_value(self, mock_env_asana, mock_httpx_client):
+        """Given tag is in cache, when _find_tag is called, then cached value is returned without API call."""
+        from core.asana_pm import AsanaPM
+
+        pm = AsanaPM()
+        # Pre-populate cache
+        pm._tag_cache["ralph-1"] = "cached-tag-gid"
+
+        result = pm._find_tag("ralph-1")
+
+        assert result == "cached-tag-gid"
+        # Verify no API call was made
+        mock_httpx_client.return_value.__enter__.return_value.get.assert_not_called()
+
+    def test_get_task_details_handles_non_list_subtasks(self, mock_env_asana, mock_httpx_client):
+        """Given subtasks API returns non-list data, when get_task_details is called, then empty subtasks list is returned."""
+        from core.asana_pm import AsanaPM
+
+        # Task details response
+        mock_task_response = MagicMock()
+        mock_task_response.status_code = 200
+        mock_task_response.json.return_value = {
+            "data": {"gid": "12345", "name": "Test Task", "notes": "Notes", "completed": False}
+        }
+
+        # Subtasks response (non-list edge case)
+        mock_subtasks_response = MagicMock()
+        mock_subtasks_response.status_code = 200
+        mock_subtasks_response.json.return_value = {"data": {"unexpected": "format"}}
+
+        mock_httpx_client.return_value.__enter__.return_value.get.side_effect = [
+            mock_task_response, mock_subtasks_response
+        ]
+
+        pm = AsanaPM()
+        result = pm.get_task_details("12345")
+
+        assert result["gid"] == "12345"
+        assert result["subtasks"] == []
+
+    def test_get_ticket_counts_handles_non_list_response(self, mock_env_asana, mock_httpx_client):
+        """Given project tasks API returns non-list data, when get_ticket_counts is called, then zero counts returned."""
+        from core.asana_pm import AsanaPM
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"data": {"unexpected": "format"}}
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = mock_response
+
+        pm = AsanaPM()
+        counts = pm.get_ticket_counts()
+
+        assert counts["open"] == 0
+        assert counts["closed"] == 0
+        assert counts["blocked"] == 0
+        assert counts["total"] == 0
+
+
+class TestAsanaPMCreateTaskEdgeCases:
+    """Tests for edge cases in task creation.
+
+    SDLC-0065: Unit tests for AsanaPM - task creation edge cases
+    """
+
+    def test_create_task_succeeds_even_when_tag_add_fails(self, mock_env_asana, mock_httpx_client):
+        """Given task creation succeeds but tag add fails, when create_task with add_task_tag=True, then task GID is still returned."""
+        from core.asana_pm import AsanaPM
+        from core.pm import PMError
+
+        # Task creation succeeds
+        mock_post_response = MagicMock()
+        mock_post_response.status_code = 201
+        mock_post_response.json.return_value = {"data": {"gid": "new-task-gid"}}
+
+        # Tag lookup for adding tag - returns existing tag
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = {
+            "data": [{"gid": "task-tag-gid", "name": "task"}]
+        }
+
+        # Tag add fails
+        mock_add_tag_response = MagicMock()
+        mock_add_tag_response.status_code = 500
+        mock_add_tag_response.json.return_value = {"errors": [{"message": "Server error"}]}
+
+        # Configure side effects for calls in order:
+        # 1. POST to create task -> succeeds
+        # 2. GET to lookup tag -> succeeds
+        # 3. POST to add tag -> fails
+        post_responses = [mock_post_response, mock_add_tag_response]
+        call_count = [0]
+
+        def post_side_effect(*args, **kwargs):
+            result = post_responses[call_count[0]]
+            call_count[0] += 1
+            return result
+
+        mock_httpx_client.return_value.__enter__.return_value.post.side_effect = post_side_effect
+        mock_httpx_client.return_value.__enter__.return_value.get.return_value = mock_get_response
+
+        pm = AsanaPM()
+        # Should succeed and return task GID even though tag add failed
+        task_gid = pm.create_task("Test Task", "Description", add_task_tag=True)
+
+        assert task_gid == "new-task-gid"
+
+    def test_create_task_without_tag_does_not_call_tag_endpoint(self, mock_env_asana, mock_httpx_client):
+        """Given add_task_tag=False, when create_task is called, then tag endpoints are not called."""
+        from core.asana_pm import AsanaPM
+
+        mock_post_response = MagicMock()
+        mock_post_response.status_code = 201
+        mock_post_response.json.return_value = {"data": {"gid": "new-task-gid"}}
+        mock_httpx_client.return_value.__enter__.return_value.post.return_value = mock_post_response
+
+        pm = AsanaPM()
+        task_gid = pm.create_task("Test Task", "Description", add_task_tag=False)
+
+        assert task_gid == "new-task-gid"
+        # Only one POST call (task creation), no tag calls
+        assert mock_httpx_client.return_value.__enter__.return_value.post.call_count == 1
