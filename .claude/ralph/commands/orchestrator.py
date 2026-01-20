@@ -494,10 +494,7 @@ def process_ticket(
             )
 
         # Invoke Claude
-        print(f"\n{'='*60}")
-        print(f"INVOKING CLAUDE: {ticket_id} (attempt {current_attempt}/{config.max_attempts})")
-        print(f"Model: {model}, Timeout: {config.engineer_timeout} minutes")
-        print(f"{'='*60}\n")
+        logger.info(f"Invoking Claude for {ticket_id} (attempt {current_attempt}/{config.max_attempts}, model={model})")
 
         result = invoke_claude(
             prompt=prompt,
@@ -507,7 +504,7 @@ def process_ticket(
         )
 
         # Handle result
-        print(f"\nClaude returned: {result.status}")
+        logger.info(f"Claude returned: {result.status} for {ticket_id}")
 
         if result.status == VALIDATION_PASSED:
             # Success! Run PR flow
@@ -910,18 +907,17 @@ def main(
         plan = Path(plan_path)
 
         if not prd.exists():
-            print(f"ERROR: PRD not found: {prd}")
+            logger.error(f"PRD not found: {prd}")
             return 2
 
         if not plan.exists():
-            print(f"ERROR: Plan not found: {plan}")
+            logger.error(f"Plan not found: {plan}")
             return 2
 
         # Determine state file path
         state_file = Path("workflow-state.json")
         if not state_file.exists():
-            print(f"ERROR: State file not found: {state_file}")
-            print("Run setup first to initialize the workflow.")
+            logger.error(f"State file not found: {state_file} - run setup first")
             return 2
 
         result = run_orchestrator(
@@ -931,10 +927,8 @@ def main(
             dry_run=dry_run,
         )
 
-        # Print summary
-        print(f"\nOrchestration {result.status}")
-        print(f"Completed: {result.completed_count}")
-        print(f"Blocked: {result.blocked_count}")
+        # Log summary
+        logger.info(f"Orchestration {result.status}: completed={result.completed_count}, blocked={result.blocked_count}")
 
         if result.status == "complete":
             return 0
@@ -942,10 +936,9 @@ def main(
             return 1
 
     except Exception as e:
-        print(f"ERROR: {e}")
+        logger.error(f"Orchestrator error: {e}")
         if verbose:
-            import traceback
-            traceback.print_exc()
+            logger.exception("Full traceback:")
         return 2
 
 
