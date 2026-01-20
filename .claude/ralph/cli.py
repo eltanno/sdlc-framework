@@ -125,12 +125,14 @@ def run_command(args: argparse.Namespace) -> int:
     from commands.orchestrator import run_orchestrator
     from commands.setup import run_setup
 
+    logger = logging.getLogger(__name__)
+
     # Validate paths
     if not args.prd.exists():
-        print(f"Error: PRD file not found: {args.prd}")
+        logger.error(f"PRD file not found: {args.prd}")
         return 1
     if not args.plan.exists():
-        print(f"Error: Plan file not found: {args.plan}")
+        logger.error(f"Plan file not found: {args.plan}")
         return 1
 
     # State file is specific to this PRD (based on PRD filename)
@@ -142,30 +144,23 @@ def run_command(args: argparse.Namespace) -> int:
     if not config_file.exists():
         config_file = None
 
-    print(f"Starting Ralph orchestrator...")
-    print(f"  PRD:    {args.prd}")
-    print(f"  Plan:   {args.plan}")
-    print(f"  State:  {state_file}")
-    print(f"  Config: {config_file or 'defaults'}")
-    print()
+    logger.info(f"Starting Ralph: prd={args.prd}, plan={args.plan}, state={state_file}, config={config_file or 'defaults'}")
 
     # Initialize state file if it doesn't exist
     if not state_file.exists():
-        print("Initializing workflow state from PRD and plan...")
+        logger.info("Initializing workflow state from PRD and plan...")
         setup_result = run_setup(
             prd_path=args.prd,
             plan_path=args.plan,
             state_file=state_file,
         )
         if not setup_result.success:
-            print(f"Error during setup: {setup_result.error}")
+            logger.error(f"Setup failed: {setup_result.error}")
             return 1
-        print(f"  Found {setup_result.ticket_count} tickets")
-        print()
+        logger.info(f"Setup complete: found {setup_result.ticket_count} tickets")
 
     if args.dry_run:
-        print("DRY RUN MODE - No Claude invocations will be made")
-        print()
+        logger.info("DRY RUN MODE - No Claude invocations will be made")
 
     try:
         result = run_orchestrator(
@@ -176,10 +171,7 @@ def run_command(args: argparse.Namespace) -> int:
             dry_run=args.dry_run,
         )
 
-        print()
-        print(f"Orchestrator completed with status: {result.status}")
-        print(f"  Tickets completed: {result.completed_count}")
-        print(f"  Tickets blocked:   {result.blocked_count}")
+        logger.info(f"Orchestrator {result.status}: completed={result.completed_count}, blocked={result.blocked_count}")
 
         if result.status == "complete":
             return 0
@@ -189,14 +181,13 @@ def run_command(args: argparse.Namespace) -> int:
             return 1
 
     except KeyboardInterrupt:
-        print("\nInterrupted by user")
+        logger.info("Interrupted by user")
         return 130
     except Exception as e:
         if args.verbose:
-            import traceback
-            traceback.print_exc()
+            logger.exception("Error in orchestrator:")
         else:
-            print(f"Error: {e}")
+            logger.error(f"Error: {e}")
         return 1
 
 
@@ -204,15 +195,17 @@ def status_command(args: argparse.Namespace) -> int:
     """Execute the status command - show workflow status."""
     from commands.status import show_status
 
+    logger = logging.getLogger(__name__)
+
     if not args.state_file.exists():
-        print(f"Error: State file not found: {args.state_file}")
+        logger.error(f"State file not found: {args.state_file}")
         return 1
 
     try:
         show_status(args.state_file)
         return 0
     except Exception as e:
-        print(f"Error: {e}")
+        logger.error(f"Status error: {e}")
         return 1
 
 
@@ -220,11 +213,13 @@ def reset_command(args: argparse.Namespace) -> int:
     """Execute the reset command - reset a blocked ticket."""
     from commands.ticket_reset import reset_ticket
 
+    logger = logging.getLogger(__name__)
+
     try:
         success = reset_ticket(args.ticket_id)
         return 0 if success else 1
     except Exception as e:
-        print(f"Error: {e}")
+        logger.error(f"Reset error: {e}")
         return 1
 
 

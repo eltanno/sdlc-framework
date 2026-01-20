@@ -8,6 +8,7 @@ SDLC-0052: AsanaPM HTTP client and authentication
 SDLC-0053: AsanaPM tag management
 SDLC-0054: AsanaPM get_ticket_status method
 SDLC-0055: AsanaPM claim_ticket and is_ticket_claimed methods
+SDLC-0056: AsanaPM close_ticket with section move
 """
 
 import logging
@@ -352,16 +353,88 @@ class AsanaPM:
             return False
 
     def close_ticket(self, ticket_id: str) -> bool:
-        """Complete an Asana task.
+        """Complete an Asana task and optionally move to Done section.
+
+        Marks the task as complete via the Asana API. If a "Done" section
+        exists in the project, the task is also moved to that section.
+        Section move failures are handled gracefully (task is still marked
+        complete).
 
         Args:
             ticket_id: Task GID in Asana
 
         Returns:
             True if close succeeded, False otherwise
+
+        SDLC-0056: AsanaPM close_ticket with section move
         """
-        # Stub implementation - will be completed in SDLC-0056
-        raise NotImplementedError("close_ticket will be implemented in SDLC-0056")
+        try:
+            # 1. Mark task as complete (required)
+            self._put(f"/tasks/{ticket_id}", {"completed": True})
+            logger.info(f"Marked task {ticket_id} as complete")
+
+            # 2. Try to move to Done section (optional)
+            try:
+                done_section_gid = self._find_done_section()
+                if done_section_gid:
+                    self._move_to_section(ticket_id, done_section_gid)
+                    logger.info(f"Moved task {ticket_id} to Done section")
+                else:
+                    logger.debug(
+                        f"No Done section found for project {self._project_id}, "
+                        "skipping section move"
+                    )
+            except PMError as e:
+                # Graceful degradation - section move is optional
+                logger.warning(f"Failed to move task to Done section: {e}")
+
+            return True
+        except PMError as e:
+            logger.warning(f"Failed to close ticket {ticket_id}: {e}")
+            return False
+
+    def _find_done_section(self) -> str | None:
+        """Find the Done section in the configured project.
+
+        Searches for a section named "Done" (case-insensitive) in the
+        project configured via ASANA_PROJECT_ID.
+
+        Returns:
+            Section GID if found, None otherwise
+
+        SDLC-0056: Section discovery for Done state
+        """
+        endpoint = f"/projects/{self._project_id}/sections"
+        sections = self._get(endpoint)
+
+        # Handle list response from API
+        if isinstance(sections, list):
+            sections_list = sections
+        else:
+            sections_list = []
+
+        # Search for Done section (case-insensitive)
+        for section in sections_list:
+            section_name = section.get("name", "")
+            if section_name.lower() == "done":
+                return section.get("gid", "")
+
+        return None
+
+    def _move_to_section(self, ticket_id: str, section_gid: str) -> None:
+        """Move a task to a specific section.
+
+        Args:
+            ticket_id: Task GID to move
+            section_gid: Section GID to move the task to
+
+        Raises:
+            PMError: If the API call fails
+
+        SDLC-0056: Moving tasks to Done section
+        """
+        endpoint = f"/sections/{section_gid}/addTask"
+        self._post(endpoint, {"task": ticket_id})
 
     def add_blocked_label(self, ticket_id: str, reason: str) -> bool:
         """Mark a task as blocked with a comment.

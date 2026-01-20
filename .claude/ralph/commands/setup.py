@@ -383,11 +383,6 @@ def run_setup(
                     f"Ticket mismatch detected: +{len(tickets_added)} added, "
                     f"-{len(tickets_removed)} removed"
                 )
-                print(
-                    f"WARNING: Ticket mismatch detected. "
-                    f"Added: {tickets_added}, Removed: {tickets_removed}",
-                    file=sys.stderr,
-                )
 
                 if interactive:
                     # Prompt user to confirm reset
