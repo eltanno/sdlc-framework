@@ -478,7 +478,7 @@ class TestMarkBlockedWithoutGitHub:
         with patch("commands.mark_blocked.subprocess.run") as mock_run:
             # gh CLI fails
             mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="not authenticated")
-            result = mark_blocked(
+            mark_blocked(
                 ticket_id="TASK-001",
                 reason="Test failure",
                 state_file=state_file,
@@ -531,3 +531,251 @@ class TestMarkBlockedErrorCases:
                     reason="Test failure",
                     state_file=state_file,
                 )
+
+
+class TestMarkBlockedPMTool:
+    """Tests for PM tool integration in mark_blocked."""
+
+    def test_mark_blocked_accepts_pm_tool_parameter(self, tmp_path: Path):
+        """Given a pm_tool parameter, mark_blocked uses it instead of subprocess."""
+        from commands.mark_blocked import mark_blocked
+
+        state = {
+            "version": "2.0",
+            "prd_path": "docs/prds/test.md",
+            "plan_path": "docs/plans/test.md",
+            "tickets": [
+                {"id": "TASK-001", "title": "Test ticket", "status": "in_progress", "dependencies": []},
+            ],
+            "current_ticket": "TASK-001",
+            "completed_count": 0,
+            "blocked_count": 0,
+        }
+        state_file = tmp_path / "workflow-state.json"
+        state_file.write_text(json.dumps(state))
+
+        # Create mock PM tool
+        mock_pm = MagicMock()
+        mock_pm.add_blocked_label.return_value = True
+        mock_pm.remove_label.return_value = True
+
+        with patch("commands.mark_blocked.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="[]", stderr="")
+            result = mark_blocked(
+                ticket_id="TASK-001",
+                reason="Test failure",
+                state_file=state_file,
+                issue_number=42,
+                pm_tool=mock_pm,
+            )
+
+        assert result["blocked_ticket"] == "TASK-001"
+
+    def test_mark_blocked_calls_pm_tool_add_blocked_label(self, tmp_path: Path):
+        """Given a pm_tool, mark_blocked calls add_blocked_label with reason."""
+        from commands.mark_blocked import mark_blocked
+
+        state = {
+            "version": "2.0",
+            "prd_path": "docs/prds/test.md",
+            "plan_path": "docs/plans/test.md",
+            "tickets": [
+                {"id": "TASK-001", "title": "Test ticket", "status": "in_progress", "dependencies": []},
+            ],
+            "current_ticket": "TASK-001",
+            "completed_count": 0,
+            "blocked_count": 0,
+        }
+        state_file = tmp_path / "workflow-state.json"
+        state_file.write_text(json.dumps(state))
+
+        mock_pm = MagicMock()
+        mock_pm.add_blocked_label.return_value = True
+        mock_pm.remove_label.return_value = True
+
+        mark_blocked(
+            ticket_id="TASK-001",
+            reason="Validation failed",
+            state_file=state_file,
+            issue_number=42,
+            pm_tool=mock_pm,
+        )
+
+        # Verify add_blocked_label was called with ticket ID and reason
+        mock_pm.add_blocked_label.assert_called_once_with("42", "Validation failed")
+
+    def test_mark_blocked_calls_pm_tool_remove_label(self, tmp_path: Path):
+        """Given a pm_tool and ralph_label, mark_blocked removes the instance label."""
+        from commands.mark_blocked import mark_blocked
+
+        state = {
+            "version": "2.0",
+            "prd_path": "docs/prds/test.md",
+            "plan_path": "docs/plans/test.md",
+            "tickets": [
+                {"id": "TASK-001", "title": "Test ticket", "status": "in_progress", "dependencies": []},
+            ],
+            "current_ticket": "TASK-001",
+            "completed_count": 0,
+            "blocked_count": 0,
+        }
+        state_file = tmp_path / "workflow-state.json"
+        state_file.write_text(json.dumps(state))
+
+        mock_pm = MagicMock()
+        mock_pm.add_blocked_label.return_value = True
+        mock_pm.remove_label.return_value = True
+
+        mark_blocked(
+            ticket_id="TASK-001",
+            reason="Test failure",
+            state_file=state_file,
+            issue_number=42,
+            pm_tool=mock_pm,
+            ralph_label="ralph-1",
+        )
+
+        # Verify remove_label was called with ticket ID and ralph label
+        mock_pm.remove_label.assert_called_once_with("42", "ralph-1")
+
+    def test_mark_blocked_skips_pm_tool_remove_label_without_ralph_label(self, tmp_path: Path):
+        """Given pm_tool but no ralph_label, mark_blocked does not call remove_label."""
+        from commands.mark_blocked import mark_blocked
+
+        state = {
+            "version": "2.0",
+            "prd_path": "docs/prds/test.md",
+            "plan_path": "docs/plans/test.md",
+            "tickets": [
+                {"id": "TASK-001", "title": "Test ticket", "status": "in_progress", "dependencies": []},
+            ],
+            "current_ticket": "TASK-001",
+            "completed_count": 0,
+            "blocked_count": 0,
+        }
+        state_file = tmp_path / "workflow-state.json"
+        state_file.write_text(json.dumps(state))
+
+        mock_pm = MagicMock()
+        mock_pm.add_blocked_label.return_value = True
+
+        mark_blocked(
+            ticket_id="TASK-001",
+            reason="Test failure",
+            state_file=state_file,
+            issue_number=42,
+            pm_tool=mock_pm,
+            ralph_label=None,
+        )
+
+        # Verify remove_label was NOT called
+        mock_pm.remove_label.assert_not_called()
+
+    def test_mark_blocked_with_pm_tool_updates_local_state(self, tmp_path: Path):
+        """Given pm_tool, mark_blocked still updates local state with reason."""
+        from commands.mark_blocked import mark_blocked
+        from core.state import load_workflow_state
+
+        state = {
+            "version": "2.0",
+            "prd_path": "docs/prds/test.md",
+            "plan_path": "docs/plans/test.md",
+            "tickets": [
+                {"id": "TASK-001", "title": "Test ticket", "status": "in_progress", "dependencies": []},
+            ],
+            "current_ticket": "TASK-001",
+            "completed_count": 0,
+            "blocked_count": 0,
+        }
+        state_file = tmp_path / "workflow-state.json"
+        state_file.write_text(json.dumps(state))
+
+        mock_pm = MagicMock()
+        mock_pm.add_blocked_label.return_value = True
+        mock_pm.remove_label.return_value = True
+
+        mark_blocked(
+            ticket_id="TASK-001",
+            reason="PM tool test",
+            state_file=state_file,
+            issue_number=42,
+            pm_tool=mock_pm,
+        )
+
+        # Verify local state was updated
+        updated_state = load_workflow_state(state_file)
+        assert updated_state.tickets[0].status == "blocked"
+        assert updated_state.tickets[0].block_reason == "PM tool test"
+        assert updated_state.blocked_count == 1
+
+    def test_mark_blocked_with_pm_tool_skips_subprocess_calls(self, tmp_path: Path):
+        """Given pm_tool, mark_blocked does not use subprocess for GitHub operations."""
+        from commands.mark_blocked import mark_blocked
+
+        state = {
+            "version": "2.0",
+            "prd_path": "docs/prds/test.md",
+            "plan_path": "docs/plans/test.md",
+            "tickets": [
+                {"id": "TASK-001", "title": "Test ticket", "status": "in_progress", "dependencies": []},
+            ],
+            "current_ticket": "TASK-001",
+            "completed_count": 0,
+            "blocked_count": 0,
+        }
+        state_file = tmp_path / "workflow-state.json"
+        state_file.write_text(json.dumps(state))
+
+        mock_pm = MagicMock()
+        mock_pm.add_blocked_label.return_value = True
+        mock_pm.remove_label.return_value = True
+
+        with patch("commands.mark_blocked.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="[]", stderr="")
+            mark_blocked(
+                ticket_id="TASK-001",
+                reason="Test failure",
+                state_file=state_file,
+                issue_number=42,
+                pm_tool=mock_pm,
+            )
+
+        # When pm_tool is provided and issue_number is given, subprocess should NOT be called
+        # for GitHub operations (only for issue lookup if issue_number is None)
+        # Since we provided issue_number=42, no subprocess calls should occur
+        mock_run.assert_not_called()
+
+    def test_mark_blocked_continues_on_pm_tool_failure(self, tmp_path: Path):
+        """Given pm_tool.add_blocked_label fails, mark_blocked still updates local state."""
+        from commands.mark_blocked import mark_blocked
+        from core.state import load_workflow_state
+
+        state = {
+            "version": "2.0",
+            "prd_path": "docs/prds/test.md",
+            "plan_path": "docs/plans/test.md",
+            "tickets": [
+                {"id": "TASK-001", "title": "Test ticket", "status": "in_progress", "dependencies": []},
+            ],
+            "current_ticket": "TASK-001",
+            "completed_count": 0,
+            "blocked_count": 0,
+        }
+        state_file = tmp_path / "workflow-state.json"
+        state_file.write_text(json.dumps(state))
+
+        mock_pm = MagicMock()
+        mock_pm.add_blocked_label.return_value = False  # Simulate failure
+        mock_pm.remove_label.return_value = True
+
+        mark_blocked(
+            ticket_id="TASK-001",
+            reason="Test failure",
+            state_file=state_file,
+            issue_number=42,
+            pm_tool=mock_pm,
+        )
+
+        # Local state should still be updated even if PM tool failed
+        updated_state = load_workflow_state(state_file)
+        assert updated_state.tickets[0].status == "blocked"
