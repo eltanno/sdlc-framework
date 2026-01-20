@@ -97,12 +97,13 @@
     {
       "id": "SDLC-0060",
       "title": "SDLC-0060",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         "SDLC-0059"
       ],
       "attempts": 0,
-      "block_reason": null
+      "block_reason": null,
+      "pr": "125"
     },
     {
       "id": "SDLC-0061",
@@ -247,6 +248,6 @@
     }
   ],
   "current_ticket": null,
-  "completed_count": 8,
+  "completed_count": 9,
   "blocked_count": 0
 }
