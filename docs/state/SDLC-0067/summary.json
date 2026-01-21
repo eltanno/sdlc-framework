@@ -1,0 +1,19 @@
+{
+  "ticket_id": "SDLC-0067",
+  "final_status": "SUCCESS",
+  "total_attempts": 1,
+  "completed": "2026-01-21T11:23:33.451248",
+  "outcome": "Ticket completed successfully after 1 attempt(s). PR #132 merged.",
+  "attempt_history": [
+    {
+      "attempt": 1,
+      "status": "unknown",
+      "key_issues": "No state file"
+    }
+  ],
+  "branch": "feature/SDLC-0067-implementation",
+  "last_commit": "N/A",
+  "pr_number": "132",
+  "files_changed": [],
+  "lessons_learned": []
+}
