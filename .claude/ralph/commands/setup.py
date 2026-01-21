@@ -101,11 +101,11 @@ def validate_paths(prd_path: Path, plan_path: Path) -> None:
 
 
 def extract_tickets_from_prd(prd_path: Path) -> list[str]:
-    """Extract ticket IDs from a PRD document.
+    """Extract ticket IDs from the Tickets table in a PRD document.
 
-    Supports two formats:
-    1. Markdown-linked tickets: [TASK-001](https://github.com/...)
-    2. Plain ticket IDs: TASK-001 (in a table context)
+    Finds the ## Tickets section and extracts IDs from the first column
+    of the markdown table. This is more robust than pattern-matching
+    anywhere in the document.
 
     Args:
         prd_path: Path to the PRD document
@@ -117,26 +117,53 @@ def extract_tickets_from_prd(prd_path: Path) -> list[str]:
     tickets: list[str] = []
     seen: set[str] = set()
 
-    # First try to match markdown-linked tickets: [PREFIX-NNNN](url)
-    # Require 3+ digits to exclude test case IDs like TC-1
-    linked_pattern = re.compile(r"\[([A-Z]+-\d{3,})\]\(")
-    linked_matches = linked_pattern.findall(content)
+    # Find the Tickets section (## Tickets or # Tickets)
+    tickets_section_pattern = re.compile(
+        r"^#{1,2}\s*Tickets\s*$",
+        re.MULTILINE | re.IGNORECASE
+    )
+    match = tickets_section_pattern.search(content)
 
-    if linked_matches:
-        for ticket_id in linked_matches:
-            if ticket_id not in seen:
-                tickets.append(ticket_id)
-                seen.add(ticket_id)
+    if not match:
+        logger.warning("No '## Tickets' section found in PRD")
         return tickets
 
-    # Fall back to plain ticket IDs in table format
-    # Look for ticket IDs at the start of a table cell
-    # Require 3+ digits to exclude test case IDs like TC-1
-    plain_pattern = re.compile(r"\|\s*([A-Z]+-\d{3,})\s*\|")
-    plain_matches = plain_pattern.findall(content)
+    # Get content from Tickets section to next section (or end)
+    section_start = match.end()
+    next_section = re.search(r"^#{1,2}\s+\w", content[section_start:], re.MULTILINE)
+    if next_section:
+        section_content = content[section_start:section_start + next_section.start()]
+    else:
+        section_content = content[section_start:]
 
-    for ticket_id in plain_matches:
-        if ticket_id not in seen:
+    # Parse markdown table rows in this section
+    # Table format: | ID | Title | ... |
+    # We want the first column value from each data row
+    table_row_pattern = re.compile(r"^\|([^|]+)\|", re.MULTILINE)
+
+    for row_match in table_row_pattern.finditer(section_content):
+        first_cell = row_match.group(1).strip()
+
+        # Skip header row and separator row
+        if first_cell.lower() == "id" or first_cell.startswith("-"):
+            continue
+
+        # Extract ticket ID - could be plain or markdown-linked
+        # Plain: SDLC-0067
+        # Linked: [SDLC-0067](url)
+        ticket_id = None
+
+        # Try markdown link format first: [PREFIX-NNNN](url)
+        link_match = re.match(r"\[([A-Z]+-\d+)\]\(", first_cell)
+        if link_match:
+            ticket_id = link_match.group(1)
+        else:
+            # Try plain format: PREFIX-NNNN
+            plain_match = re.match(r"([A-Z]+-\d+)$", first_cell)
+            if plain_match:
+                ticket_id = plain_match.group(1)
+
+        if ticket_id and ticket_id not in seen:
             tickets.append(ticket_id)
             seen.add(ticket_id)
 

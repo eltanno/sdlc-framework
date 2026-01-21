@@ -133,6 +133,12 @@ Just some text without any ticket IDs.
         """Given a PRD with tickets in specific order, when extracted, then order is preserved."""
         prd_path = tmp_path / "prd.md"
         prd_path.write_text("""
+# PRD: Feature
+
+## Tickets
+
+| ID | Title |
+|----|-------|
 | [TASK-003](url) | Third |
 | [TASK-001](url) | First |
 | [TASK-002](url) | Second |
@@ -147,6 +153,12 @@ Just some text without any ticket IDs.
         """Given a PRD with duplicate ticket IDs, when extracted, then duplicates are removed."""
         prd_path = tmp_path / "prd.md"
         prd_path.write_text("""
+# PRD: Feature
+
+## Tickets
+
+| ID | Title |
+|----|-------|
 | [TASK-001](url) | First |
 | [TASK-001](url) | Duplicate |
 | [TASK-002](url) | Second |
@@ -204,6 +216,10 @@ class TestInitializeWorkflowState:
         state_file = tmp_path / "workflow-state.json"
 
         prd_path.write_text("""
+## Tickets
+
+| ID | Title |
+|----|-------|
 | [TASK-001](url) | First |
 | [TASK-002](url) | Second |
 """)
@@ -225,6 +241,10 @@ class TestInitializeWorkflowState:
         state_file = tmp_path / "workflow-state.json"
 
         prd_path.write_text("""
+## Tickets
+
+| ID | Title |
+|----|-------|
 | [TASK-001](url) | First |
 | [TASK-002](url) | Second |
 """)
@@ -248,7 +268,7 @@ class TestInitializeWorkflowState:
         plan_path = tmp_path / "plan.md"
         state_file = tmp_path / "workflow-state.json"
 
-        prd_path.write_text("| [TASK-001](url) | First |")
+        prd_path.write_text("## Tickets\n\n| ID | Title |\n|----|-------|\n| [TASK-001](url) | First |")
         plan_path.write_text("""
 | ID | Title | Dependencies |
 |----|-------|--------------|
@@ -268,6 +288,10 @@ class TestInitializeWorkflowState:
         state_file = tmp_path / "workflow-state.json"
 
         prd_path.write_text("""
+## Tickets
+
+| ID | Title |
+|----|-------|
 | [TASK-001](url) | First |
 | [TASK-002](url) | Second |
 """)
@@ -291,7 +315,7 @@ class TestInitializeWorkflowState:
         plan_path = tmp_path / "plan.md"
         state_file = tmp_path / "workflow-state.json"
 
-        prd_path.write_text("| [TASK-001](url) | First |")
+        prd_path.write_text("## Tickets\n\n| ID | Title |\n|----|-------|\n| [TASK-001](url) | First |")
         plan_path.write_text("| ID | Title | Dependencies |\n|----|-------|--------------|")
 
         setup.initialize_workflow_state(prd_path, plan_path, state_file)
@@ -311,6 +335,10 @@ class TestRunSetup:
         state_file = tmp_path / "workflow-state.json"
 
         prd_path.write_text("""
+## Tickets
+
+| ID | Title |
+|----|-------|
 | [TASK-001](url) | First |
 | [TASK-002](url) | Second |
 """)
@@ -575,6 +603,10 @@ class TestSetupWithExistingState:
 
         # Create PRD with tickets A, B, C
         prd_path.write_text("""
+## Tickets
+
+| ID | Title |
+|----|-------|
 | [SDLC-0001](url) | First |
 | [SDLC-0002](url) | Second |
 | [SDLC-0003](url) | Third |
@@ -624,6 +656,10 @@ class TestSetupWithExistingState:
 
         # Create PRD with new tickets
         prd_path.write_text("""
+## Tickets
+
+| ID | Title |
+|----|-------|
 | [SDLC-0001](url) | First |
 | [SDLC-0002](url) | Second |
 """)
@@ -673,7 +709,7 @@ class TestSetupWithExistingState:
         state_file = tmp_path / "workflow-state.json"
 
         # Create PRD
-        prd_path.write_text("| [SDLC-0001](url) | First |")
+        prd_path.write_text("## Tickets\n\n| ID | Title |\n|----|-------|\n| [SDLC-0001](url) | First |")
         plan_path.write_text("| ID | Title | Dependencies |\n|----|-------|--------------|")
 
         # Create existing state with different tickets
@@ -714,7 +750,7 @@ class TestSetupWithExistingState:
         state_file = tmp_path / "workflow-state.json"
 
         # Create PRD
-        prd_path.write_text("| [SDLC-0001](url) | First |")
+        prd_path.write_text("## Tickets\n\n| ID | Title |\n|----|-------|\n| [SDLC-0001](url) | First |")
         plan_path.write_text("| ID | Title | Dependencies |\n|----|-------|--------------|")
 
         # Create existing state with different tickets
@@ -752,7 +788,7 @@ class TestSetupWithExistingState:
         state_file = tmp_path / "workflow-state.json"
 
         # Create PRD
-        prd_path.write_text("| [SDLC-0001](url) | First |")
+        prd_path.write_text("## Tickets\n\n| ID | Title |\n|----|-------|\n| [SDLC-0001](url) | First |")
         plan_path.write_text("| ID | Title | Dependencies |\n|----|-------|--------------|")
 
         # Create existing state with SAME tickets
