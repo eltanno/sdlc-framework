@@ -39,7 +39,7 @@ The only format is the CURRENT format:
 - We are writing tests BEFORE fixing code
 - A suite of trusted tests that fail is BETTER than passing tests that check wrong behavior
 
-**The goal:** Tests that accurately verify the format we want (the ralph.* structure defined above). If code doesn't match, tests fail. That's expected. Code fixes come later.
+**The goal:** Meaningful tests that verify correct behavior. If code is wrong, tests fail. That's expected. Code fixes come later.
 
 ---
 
