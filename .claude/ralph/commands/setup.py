@@ -283,7 +283,7 @@ def initialize_workflow_state(
     """Initialize workflow state from PRD and plan.
 
     Extracts tickets from PRD, parses dependencies from plan,
-    and creates the initial workflow state file.
+    and creates the initial workflow state file in v2 format.
 
     Args:
         prd_path: Path to the PRD document
@@ -299,29 +299,22 @@ def initialize_workflow_state(
     # Parse dependencies from plan
     dependencies = parse_dependencies(plan_path)
 
-    # Extract titles from plan if available (stub for now - just use ID as title)
-    # In a full implementation, we'd parse titles from the plan table
+    # Create RalphState (v2 format) - status comes from PM tool
+    ralph = RalphState(
+        source="unknown",  # Will be set by PM tool detection
+        tickets=ticket_ids,
+        dependencies=dependencies,
+        attempts={},
+        blocked={},
+    )
 
-    # Create Ticket objects
-    tickets: list[Ticket] = []
-    for ticket_id in ticket_ids:
-        deps = dependencies.get(ticket_id, [])
-        ticket = Ticket(
-            id=ticket_id,
-            title=ticket_id,  # Use ID as title for now
-            status="pending",
-            dependencies=deps,
-            attempts=0,
-            block_reason=None,
-        )
-        tickets.append(ticket)
-
-    # Create WorkflowState
+    # Create WorkflowState in v2 format
     state = WorkflowState(
-        version="1.0",
+        version="2.0",
         prd_path=prd_path,
         plan_path=plan_path,
-        tickets=tickets,
+        tickets=[],  # v2 uses ralph.tickets, not this field
+        ralph=ralph,
         current_ticket=None,
         completed_count=0,
         blocked_count=0,
@@ -485,8 +478,8 @@ def run_setup(
     except Exception as e:
         return SetupResult(success=False, error=f"Failed to initialize state: {e}")
 
-    # Extract ticket metadata
-    ticket_ids = [t.id for t in state.tickets]
+    # Extract ticket metadata (v2 uses ralph.tickets)
+    ticket_ids = state.ralph.tickets if state.ralph else [t.id for t in state.tickets]
     ticket_prefix = extract_ticket_prefix(ticket_ids)
     ticket_count = len(ticket_ids)
 

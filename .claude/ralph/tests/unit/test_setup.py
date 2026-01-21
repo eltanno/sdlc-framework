@@ -258,12 +258,13 @@ class TestInitializeWorkflowState:
         setup.initialize_workflow_state(prd_path, plan_path, state_file)
 
         data = json.loads(state_file.read_text())
-        ticket_ids = [t["id"] for t in data["tickets"]]
+        # v2 format uses ralph.tickets
+        ticket_ids = data["ralph"]["tickets"]
         assert "TASK-001" in ticket_ids
         assert "TASK-002" in ticket_ids
 
-    def test_initialize_state_sets_pending_status(self, tmp_path: Path) -> None:
-        """Given tickets, when initializing, then all tickets have pending status."""
+    def test_initialize_state_creates_v2_format(self, tmp_path: Path) -> None:
+        """Given tickets, when initializing, then state is v2 format."""
         prd_path = tmp_path / "prd.md"
         plan_path = tmp_path / "plan.md"
         state_file = tmp_path / "workflow-state.json"
@@ -278,8 +279,10 @@ class TestInitializeWorkflowState:
         setup.initialize_workflow_state(prd_path, plan_path, state_file)
 
         data = json.loads(state_file.read_text())
-        for ticket in data["tickets"]:
-            assert ticket["status"] == "pending"
+        # v2 format has ralph section, version 2.0, and empty tickets array
+        assert data["version"] == "2.0"
+        assert "ralph" in data
+        assert data["tickets"] == []
 
     def test_initialize_state_includes_dependencies(self, tmp_path: Path) -> None:
         """Given plan with dependencies, when initializing, then deps are in state."""
@@ -305,9 +308,10 @@ class TestInitializeWorkflowState:
         setup.initialize_workflow_state(prd_path, plan_path, state_file)
 
         data = json.loads(state_file.read_text())
-        tickets_by_id = {t["id"]: t for t in data["tickets"]}
-        assert tickets_by_id["TASK-001"]["dependencies"] == []
-        assert tickets_by_id["TASK-002"]["dependencies"] == ["TASK-001"]
+        # v2 format uses ralph.dependencies
+        deps = data["ralph"]["dependencies"]
+        assert deps.get("TASK-001", []) == []
+        assert deps.get("TASK-002", []) == ["TASK-001"]
 
     def test_initialize_state_stores_paths(self, tmp_path: Path) -> None:
         """Given PRD and plan paths, when initializing, then paths are stored."""

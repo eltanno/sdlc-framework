@@ -1025,6 +1025,9 @@ def load_workflow_state(state_file: Path) -> WorkflowState:
             file=sys.stderr,
         )
         data = migrate_v1_to_v2(data)
+        # Persist migration to disk so it only happens once
+        content = json.dumps(data, indent=2)
+        _atomic_write(state_file, content)
 
     # Parse tickets (v1 schema - may be empty for v2)
     tickets = [
