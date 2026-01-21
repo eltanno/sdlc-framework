@@ -6,6 +6,7 @@ Tests cover:
 - Creating pull requests with proper linking
 - Merging pull requests
 - The complete PR flow from commit to merge
+- Repo tool abstraction (GitHub vs GitLab)
 """
 
 from unittest.mock import MagicMock
@@ -24,11 +25,32 @@ def mock_git_module(mocker):
 
 @pytest.fixture
 def mock_github_module(mocker):
-    """Mock the github module functions."""
-    return mocker.patch.object(
-        __import__("commands.pr_flow", fromlist=["github"]),
-        "github",
-    )
+    """Mock the github module as the repo tool.
+
+    This mocks _get_cached_repo_module to return a mock GitHub module
+    for tests that need to verify GitHub-specific behavior.
+    """
+    from core import github as real_github
+    from core.github import PullRequestResult
+
+    mock_github = mocker.MagicMock(spec=real_github)
+    # Ensure the mock has the real exception class
+    mock_github.GitHubError = real_github.GitHubError
+    # Ensure the mock has PullRequestResult
+    mock_github.PullRequestResult = PullRequestResult
+    # Mark as GitHub (not GitLab)
+    mock_github.create_pull_request = mocker.MagicMock()
+    mock_github.merge_pull_request = mocker.MagicMock()
+    mock_github.list_pull_requests = mocker.MagicMock()
+    mock_github.find_merged_pr = mocker.MagicMock()
+    mock_github.get_pull_request = mocker.MagicMock()
+    mock_github.find_issue_by_title = mocker.MagicMock()
+    mock_github.delete_remote_branch = mocker.MagicMock()
+
+    # Patch the cached repo module getter to return our mock
+    mocker.patch("commands.pr_flow._get_cached_repo_module", return_value=mock_github)
+
+    return mock_github
 
 
 class TestPrFlowResult:
@@ -425,3 +447,154 @@ class TestPrFlowError:
         error = PrFlowError("Cannot create PR from main branch")
 
         assert "main" in str(error)
+
+
+class TestGetRepoModule:
+    """Tests for get_repo_module factory function."""
+
+    def test_get_repo_module_returns_github_by_default(self, tmp_path, mocker):
+        """Given no repo.type in config, when get_repo_module called, then github module is returned."""
+        from commands.pr_flow import get_repo_module
+        from core import github
+
+        # Create config without repo.type
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("pm:\n  tool: github\n")
+
+        module = get_repo_module(config_file)
+
+        assert module is github
+
+    def test_get_repo_module_returns_github_when_configured(self, tmp_path, mocker):
+        """Given repo.type: github in config, when get_repo_module called, then github module is returned."""
+        from commands.pr_flow import get_repo_module
+        from core import github
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("pm:\n  tool: github\nrepo:\n  type: github\n")
+
+        module = get_repo_module(config_file)
+
+        assert module is github
+
+    def test_get_repo_module_returns_gitlab_when_configured(self, tmp_path, mocker):
+        """Given repo.type: gitlab in config, when get_repo_module called, then gitlab module is returned."""
+        from commands.pr_flow import get_repo_module
+        from core import gitlab
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("pm:\n  tool: github\nrepo:\n  type: gitlab\n")
+
+        module = get_repo_module(config_file)
+
+        assert module is gitlab
+
+
+class TestPrFlowWithGitLab:
+    """Tests for PR flow when using GitLab as repo tool."""
+
+    def test_pr_flow_uses_gitlab_when_configured(self, mock_git_module, tmp_path, mocker):
+        """Given repo.type: gitlab, when pr_flow executes, then gitlab module is used."""
+        from commands import pr_flow
+        from core.gitlab import MergeRequestResult
+
+        # Mock _get_cached_repo_module to return gitlab mock
+        mock_gitlab = mocker.MagicMock()
+        mock_gitlab.find_merged_mr.return_value = None
+        mock_gitlab.list_merge_requests.return_value = []
+        mock_gitlab.create_merge_request.return_value = MergeRequestResult(
+            url="https://gitlab.example.com/group/repo/-/merge_requests/42",
+            number=42,
+        )
+        mock_gitlab.merge_merge_request.return_value = None
+        mock_gitlab.get_merge_request.return_value = {"iid": 42, "web_url": "https://gitlab.example.com/group/repo/-/merge_requests/42"}
+        mock_gitlab.delete_remote_branch.return_value = None
+        mock_gitlab.GitLabError = Exception
+        # Mark this as having GitLab methods (not GitHub)
+        mock_gitlab.find_issue_by_title = None
+
+        mocker.patch("commands.pr_flow._get_cached_repo_module", return_value=mock_gitlab)
+
+        # Setup git mocks
+        mock_git_module.get_current_branch.return_value = "feature/TASK-001-test"
+        mock_git_module.is_dirty.return_value = True
+        mock_git_module.stage_all.return_value = None
+        mock_git_module.commit.return_value = "abc1234"
+        mock_git_module.push.return_value = None
+        mock_git_module.fetch.return_value = None
+        mock_git_module.merge.return_value = None
+
+        result = pr_flow.pr_flow("TASK-001", "Implementation complete")
+
+        # Verify gitlab module was used
+        mock_gitlab.create_merge_request.assert_called_once()
+        assert result.pr_number == 42
+        assert "gitlab" in result.pr_url.lower() or "merge_requests" in result.pr_url
+
+    def test_create_mr_uses_gitlab_when_configured(self, tmp_path, mocker):
+        """Given repo.type: gitlab, when create_mr called, then gitlab.create_merge_request is called."""
+        from commands import pr_flow
+        from core.gitlab import MergeRequestResult
+
+        mock_gitlab = mocker.MagicMock()
+        mock_gitlab.create_merge_request.return_value = MergeRequestResult(
+            url="https://gitlab.example.com/group/repo/-/merge_requests/123",
+            number=123,
+        )
+        # GitLab doesn't have find_issue_by_title (issues handled by Asana/Trello)
+        mock_gitlab.find_issue_by_title = None
+
+        mocker.patch("commands.pr_flow._get_cached_repo_module", return_value=mock_gitlab)
+
+        result = pr_flow.create_mr("TASK-001", "Test implementation")
+
+        mock_gitlab.create_merge_request.assert_called_once()
+        call_kwargs = mock_gitlab.create_merge_request.call_args[1]
+        assert "TASK-001" in call_kwargs.get("title", "")
+
+    def test_merge_mr_uses_gitlab_when_configured(self, tmp_path, mocker):
+        """Given repo.type: gitlab, when merge_mr called, then gitlab.merge_merge_request is called."""
+        from commands import pr_flow
+
+        mock_gitlab = mocker.MagicMock()
+        mock_gitlab.merge_merge_request.return_value = None
+
+        mocker.patch("commands.pr_flow._get_cached_repo_module", return_value=mock_gitlab)
+
+        pr_flow.merge_mr(123)
+
+        mock_gitlab.merge_merge_request.assert_called_once()
+        call_args = mock_gitlab.merge_merge_request.call_args
+        assert call_args[0][0] == 123
+        assert call_args[1].get("strategy") == "squash"
+
+    def test_find_existing_mr_uses_gitlab_when_configured(self, tmp_path, mocker):
+        """Given repo.type: gitlab, when find_existing_pr called, then gitlab.list_merge_requests is called."""
+        from commands import pr_flow
+
+        mock_gitlab = mocker.MagicMock()
+        mock_gitlab.list_merge_requests.return_value = [
+            {"iid": 50, "title": "Test MR"}
+        ]
+
+        mocker.patch("commands.pr_flow._get_cached_repo_module", return_value=mock_gitlab)
+
+        result = pr_flow.find_existing_pr("feature/test")
+
+        mock_gitlab.list_merge_requests.assert_called_once()
+        # GitLab uses 'iid' but we should handle either 'number' or 'iid'
+        assert result == 50
+
+    def test_check_already_merged_uses_gitlab_when_configured(self, tmp_path, mocker):
+        """Given repo.type: gitlab, when check_already_merged called, then gitlab.find_merged_mr is called."""
+        from commands import pr_flow
+
+        mock_gitlab = mocker.MagicMock()
+        mock_gitlab.find_merged_mr.return_value = 99
+
+        mocker.patch("commands.pr_flow._get_cached_repo_module", return_value=mock_gitlab)
+
+        result = pr_flow.check_already_merged("TASK-001")
+
+        mock_gitlab.find_merged_mr.assert_called_once_with("TASK-001")
+        assert result == 99

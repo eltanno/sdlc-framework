@@ -1,18 +1,75 @@
-"""Create and manage pull requests.
+"""Create and manage pull requests / merge requests.
 
 This module handles:
 - Committing staged changes
 - Pushing to remote branches
-- Creating pull requests with proper linking
-- Merging pull requests
+- Creating pull requests (GitHub) or merge requests (GitLab) with proper linking
+- Merging pull requests / merge requests
+
+Supports both GitHub and GitLab based on repo.type configuration.
 
 This is a port of .claude/scripts/ralph/pr-flow.sh
 """
 
 from dataclasses import dataclass
+from pathlib import Path
+from types import ModuleType
+from typing import Union
 
-from core import git, github
-from core.github import PullRequestResult
+from core import git
+from core.config import get_repo_tool_type
+
+
+# Cache for the repo module to avoid repeated config reads
+_repo_module_cache: ModuleType | None = None
+
+
+def get_repo_module(config_path: Union[str, Path] = Path("config.yaml")) -> ModuleType:
+    """Get the configured repository tool module.
+
+    Reads repo.type from config and returns the appropriate module
+    (github or gitlab). Defaults to github if not configured.
+
+    Args:
+        config_path: Path to the config.yaml file.
+
+    Returns:
+        The github or gitlab module based on configuration.
+
+    Raises:
+        ConfigError: If repo.type has an invalid value.
+    """
+    global _repo_module_cache
+
+    # Read config to determine tool
+    tool = get_repo_tool_type(config_path)
+
+    if tool == "gitlab":
+        from core import gitlab
+        _repo_module_cache = gitlab
+        return gitlab
+    else:
+        from core import github
+        _repo_module_cache = github
+        return github
+
+
+def _get_cached_repo_module() -> ModuleType:
+    """Get the cached repo module, or load it if not cached.
+
+    Returns:
+        The cached github or gitlab module.
+    """
+    global _repo_module_cache
+    if _repo_module_cache is None:
+        return get_repo_module()
+    return _repo_module_cache
+
+
+def _reset_repo_module_cache() -> None:
+    """Reset the repo module cache. Useful for testing."""
+    global _repo_module_cache
+    _repo_module_cache = None
 
 
 class PrFlowError(Exception):
@@ -92,23 +149,27 @@ def push_branch(branch: str) -> None:
         raise PrFlowError(f"Failed to push: {e}")
 
 
-def create_pr(ticket_id: str, commit_message: str) -> PullRequestResult:
-    """Create a pull request for the ticket.
+def create_mr(ticket_id: str, commit_message: str):
+    """Create a pull request (GitHub) or merge request (GitLab) for the ticket.
 
     Args:
         ticket_id: Ticket ID (used in title)
-        commit_message: Description for the PR
+        commit_message: Description for the PR/MR
 
     Returns:
-        PullRequestResult with URL and number
+        PullRequestResult (GitHub) or MergeRequestResult (GitLab) with URL and number
 
     Raises:
-        PrFlowError: If PR creation fails
+        PrFlowError: If PR/MR creation fails
     """
-    # Find GitHub issue for linking
-    issue_number = github.find_issue_by_title(ticket_id)
+    repo = _get_cached_repo_module()
 
-    # Build PR title
+    # Try to find linked issue (GitHub only - GitLab tickets are in Asana/Trello)
+    issue_number = None
+    if hasattr(repo, "find_issue_by_title") and repo.find_issue_by_title is not None:
+        issue_number = repo.find_issue_by_title(ticket_id)
+
+    # Build PR/MR title
     # Clean commit message of ticket prefix if present
     clean_message = commit_message.replace(f"[{ticket_id}]", "").strip()
     if clean_message.startswith(ticket_id):
@@ -120,7 +181,7 @@ def create_pr(ticket_id: str, commit_message: str) -> PullRequestResult:
 
     title = f"[{ticket_id}] {clean_message}"
 
-    # Build PR body
+    # Build PR/MR body
     body_parts = [
         "## Summary",
         "",
@@ -151,24 +212,42 @@ def create_pr(ticket_id: str, commit_message: str) -> PullRequestResult:
     body = "\n".join(body_parts)
 
     try:
-        return github.create_pull_request(title=title, body=body)
-    except github.GitHubError as e:
-        raise PrFlowError(f"Failed to create PR: {e}")
+        # Both modules have create_pull_request/create_merge_request with same signature
+        if hasattr(repo, "create_merge_request"):
+            return repo.create_merge_request(title=title, body=body)
+        else:
+            return repo.create_pull_request(title=title, body=body)
+    except Exception as e:
+        raise PrFlowError(f"Failed to create PR/MR: {e}")
 
 
-def merge_pr(pr_number: int) -> None:
-    """Merge a pull request using squash merge.
+# Alias for backward compatibility
+create_pr = create_mr
+
+
+def merge_mr(pr_number: int) -> None:
+    """Merge a pull request (GitHub) or merge request (GitLab) using squash merge.
 
     Args:
-        pr_number: PR number to merge
+        pr_number: PR/MR number to merge
 
     Raises:
         PrFlowError: If merge fails
     """
+    repo = _get_cached_repo_module()
+
     try:
-        github.merge_pull_request(pr_number, strategy="squash")
-    except github.GitHubError as e:
-        raise PrFlowError(f"Failed to merge PR: {e}")
+        # Both modules have merge_pull_request/merge_merge_request with same signature
+        if hasattr(repo, "merge_merge_request"):
+            repo.merge_merge_request(pr_number, strategy="squash")
+        else:
+            repo.merge_pull_request(pr_number, strategy="squash")
+    except Exception as e:
+        raise PrFlowError(f"Failed to merge PR/MR: {e}")
+
+
+# Alias for backward compatibility
+merge_pr = merge_mr
 
 
 def checkout_detached_main(default_branch: str = "main") -> None:
@@ -212,30 +291,45 @@ def sync_with_main(default_branch: str = "main") -> None:
 
 
 def find_existing_pr(branch: str) -> int | None:
-    """Find an existing PR for a branch.
+    """Find an existing PR/MR for a branch.
 
     Args:
         branch: Head branch name
 
     Returns:
-        PR number if found, None otherwise
+        PR/MR number if found, None otherwise
     """
-    prs = github.list_pull_requests(head=branch)
-    if prs:
-        return prs[0]["number"]
+    repo = _get_cached_repo_module()
+
+    # Both modules have list_pull_requests/list_merge_requests with same signature
+    if hasattr(repo, "list_merge_requests"):
+        mrs = repo.list_merge_requests(head=branch)
+        if mrs:
+            # GitLab uses 'iid', GitHub uses 'number'
+            return mrs[0].get("iid") or mrs[0].get("number")
+    else:
+        prs = repo.list_pull_requests(head=branch)
+        if prs:
+            return prs[0].get("number") or prs[0].get("iid")
     return None
 
 
 def check_already_merged(ticket_id: str) -> int | None:
-    """Check if a PR for this ticket was already merged.
+    """Check if a PR/MR for this ticket was already merged.
 
     Args:
         ticket_id: Ticket ID to search for
 
     Returns:
-        PR number if merged PR found, None otherwise
+        PR/MR number if merged PR/MR found, None otherwise
     """
-    return github.find_merged_pr(ticket_id)
+    repo = _get_cached_repo_module()
+
+    # Both modules have find_merged_pr/find_merged_mr with same signature
+    if hasattr(repo, "find_merged_mr"):
+        return repo.find_merged_mr(ticket_id)
+    else:
+        return repo.find_merged_pr(ticket_id)
 
 
 def pr_flow(
@@ -308,27 +402,33 @@ def pr_flow(
     # Check if PR already exists
     existing_pr = find_existing_pr(current_branch)
 
+    repo = _get_cached_repo_module()
+
     if existing_pr:
-        # Use existing PR
-        pr_info = github.get_pull_request(existing_pr)
+        # Use existing PR/MR
+        if hasattr(repo, "get_merge_request"):
+            pr_info = repo.get_merge_request(existing_pr)
+            pr_url = pr_info.get("web_url") or pr_info.get("url")
+        else:
+            pr_info = repo.get_pull_request(existing_pr)
+            pr_url = pr_info.get("url") or pr_info.get("web_url")
         pr_number = existing_pr
-        pr_url = pr_info.get("url")
     else:
-        # Create new PR
-        pr_result = create_pr(ticket_id, commit_message)
+        # Create new PR/MR
+        pr_result = create_mr(ticket_id, commit_message)
         pr_number = pr_result.number
         pr_url = pr_result.url
 
     # Merge unless --no-merge
     merged = False
     if not no_merge and pr_number:
-        merge_pr(pr_number)
+        merge_mr(pr_number)
         merged = True
 
         # Delete remote branch (if auto-delete isn't enabled on repo)
         try:
-            github.delete_remote_branch(current_branch)
-        except github.GitHubError:
+            repo.delete_remote_branch(current_branch)
+        except Exception:
             pass  # Non-fatal
 
         # Checkout detached at main
