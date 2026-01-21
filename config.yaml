@@ -4,7 +4,7 @@
 
 # Project Management Tool
 pm:
-  tool: github                    # asana | trello | github | linear | none (must be set before /ticket)
+  tool: asana                    # asana | trello | github | linear | none (must be set before /ticket)
 
 # Development Commands
 # This is the SDLC framework itself - mostly markdown/scripts, no compiled code
@@ -38,7 +38,7 @@ pr:
 # Ticket Configuration
 tickets:
   prefix: "SDLC"                   # Project code prefix for all tickets (e.g., SDLC-0001)
-  counter: 66                      # Current ticket count - auto-incremented when tickets created
+  counter: 73                      # Current ticket count - auto-incremented when tickets created
 
 # Ralph Orchestrator Settings (V2)
 ralph:
