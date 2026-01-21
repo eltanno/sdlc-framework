@@ -302,16 +302,14 @@ def ticket_done(
 
     # Use PM tool if provided (takes precedence over config-based operations)
     if pm_tool is not None:
-        # Only perform PM operations if we have an issue number
-        if actual_issue_number is not None:
-            ticket_id_str = str(actual_issue_number)
+        # PM tools like Asana use ticket_id directly (e.g., "SDLC-0070")
+        # They resolve to internal IDs (GIDs) internally
+        # Remove instance label first (if provided)
+        if ralph_label:
+            pm_tool.remove_label(ticket_id, ralph_label)
 
-            # Remove instance label first (if provided)
-            if ralph_label:
-                pm_tool.remove_label(ticket_id_str, ralph_label)
-
-            # Close the ticket (idempotent - handles already closed)
-            pm_tool.close_ticket(ticket_id_str)
+        # Close the ticket (idempotent - handles already closed)
+        pm_tool.close_ticket(ticket_id)
     else:
         # Fall back to config-based GitHub operations (legacy behavior)
         config = _load_config(config_file)

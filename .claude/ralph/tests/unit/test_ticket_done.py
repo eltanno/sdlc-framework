@@ -556,6 +556,182 @@ class TestTicketDoneOutput:
         assert "all_done" in result
 
 
+class TestTicketDoneWithV2Format:
+    """Tests for ticket_done with REAL v2 format (ralph.tickets as ID list).
+
+    IMPORTANT: v2 format has:
+    - tickets: [] (empty array)
+    - ralph.tickets: ["TASK-001", "TASK-002"] (list of IDs only)
+    - Status comes from PM tool, NOT from state file
+
+    Earlier tests use v1 format (tickets array with full objects).
+    These tests verify the real v2 format used in production.
+    """
+
+    def test_mark_ticket_done_v2_format_basic(self, tmp_path: Path):
+        """Given REAL v2 format state file, mark_ticket_done updates correctly."""
+        from commands.ticket_done import mark_ticket_done
+
+        # REAL v2 format - tickets is empty, ralph.tickets has IDs only
+        state = {
+            "version": "2.0",
+            "prd_path": "docs/prds/test.md",
+            "plan_path": "docs/plans/test.md",
+            "tickets": [],  # Empty in v2!
+            "current_ticket": "TASK-001",
+            "completed_count": 0,
+            "blocked_count": 0,
+            "ralph": {
+                "tickets": ["TASK-001", "TASK-002", "TASK-003"],
+                "dependencies": {},
+                "attempts": {},
+                "blocked": {},
+                "source": "asana",
+            },
+        }
+        state_file = tmp_path / "workflow-state.json"
+        state_file.write_text(json.dumps(state))
+
+        result = mark_ticket_done("TASK-001", state_file=state_file)
+
+        assert result["ticket_id"] == "TASK-001"
+        assert result["status"] == "completed"
+        # v2 clears current_ticket
+        updated = json.loads(state_file.read_text())
+        assert updated["current_ticket"] is None
+
+    def test_mark_ticket_done_v2_clears_blocked_if_present(self, tmp_path: Path):
+        """Given v2 ticket was blocked, mark_ticket_done removes it from blocked dict."""
+        from commands.ticket_done import mark_ticket_done
+
+        state = {
+            "version": "2.0",
+            "prd_path": "docs/prds/test.md",
+            "plan_path": "docs/plans/test.md",
+            "tickets": [],
+            "current_ticket": "TASK-001",
+            "completed_count": 0,
+            "blocked_count": 0,
+            "ralph": {
+                "tickets": ["TASK-001", "TASK-002"],
+                "dependencies": {},
+                "attempts": {},
+                "blocked": {"TASK-001": "was blocked for testing"},
+                "source": "asana",
+            },
+        }
+        state_file = tmp_path / "workflow-state.json"
+        state_file.write_text(json.dumps(state))
+
+        mark_ticket_done("TASK-001", state_file=state_file)
+
+        updated = json.loads(state_file.read_text())
+        assert "TASK-001" not in updated["ralph"]["blocked"]
+
+    def test_mark_ticket_done_v2_raises_on_unknown_ticket(self, tmp_path: Path):
+        """Given v2 format, mark_ticket_done raises if ticket not in ralph.tickets."""
+        from commands.ticket_done import mark_ticket_done
+
+        state = {
+            "version": "2.0",
+            "prd_path": "docs/prds/test.md",
+            "plan_path": "docs/plans/test.md",
+            "tickets": [],
+            "current_ticket": None,
+            "completed_count": 0,
+            "blocked_count": 0,
+            "ralph": {
+                "tickets": ["TASK-001"],
+                "dependencies": {},
+                "attempts": {},
+                "blocked": {},
+                "source": "asana",
+            },
+        }
+        state_file = tmp_path / "workflow-state.json"
+        state_file.write_text(json.dumps(state))
+
+        with pytest.raises(ValueError, match="not found"):
+            mark_ticket_done("TASK-999", state_file=state_file)
+
+    def test_ticket_done_v2_calls_pm_tool_with_ticket_id(self, tmp_path: Path):
+        """Given REAL v2 format, ticket_done passes ticket_id (not issue_number) to PM tool."""
+        from commands.ticket_done import ticket_done
+
+        # REAL v2 format - no issue_number anywhere
+        state = {
+            "version": "2.0",
+            "prd_path": "docs/prds/test.md",
+            "plan_path": "docs/plans/test.md",
+            "tickets": [],
+            "current_ticket": "SDLC-0070",
+            "completed_count": 0,
+            "blocked_count": 0,
+            "ralph": {
+                "tickets": ["SDLC-0067", "SDLC-0068", "SDLC-0069", "SDLC-0070"],
+                "dependencies": {},
+                "attempts": {},
+                "blocked": {},
+                "source": "asana",
+            },
+        }
+        state_file = tmp_path / "workflow-state.json"
+        state_file.write_text(json.dumps(state))
+
+        # Mock PM tool
+        mock_pm = MagicMock()
+        mock_pm.close_ticket.return_value = True
+        mock_pm.remove_label.return_value = True
+
+        result = ticket_done(
+            ticket_id="SDLC-0070",
+            state_file=state_file,
+            pm_tool=mock_pm,
+            ralph_label="ralph-1",
+        )
+
+        # PM tool should be called with ticket_id directly
+        assert result["status"] == "completed"
+        mock_pm.close_ticket.assert_called_once_with("SDLC-0070")
+        mock_pm.remove_label.assert_called_once_with("SDLC-0070", "ralph-1")
+
+    def test_ticket_done_v2_returns_limited_progress_info(self, tmp_path: Path):
+        """Given v2 format, ticket_done returns limited progress (no remaining count)."""
+        from commands.ticket_done import ticket_done
+
+        state = {
+            "version": "2.0",
+            "prd_path": "docs/prds/test.md",
+            "plan_path": "docs/plans/test.md",
+            "tickets": [],
+            "current_ticket": "TASK-001",
+            "completed_count": 0,
+            "blocked_count": 0,
+            "ralph": {
+                "tickets": ["TASK-001", "TASK-002", "TASK-003"],
+                "dependencies": {},
+                "attempts": {},
+                "blocked": {},
+                "source": "asana",
+            },
+        }
+        state_file = tmp_path / "workflow-state.json"
+        state_file.write_text(json.dumps(state))
+
+        mock_pm = MagicMock()
+        mock_pm.close_ticket.return_value = True
+
+        result = ticket_done(
+            ticket_id="TASK-001",
+            state_file=state_file,
+            pm_tool=mock_pm,
+        )
+
+        # v2 returns total but remaining is None (can't know without PM query)
+        assert result["total"] == 3
+        assert result["remaining"] is None
+
+
 class TestTicketDoneWithPMTool:
     """Tests for ticket_done integration with PMTool protocol."""
 
@@ -621,7 +797,8 @@ class TestTicketDoneWithPMTool:
             ralph_label="ralph-1",
         )
 
-        mock_pm_tool.close_ticket.assert_called_once_with("42")
+        # PM tool is called with ticket_id, not issue_number
+        mock_pm_tool.close_ticket.assert_called_once_with("TASK-001")
 
     def test_ticket_done_calls_pm_tool_remove_label(self, tmp_path: Path, mocker):
         """Given pm_tool and ralph_label, ticket_done removes the label first."""
@@ -654,7 +831,8 @@ class TestTicketDoneWithPMTool:
             ralph_label="ralph-1",
         )
 
-        mock_pm_tool.remove_label.assert_called_once_with("42", "ralph-1")
+        # PM tool is called with ticket_id, not issue_number
+        mock_pm_tool.remove_label.assert_called_once_with("TASK-001", "ralph-1")
 
     def test_ticket_done_removes_label_before_closing(self, tmp_path: Path, mocker):
         """Given pm_tool and ralph_label, remove_label is called before close_ticket."""
@@ -724,11 +902,11 @@ class TestTicketDoneWithPMTool:
         # Should still complete successfully
         assert result["status"] == "completed"
 
-    def test_ticket_done_skips_pm_operations_without_issue_number(self, tmp_path: Path, mocker):
-        """Given no issue_number in state, ticket_done skips PM tool calls."""
+    def test_ticket_done_calls_pm_tool_with_ticket_id_not_issue_number(self, tmp_path: Path, mocker):
+        """Given pm_tool, ticket_done calls it with ticket_id directly (not issue_number)."""
         from commands.ticket_done import ticket_done
 
-        # Setup state file WITHOUT issue_number
+        # Setup state file WITHOUT issue_number (like v2 format)
         state = {
             "version": "2.0",
             "prd_path": "docs/prds/test.md",
@@ -745,6 +923,8 @@ class TestTicketDoneWithPMTool:
 
         # Create mock PM tool
         mock_pm_tool = MagicMock()
+        mock_pm_tool.close_ticket.return_value = True
+        mock_pm_tool.remove_label.return_value = True
 
         result = ticket_done(
             ticket_id="TASK-001",
@@ -753,10 +933,10 @@ class TestTicketDoneWithPMTool:
             ralph_label="ralph-1",
         )
 
-        # Should complete without calling PM tool
+        # Should call PM tool with ticket_id (not issue_number)
         assert result["status"] == "completed"
-        mock_pm_tool.close_ticket.assert_not_called()
-        mock_pm_tool.remove_label.assert_not_called()
+        mock_pm_tool.close_ticket.assert_called_once_with("TASK-001")
+        mock_pm_tool.remove_label.assert_called_once_with("TASK-001", "ralph-1")
 
     def test_ticket_done_skips_remove_label_without_ralph_label(self, tmp_path: Path, mocker):
         """Given pm_tool but no ralph_label, ticket_done skips remove_label."""

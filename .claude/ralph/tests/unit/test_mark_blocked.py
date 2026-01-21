@@ -779,3 +779,204 @@ class TestMarkBlockedPMTool:
         # Local state should still be updated even if PM tool failed
         updated_state = load_workflow_state(state_file)
         assert updated_state.tickets[0].status == "blocked"
+
+
+class TestMarkBlockedV2Format:
+    """Tests for mark_blocked with REAL v2 format (ralph.tickets as ID list).
+
+    IMPORTANT: v2 format has:
+    - tickets: [] (empty array)
+    - ralph.tickets: ["TASK-001", "TASK-002"] (list of IDs only)
+    - ralph.blocked: {"TASK-001": "reason"} (blocked tickets with reasons)
+    - Status comes from PM tool, NOT from state file
+
+    Earlier tests use v1 format (tickets array with full objects).
+    These tests verify the real v2 format used in production.
+    """
+
+    def test_mark_blocked_v2_format_basic(self, tmp_path: Path):
+        """Given REAL v2 format state file, mark_blocked updates correctly."""
+        from commands.mark_blocked import mark_blocked
+
+        # REAL v2 format - tickets is empty, ralph.tickets has IDs only
+        state = {
+            "version": "2.0",
+            "prd_path": "docs/prds/test.md",
+            "plan_path": "docs/plans/test.md",
+            "tickets": [],  # Empty in v2!
+            "current_ticket": "TASK-001",
+            "completed_count": 0,
+            "blocked_count": 0,
+            "ralph": {
+                "tickets": ["TASK-001", "TASK-002", "TASK-003"],
+                "dependencies": {},
+                "attempts": {},
+                "blocked": {},
+                "source": "asana",
+            },
+        }
+        state_file = tmp_path / "workflow-state.json"
+        state_file.write_text(json.dumps(state))
+
+        with patch("commands.mark_blocked.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="[]", stderr="")
+            result = mark_blocked(
+                ticket_id="TASK-001",
+                reason="Test failure",
+                state_file=state_file,
+            )
+
+        assert result["blocked_ticket"] == "TASK-001"
+        assert result["reason"] == "Test failure"
+
+        # Verify v2 state was updated correctly
+        updated = json.loads(state_file.read_text())
+        assert "TASK-001" in updated["ralph"]["blocked"]
+        assert updated["ralph"]["blocked"]["TASK-001"] == "Test failure"
+
+    def test_mark_blocked_v2_clears_current_ticket(self, tmp_path: Path):
+        """Given v2 current_ticket is blocked ticket, mark_blocked clears it."""
+        from commands.mark_blocked import mark_blocked
+
+        state = {
+            "version": "2.0",
+            "prd_path": "docs/prds/test.md",
+            "plan_path": "docs/plans/test.md",
+            "tickets": [],
+            "current_ticket": "TASK-001",
+            "completed_count": 0,
+            "blocked_count": 0,
+            "ralph": {
+                "tickets": ["TASK-001", "TASK-002"],
+                "dependencies": {},
+                "attempts": {},
+                "blocked": {},
+                "source": "asana",
+            },
+        }
+        state_file = tmp_path / "workflow-state.json"
+        state_file.write_text(json.dumps(state))
+
+        with patch("commands.mark_blocked.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="[]", stderr="")
+            mark_blocked(
+                ticket_id="TASK-001",
+                reason="Blocked",
+                state_file=state_file,
+            )
+
+        updated = json.loads(state_file.read_text())
+        assert updated["current_ticket"] is None
+
+    def test_mark_blocked_v2_raises_on_unknown_ticket(self, tmp_path: Path):
+        """Given v2 format, mark_blocked raises if ticket not in ralph.tickets."""
+        from commands.mark_blocked import mark_blocked
+
+        state = {
+            "version": "2.0",
+            "prd_path": "docs/prds/test.md",
+            "plan_path": "docs/plans/test.md",
+            "tickets": [],
+            "current_ticket": None,
+            "completed_count": 0,
+            "blocked_count": 0,
+            "ralph": {
+                "tickets": ["TASK-001"],
+                "dependencies": {},
+                "attempts": {},
+                "blocked": {},
+                "source": "asana",
+            },
+        }
+        state_file = tmp_path / "workflow-state.json"
+        state_file.write_text(json.dumps(state))
+
+        with pytest.raises(ValueError, match="not found"):
+            with patch("commands.mark_blocked.subprocess.run") as mock_run:
+                mock_run.return_value = MagicMock(returncode=0, stdout="[]", stderr="")
+                mark_blocked(
+                    ticket_id="TASK-999",
+                    reason="Test",
+                    state_file=state_file,
+                )
+
+    def test_mark_blocked_v2_with_pm_tool(self, tmp_path: Path):
+        """Given REAL v2 format and pm_tool, mark_blocked uses PM tool."""
+        from commands.mark_blocked import mark_blocked
+
+        state = {
+            "version": "2.0",
+            "prd_path": "docs/prds/test.md",
+            "plan_path": "docs/plans/test.md",
+            "tickets": [],
+            "current_ticket": "SDLC-0070",
+            "completed_count": 0,
+            "blocked_count": 0,
+            "ralph": {
+                "tickets": ["SDLC-0067", "SDLC-0068", "SDLC-0069", "SDLC-0070"],
+                "dependencies": {},
+                "attempts": {},
+                "blocked": {},
+                "source": "asana",
+            },
+        }
+        state_file = tmp_path / "workflow-state.json"
+        state_file.write_text(json.dumps(state))
+
+        mock_pm = MagicMock()
+        mock_pm.add_blocked_label.return_value = True
+        mock_pm.remove_label.return_value = True
+
+        # When using v2 format with pm_tool, we pass issue_number for PM operations
+        result = mark_blocked(
+            ticket_id="SDLC-0070",
+            reason="Validation failed",
+            state_file=state_file,
+            issue_number=42,  # Passed separately for PM tool
+            pm_tool=mock_pm,
+            ralph_label="ralph-1",
+        )
+
+        assert result["blocked_ticket"] == "SDLC-0070"
+        mock_pm.add_blocked_label.assert_called_once_with("42", "Validation failed")
+        mock_pm.remove_label.assert_called_once_with("42", "ralph-1")
+
+        # v2 state updated correctly
+        updated = json.loads(state_file.read_text())
+        assert "SDLC-0070" in updated["ralph"]["blocked"]
+
+    def test_mark_blocked_v2_does_not_increment_blocked_count(self, tmp_path: Path):
+        """Given v2 format, mark_blocked does NOT increment blocked_count (v2 uses ralph.blocked)."""
+        from commands.mark_blocked import mark_blocked
+
+        state = {
+            "version": "2.0",
+            "prd_path": "docs/prds/test.md",
+            "plan_path": "docs/plans/test.md",
+            "tickets": [],
+            "current_ticket": "TASK-001",
+            "completed_count": 0,
+            "blocked_count": 0,
+            "ralph": {
+                "tickets": ["TASK-001"],
+                "dependencies": {},
+                "attempts": {},
+                "blocked": {},
+                "source": "asana",
+            },
+        }
+        state_file = tmp_path / "workflow-state.json"
+        state_file.write_text(json.dumps(state))
+
+        with patch("commands.mark_blocked.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="[]", stderr="")
+            mark_blocked(
+                ticket_id="TASK-001",
+                reason="Test",
+                state_file=state_file,
+            )
+
+        # In v2, blocked_count stays at 0 - we use ralph.blocked dict instead
+        updated = json.loads(state_file.read_text())
+        assert updated["blocked_count"] == 0
+        assert "TASK-001" in updated["ralph"]["blocked"]
