@@ -9,6 +9,7 @@ Tests cover:
 - Use assignee flag
 - Instance label prefix
 - PM tool type loading and validation
+- Repo tool type loading and validation
 """
 
 import pytest
@@ -22,8 +23,10 @@ from core.config import (
     get_instance_label_prefix,
     get_use_assignee,
     get_pm_tool_type,
+    get_repo_tool_type,
     matches_instance_prefix,
     VALID_PM_TOOLS,
+    VALID_REPO_TOOLS,
 )
 
 
@@ -498,3 +501,111 @@ class TestValidPmTools:
     def test_valid_pm_tools_is_frozen(self) -> None:
         """VALID_PM_TOOLS should be a frozenset to prevent modification."""
         assert isinstance(VALID_PM_TOOLS, frozenset)
+
+
+class TestValidRepoTools:
+    """Tests for VALID_REPO_TOOLS constant."""
+
+    def test_valid_repo_tools_contains_expected_values(self) -> None:
+        """VALID_REPO_TOOLS should contain github and gitlab."""
+        expected = {"github", "gitlab"}
+        assert VALID_REPO_TOOLS == expected
+
+    def test_valid_repo_tools_is_frozen(self) -> None:
+        """VALID_REPO_TOOLS should be a frozenset to prevent modification."""
+        assert isinstance(VALID_REPO_TOOLS, frozenset)
+
+
+class TestGetRepoToolType:
+    """Tests for get_repo_tool_type function."""
+
+    def test_get_repo_tool_type_github_returns_github(self, tmp_path: Path) -> None:
+        """Given repo.type is 'github', when getting repo tool type, then returns 'github'."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+repo:
+  type: github
+""")
+        result = get_repo_tool_type(config_file)
+
+        assert result == "github"
+
+    def test_get_repo_tool_type_gitlab_returns_gitlab(self, tmp_path: Path) -> None:
+        """Given repo.type is 'gitlab', when getting repo tool type, then returns 'gitlab'."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+repo:
+  type: gitlab
+""")
+        result = get_repo_tool_type(config_file)
+
+        assert result == "gitlab"
+
+    def test_get_repo_tool_type_missing_repo_section_returns_github_default(self, tmp_path: Path) -> None:
+        """Given config has no repo section, when getting repo tool type, then returns 'github' (default)."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+ralph:
+  instance_label_prefix: "ralph-"
+""")
+        result = get_repo_tool_type(config_file)
+
+        assert result == "github"
+
+    def test_get_repo_tool_type_missing_type_key_returns_github_default(self, tmp_path: Path) -> None:
+        """Given repo section exists but type key missing, when getting repo tool type, then returns 'github' (default)."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+repo:
+  other_setting: value
+""")
+        result = get_repo_tool_type(config_file)
+
+        assert result == "github"
+
+    def test_get_repo_tool_type_invalid_value_raises_error(self, tmp_path: Path) -> None:
+        """Given repo.type has invalid value, when getting repo tool type, then raises ConfigError."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+repo:
+  type: bitbucket
+""")
+        with pytest.raises(ConfigError) as exc_info:
+            get_repo_tool_type(config_file)
+
+        error_msg = str(exc_info.value).lower()
+        assert "bitbucket" in error_msg
+        assert "invalid" in error_msg or "must be" in error_msg
+
+    def test_get_repo_tool_type_missing_config_file_raises_error(self, tmp_path: Path) -> None:
+        """Given config file doesn't exist, when getting repo tool type, then raises ConfigError."""
+        config_file = tmp_path / "nonexistent.yaml"
+
+        with pytest.raises(ConfigError) as exc_info:
+            get_repo_tool_type(config_file)
+
+        assert "not found" in str(exc_info.value).lower()
+
+    def test_get_repo_tool_type_empty_string_returns_github_default(self, tmp_path: Path) -> None:
+        """Given repo.type is empty string, when getting repo tool type, then returns 'github' (default)."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+repo:
+  type: ""
+""")
+        result = get_repo_tool_type(config_file)
+
+        assert result == "github"
+
+    def test_get_repo_tool_type_malformed_yaml_raises_error(self, tmp_path: Path) -> None:
+        """Given config file has malformed YAML, when getting repo tool type, then raises ConfigError."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+repo:
+  type: [invalid yaml
+""")
+        with pytest.raises(ConfigError) as exc_info:
+            get_repo_tool_type(config_file)
+
+        error_msg = str(exc_info.value).lower()
+        assert "yaml" in error_msg or "parse" in error_msg
