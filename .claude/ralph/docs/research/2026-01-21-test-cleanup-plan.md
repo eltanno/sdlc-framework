@@ -29,6 +29,20 @@ The only format is the CURRENT format:
 
 ---
 
+## CRITICAL: TDD - Tests Define Correct Behavior
+
+**Write tests that assert what we WANT, not what currently passes.**
+
+- Tests should fail if the code is wrong
+- Do NOT write tests just to make them pass
+- If updating a test causes it to fail, that means the CODE is wrong - move on
+- We are writing tests BEFORE fixing code
+- A suite of trusted tests that fail is BETTER than passing tests that check wrong behavior
+
+**The goal:** Tests that accurately verify the current format. If code doesn't match, tests fail. That's expected. Code fixes come later.
+
+---
+
 ## Summary
 
 ~65 tests across 7 files need updating to use the current state format.
