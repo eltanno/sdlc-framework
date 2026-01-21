@@ -15,6 +15,7 @@ SDLC-0057: AsanaPM add_blocked_label with comment
 import logging
 import os
 import re
+import time
 from typing import Any
 
 import httpx
@@ -25,6 +26,11 @@ logger = logging.getLogger(__name__)
 
 # Asana API base URL
 ASANA_API_BASE = "https://app.asana.com/api/1.0"
+
+# HTTP client settings
+REQUEST_TIMEOUT = 30.0  # seconds
+MAX_RETRIES = 3
+RETRY_DELAY = 1.0  # seconds (doubles each retry)
 
 
 class AsanaPM:
@@ -137,7 +143,7 @@ class AsanaPM:
         )
 
     def _get(self, endpoint: str) -> dict[str, Any]:
-        """Make a GET request to the Asana API.
+        """Make a GET request to the Asana API with retry logic.
 
         Args:
             endpoint: API endpoint path (e.g., "/tasks/12345")
@@ -150,21 +156,32 @@ class AsanaPM:
             PMError: For other API errors
         """
         url = f"{ASANA_API_BASE}{endpoint}"
+        last_error: Exception | None = None
 
-        try:
-            with httpx.Client() as client:
-                response = client.get(url, headers=self._get_headers())
-                self._handle_response_error(response)
-                return response.json().get("data", {})
-        except httpx.ConnectError as e:
-            raise PMError(
-                f"Network connection error: Unable to connect to Asana API. {e}"
-            )
-        except httpx.TimeoutException as e:
-            raise PMError(f"Request timeout: Asana API did not respond in time. {e}")
+        for attempt in range(MAX_RETRIES):
+            try:
+                with httpx.Client(timeout=REQUEST_TIMEOUT) as client:
+                    response = client.get(url, headers=self._get_headers())
+                    self._handle_response_error(response)
+                    return response.json().get("data", {})
+            except httpx.ConnectError as e:
+                last_error = e
+                logger.warning(f"Connection error (attempt {attempt + 1}/{MAX_RETRIES}): {e}")
+            except httpx.TimeoutException as e:
+                last_error = e
+                logger.warning(f"Timeout (attempt {attempt + 1}/{MAX_RETRIES}): {e}")
+
+            if attempt < MAX_RETRIES - 1:
+                delay = RETRY_DELAY * (2 ** attempt)
+                logger.info(f"Retrying in {delay}s...")
+                time.sleep(delay)
+
+        if isinstance(last_error, httpx.ConnectError):
+            raise PMError(f"Network connection error after {MAX_RETRIES} attempts: {last_error}")
+        raise PMError(f"Request timeout after {MAX_RETRIES} attempts: {last_error}")
 
     def _post(self, endpoint: str, data: dict[str, Any]) -> dict[str, Any]:
-        """Make a POST request to the Asana API.
+        """Make a POST request to the Asana API with retry logic.
 
         Args:
             endpoint: API endpoint path (e.g., "/tasks/12345/addTag")
@@ -178,25 +195,36 @@ class AsanaPM:
             PMError: For other API errors
         """
         url = f"{ASANA_API_BASE}{endpoint}"
+        last_error: Exception | None = None
 
-        try:
-            with httpx.Client() as client:
-                response = client.post(
-                    url,
-                    headers=self._get_headers(),
-                    json={"data": data},
-                )
-                self._handle_response_error(response)
-                return response.json().get("data", {})
-        except httpx.ConnectError as e:
-            raise PMError(
-                f"Network connection error: Unable to connect to Asana API. {e}"
-            )
-        except httpx.TimeoutException as e:
-            raise PMError(f"Request timeout: Asana API did not respond in time. {e}")
+        for attempt in range(MAX_RETRIES):
+            try:
+                with httpx.Client(timeout=REQUEST_TIMEOUT) as client:
+                    response = client.post(
+                        url,
+                        headers=self._get_headers(),
+                        json={"data": data},
+                    )
+                    self._handle_response_error(response)
+                    return response.json().get("data", {})
+            except httpx.ConnectError as e:
+                last_error = e
+                logger.warning(f"Connection error (attempt {attempt + 1}/{MAX_RETRIES}): {e}")
+            except httpx.TimeoutException as e:
+                last_error = e
+                logger.warning(f"Timeout (attempt {attempt + 1}/{MAX_RETRIES}): {e}")
+
+            if attempt < MAX_RETRIES - 1:
+                delay = RETRY_DELAY * (2 ** attempt)
+                logger.info(f"Retrying in {delay}s...")
+                time.sleep(delay)
+
+        if isinstance(last_error, httpx.ConnectError):
+            raise PMError(f"Network connection error after {MAX_RETRIES} attempts: {last_error}")
+        raise PMError(f"Request timeout after {MAX_RETRIES} attempts: {last_error}")
 
     def _put(self, endpoint: str, data: dict[str, Any]) -> dict[str, Any]:
-        """Make a PUT request to the Asana API.
+        """Make a PUT request to the Asana API with retry logic.
 
         Args:
             endpoint: API endpoint path (e.g., "/tasks/12345")
@@ -210,22 +238,33 @@ class AsanaPM:
             PMError: For other API errors
         """
         url = f"{ASANA_API_BASE}{endpoint}"
+        last_error: Exception | None = None
 
-        try:
-            with httpx.Client() as client:
-                response = client.put(
-                    url,
-                    headers=self._get_headers(),
-                    json={"data": data},
-                )
-                self._handle_response_error(response)
-                return response.json().get("data", {})
-        except httpx.ConnectError as e:
-            raise PMError(
-                f"Network connection error: Unable to connect to Asana API. {e}"
-            )
-        except httpx.TimeoutException as e:
-            raise PMError(f"Request timeout: Asana API did not respond in time. {e}")
+        for attempt in range(MAX_RETRIES):
+            try:
+                with httpx.Client(timeout=REQUEST_TIMEOUT) as client:
+                    response = client.put(
+                        url,
+                        headers=self._get_headers(),
+                        json={"data": data},
+                    )
+                    self._handle_response_error(response)
+                    return response.json().get("data", {})
+            except httpx.ConnectError as e:
+                last_error = e
+                logger.warning(f"Connection error (attempt {attempt + 1}/{MAX_RETRIES}): {e}")
+            except httpx.TimeoutException as e:
+                last_error = e
+                logger.warning(f"Timeout (attempt {attempt + 1}/{MAX_RETRIES}): {e}")
+
+            if attempt < MAX_RETRIES - 1:
+                delay = RETRY_DELAY * (2 ** attempt)
+                logger.info(f"Retrying in {delay}s...")
+                time.sleep(delay)
+
+        if isinstance(last_error, httpx.ConnectError):
+            raise PMError(f"Network connection error after {MAX_RETRIES} attempts: {last_error}")
+        raise PMError(f"Request timeout after {MAX_RETRIES} attempts: {last_error}")
 
     # =========================================================================
     # Tag Management (SDLC-0053)
