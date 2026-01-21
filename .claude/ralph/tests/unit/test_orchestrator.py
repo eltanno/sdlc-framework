@@ -1011,10 +1011,12 @@ git:
         call_kwargs = mock_get_next.call_args[1]
         assert call_kwargs.get("ralph_label") == "ralph-42"
 
+    @patch("commands.orchestrator.load_config")
     @patch("commands.orchestrator.create_pm_tool")
     def test_run_orchestrator_raises_error_when_ralph_label_not_set(
         self,
         mock_create_pm: MagicMock,
+        mock_load_config: MagicMock,
         tmp_path: Path,
         github_config_yaml: Path,
     ) -> None:
@@ -1022,18 +1024,23 @@ git:
         mock_pm_tool = MagicMock()
         mock_create_pm.return_value = mock_pm_tool
 
-        # Ensure RALPH_LABEL is not set (override the autouse fixture)
-        env = os.environ.copy()
-        env.pop("RALPH_LABEL", None)
-        with patch.dict(os.environ, env, clear=True):
-            with pytest.raises(RuntimeError) as exc_info:
-                run_orchestrator(
-                    prd_path=tmp_path / "prd.md",
-                    plan_path=tmp_path / "plan.md",
-                    state_file=tmp_path / "state.json",
-                    config_file=github_config_yaml,
-                    dry_run=False,
-                )
+        # Return a config with empty instance_label to simulate RALPH_LABEL not set
+        mock_load_config.return_value = OrchestratorConfig(
+            sonnet_threshold=2,
+            max_attempts=3,
+            state_directory="docs/state",
+            instance_label="",  # Empty - simulates RALPH_LABEL not set
+            use_assignee=False,
+        )
+
+        with pytest.raises(RuntimeError) as exc_info:
+            run_orchestrator(
+                prd_path=tmp_path / "prd.md",
+                plan_path=tmp_path / "plan.md",
+                state_file=tmp_path / "state.json",
+                config_file=github_config_yaml,
+                dry_run=False,
+            )
 
         assert "RALPH_LABEL is required" in str(exc_info.value)
 
