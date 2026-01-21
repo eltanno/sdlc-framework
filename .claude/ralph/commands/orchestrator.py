@@ -48,6 +48,7 @@ from core.state import (
 
 VALIDATION_PASSED = "validation_passed"
 VALIDATION_FAILED = "validation_failed"
+ALREADY_IMPLEMENTED = "already_implemented"
 
 DEFAULT_MAX_ATTEMPTS = 3
 DEFAULT_SONNET_THRESHOLD = 2
@@ -311,7 +312,10 @@ def parse_engineer_result(output: str, is_timeout: bool = False) -> EngineerResu
         return EngineerResult(status="timeout", raw_output=output)
 
     # Check for validation markers
-    if "VALIDATION_PASSED" in output:
+    # Note: Check ALREADY_IMPLEMENTED first since it may also contain VALIDATION_PASSED
+    if "ALREADY_IMPLEMENTED" in output:
+        status = ALREADY_IMPLEMENTED
+    elif "VALIDATION_PASSED" in output:
         status = VALIDATION_PASSED
     elif "VALIDATION_FAILED" in output:
         status = VALIDATION_FAILED
@@ -556,9 +560,28 @@ def process_ticket(
                 )
 
             except PrFlowError as e:
-                # PR flow failed, but validation passed - treat as completed but note issue
+                # PR flow failed, but validation passed - still close the ticket
+                # The work is done, just couldn't create PR (maybe nothing to commit)
                 duration = time.time() - start_time
                 logger.info(f"Ticket {ticket_id} completed with PR flow error in {_format_duration(duration)}")
+
+                # Still mark ticket done in PM tool
+                ticket_done(
+                    ticket_id=ticket_id,
+                    pr_number=None,
+                    state_file=state_file,
+                    pm_tool=pm_tool,
+                    ralph_label=ralph_label,
+                )
+
+                write_summary(
+                    ticket_id=ticket_id,
+                    status="SUCCESS",
+                    total_attempts=current_attempt,
+                    pr_number=None,
+                    base_dir=config.state_directory,
+                )
+
                 return TicketResult(
                     ticket_id=ticket_id,
                     status="completed",
@@ -566,6 +589,35 @@ def process_ticket(
                     block_reason=f"PR flow error: {e}",
                     duration_seconds=duration,
                 )
+
+        elif result.status == ALREADY_IMPLEMENTED:
+            # Work was already done (e.g., bundled with another ticket)
+            # Skip PR flow, just close the ticket
+            duration = time.time() - start_time
+            logger.info(f"Ticket {ticket_id} already implemented, closing in {_format_duration(duration)}")
+
+            ticket_done(
+                ticket_id=ticket_id,
+                pr_number=None,
+                state_file=state_file,
+                pm_tool=pm_tool,
+                ralph_label=ralph_label,
+            )
+
+            write_summary(
+                ticket_id=ticket_id,
+                status="SUCCESS",
+                total_attempts=current_attempt,
+                pr_number=None,
+                base_dir=config.state_directory,
+            )
+
+            return TicketResult(
+                ticket_id=ticket_id,
+                status="completed",
+                attempts=current_attempt,
+                duration_seconds=duration,
+            )
 
         elif result.status == VALIDATION_FAILED:
             # Try again if we have attempts left
