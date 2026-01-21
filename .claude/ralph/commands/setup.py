@@ -118,7 +118,8 @@ def extract_tickets_from_prd(prd_path: Path) -> list[str]:
     seen: set[str] = set()
 
     # First try to match markdown-linked tickets: [PREFIX-NNNN](url)
-    linked_pattern = re.compile(r"\[([A-Z]+-\d+)\]\(")
+    # Require 3+ digits to exclude test case IDs like TC-1
+    linked_pattern = re.compile(r"\[([A-Z]+-\d{3,})\]\(")
     linked_matches = linked_pattern.findall(content)
 
     if linked_matches:
