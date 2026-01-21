@@ -29,6 +29,9 @@ import yaml
 # Valid PM tool types
 VALID_PM_TOOLS: frozenset[str] = frozenset({"github", "trello", "asana", "linear", "none"})
 
+# Valid repository tool types
+VALID_REPO_TOOLS: frozenset[str] = frozenset({"github", "gitlab"})
+
 
 class ConfigError(Exception):
     """Raised when configuration loading or validation fails.
@@ -356,6 +359,58 @@ def get_pm_tool_type(config_path: Union[str, Path]) -> str:
         raise ConfigError(
             f"Invalid pm.tool value: '{tool}'. "
             f"Must be one of: {', '.join(sorted(VALID_PM_TOOLS))}",
+            file_path=path
+        )
+
+    return tool
+
+
+def get_repo_tool_type(config_path: Union[str, Path]) -> str:
+    """Get the configured repository tool type.
+
+    Reads repo.type from the config file and validates it against
+    VALID_REPO_TOOLS. Defaults to "github" if not specified.
+
+    Args:
+        config_path: Path to the config.yaml file.
+
+    Returns:
+        Repo tool type string ("github" | "gitlab").
+
+    Raises:
+        ConfigError: If config file is missing, has invalid YAML,
+            or repo.type has an invalid value.
+    """
+    path = Path(config_path)
+
+    if not path.exists():
+        raise ConfigError(
+            f"Configuration file not found: {path}",
+            file_path=path
+        )
+
+    try:
+        content = path.read_text(encoding="utf-8")
+        data = yaml.safe_load(content) or {}
+    except yaml.YAMLError as e:
+        raise ConfigError(
+            f"Failed to parse YAML: {e}",
+            file_path=path
+        ) from e
+
+    # Get repo section
+    repo_data = data.get("repo", {}) or {}
+    tool = repo_data.get("type")
+
+    # Default to github if not set or empty
+    if tool is None or tool == "":
+        return "github"
+
+    # Validate repo.type value
+    if tool not in VALID_REPO_TOOLS:
+        raise ConfigError(
+            f"Invalid repo.type value: '{tool}'. "
+            f"Must be one of: {', '.join(sorted(VALID_REPO_TOOLS))}",
             file_path=path
         )
 
