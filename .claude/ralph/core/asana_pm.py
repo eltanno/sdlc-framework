@@ -276,7 +276,7 @@ class AsanaPM:
         # Tag doesn't exist - create it
         logger.info(f"Tag '{name}' not found in workspace, creating...")
         create_endpoint = f"/workspaces/{self._workspace_id}/tags"
-        result = self._post(create_endpoint, {"name": name, "workspace": self._workspace_id})
+        result = self._post(create_endpoint, {"name": name})
 
         tag_gid = result.get("gid", "")
         self._tag_cache[cache_key] = tag_gid

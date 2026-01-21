@@ -599,7 +599,9 @@ class TestErrorHandling:
         with pytest.raises(PMError) as exc_info:
             asana_pm.get_ticket_status("invalid-task-id-12345")
 
-        assert "not found" in str(exc_info.value).lower() or "404" in str(exc_info.value)
+        # Asana returns 400 "Not a Long" for malformed IDs, 404 for valid-format but non-existent
+        error_msg = str(exc_info.value).lower()
+        assert "not found" in error_msg or "404" in error_msg or "not a long" in error_msg or "400" in error_msg
 
     def test_claim_ticket_invalid_id_returns_false(self, asana_pm):
         """Given invalid task ID, when claiming, then False is returned.

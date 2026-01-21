@@ -507,13 +507,14 @@ class TestAsanaPMTagManagement:
         pm = AsanaPM()
         pm._get_or_create_tag("ralph-3")
 
-        # Verify POST payload contains tag name and workspace
+        # Verify POST payload contains tag name (workspace is in URL path, not body)
         post_call_args = (
             mock_httpx_client.return_value.__enter__.return_value.post.call_args
         )
         json_body = post_call_args.kwargs.get("json", {})
         assert json_body.get("data", {}).get("name") == "ralph-3"
-        assert json_body.get("data", {}).get("workspace") == "workspace-12345"
+        # workspace should NOT be in the body - it's already in the endpoint URL
+        assert "workspace" not in json_body.get("data", {})
 
     def test_get_or_create_tag_handles_ralph_tags_0_through_5(
         self, mock_env_asana, mock_httpx_client
