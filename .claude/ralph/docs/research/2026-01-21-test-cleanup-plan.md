@@ -6,9 +6,32 @@
 
 ---
 
+## CRITICAL: No "v1" Exists
+
+**This is pre-alpha code. There is no legacy format to support.**
+
+The only format is the CURRENT format:
+- `ralph.tickets`: List of ticket IDs (e.g., `["TASK-001", "TASK-002"]`)
+- `ralph.blocked`: Dict of blocked tickets to reasons (e.g., `{"TASK-001": "Error"}`)
+- `ralph.attempts`: Dict of ticket IDs to attempt counts (e.g., `{"TASK-001": 3}`)
+- `ralph.dependencies`: Dict of ticket IDs to dependency lists
+- `ralph.source`: PM tool source (e.g., `"github"`, `"asana"`)
+
+**DO NOT:**
+- Create "hybrid" approaches
+- Maintain backward compatibility with anything
+- Populate both old and new fields
+
+**DO:**
+- Update implementations to use the current format
+- Update tests to use the current format
+- Delete old code paths that don't match current format
+
+---
+
 ## Summary
 
-~65 tests across 7 files need updating from v1 to v2 format.
+~65 tests across 7 files need updating to use the current state format.
 
 ---
 
