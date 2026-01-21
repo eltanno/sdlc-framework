@@ -82,6 +82,9 @@ class AsanaPM:
         # Cache for tag GIDs (tag name -> GID)
         self._tag_cache: dict[str, str] = {}
 
+        # Cache for ticket ID -> Asana GID resolution
+        self._ticket_gid_cache: dict[str, str] = {}
+
         logger.info(
             f"AsanaPM initialized for workspace {self._workspace_id}, "
             f"project {self._project_id}"
@@ -323,6 +326,76 @@ class AsanaPM:
         return tag_gid
 
     # =========================================================================
+    # Ticket ID Resolution
+    # =========================================================================
+
+    def resolve_ticket_id(self, ticket_id: str) -> str:
+        """Resolve a human-readable ticket ID to an Asana GID.
+
+        Searches project tasks for titles containing the ticket ID pattern
+        (e.g., "[SDLC-0067]"). If the ticket_id is already a numeric GID
+        or doesn't match the PREFIX-NNNN pattern, it is returned unchanged.
+
+        Results are cached for performance.
+
+        Args:
+            ticket_id: Either a human-readable ID (e.g., "SDLC-0067") or
+                      an Asana GID (e.g., "1212895243238373")
+
+        Returns:
+            Asana task GID
+
+        Raises:
+            PMError: If ticket cannot be found
+
+        Example:
+            >>> pm = AsanaPM()
+            >>> gid = pm.resolve_ticket_id("SDLC-0067")
+            >>> # Returns "1212895243238373"
+        """
+        # If it's already a numeric GID, return it as-is
+        if ticket_id.isdigit():
+            return ticket_id
+
+        # Only resolve IDs matching the PREFIX-NNNN pattern (e.g., SDLC-0067)
+        # This avoids attempting resolution for test IDs or other formats
+        if not re.match(r"^[A-Z]+-\d+$", ticket_id):
+            # Not a ticket ID pattern - assume it's already a valid ID
+            return ticket_id
+
+        # Check cache first
+        if ticket_id in self._ticket_gid_cache:
+            logger.debug(f"Ticket ID '{ticket_id}' found in cache: {self._ticket_gid_cache[ticket_id]}")
+            return self._ticket_gid_cache[ticket_id]
+
+        # Search project tasks for matching title
+        # Task titles are formatted as "[SDLC-0067] Task description"
+        endpoint = f"/projects/{self._project_id}/tasks?opt_fields=gid,name"
+        tasks_data = self._get(endpoint)
+
+        # Handle response (could be list directly or need extraction)
+        if isinstance(tasks_data, list):
+            tasks = tasks_data
+        else:
+            tasks = []
+
+        # Search for task with title starting with [ticket_id]
+        search_pattern = f"[{ticket_id}]"
+        for task in tasks:
+            task_name = task.get("name", "")
+            if task_name.startswith(search_pattern):
+                gid = task.get("gid", "")
+                # Cache the result
+                self._ticket_gid_cache[ticket_id] = gid
+                logger.info(f"Resolved ticket ID '{ticket_id}' to GID: {gid}")
+                return gid
+
+        raise PMError(
+            f"Ticket '{ticket_id}' not found in project. "
+            f"Expected task title starting with '{search_pattern}'"
+        )
+
+    # =========================================================================
     # PMTool Protocol Methods (stub implementations for SDLC-0052)
     # These will be fully implemented in subsequent tickets
     # =========================================================================
@@ -339,7 +412,7 @@ class AsanaPM:
         even if it's incomplete (which is the expected behavior).
 
         Args:
-            ticket_id: Task GID in Asana
+            ticket_id: Task GID or human-readable ID (e.g., "SDLC-0067")
 
         Returns:
             TicketStatus indicating current state
@@ -347,8 +420,11 @@ class AsanaPM:
         Raises:
             PMError: If operation fails (e.g., task not found)
         """
+        # Resolve human-readable ID to GID if needed
+        gid = self.resolve_ticket_id(ticket_id)
+
         # Fetch task with tags included
-        task_data = self._get(f"/tasks/{ticket_id}")
+        task_data = self._get(f"/tasks/{gid}")
 
         # Extract task completion status
         completed = task_data.get("completed", False)
@@ -373,18 +449,21 @@ class AsanaPM:
         if it doesn't exist in the workspace.
 
         Args:
-            ticket_id: Task GID in Asana
+            ticket_id: Task GID or human-readable ID (e.g., "SDLC-0067")
             label: Tag name to add (e.g., "ralph-1")
 
         Returns:
             True if claim succeeded, False otherwise
         """
         try:
+            # Resolve human-readable ID to GID if needed
+            gid = self.resolve_ticket_id(ticket_id)
+
             # Get or create the tag
             tag_gid = self._get_or_create_tag(label)
 
             # Add the tag to the task
-            self._post(f"/tasks/{ticket_id}/addTag", {"tag": tag_gid})
+            self._post(f"/tasks/{gid}/addTag", {"tag": tag_gid})
 
             logger.info(f"Successfully claimed ticket {ticket_id} with label {label}")
             return True
@@ -401,7 +480,7 @@ class AsanaPM:
         complete).
 
         Args:
-            ticket_id: Task GID in Asana
+            ticket_id: Task GID or human-readable ID (e.g., "SDLC-0067")
 
         Returns:
             True if close succeeded, False otherwise
@@ -409,15 +488,18 @@ class AsanaPM:
         SDLC-0056: AsanaPM close_ticket with section move
         """
         try:
+            # Resolve human-readable ID to GID if needed
+            gid = self.resolve_ticket_id(ticket_id)
+
             # 1. Mark task as complete (required)
-            self._put(f"/tasks/{ticket_id}", {"completed": True})
+            self._put(f"/tasks/{gid}", {"completed": True})
             logger.info(f"Marked task {ticket_id} as complete")
 
             # 2. Try to move to Done section (optional)
             try:
                 done_section_gid = self._find_done_section()
                 if done_section_gid:
-                    self._move_to_section(ticket_id, done_section_gid)
+                    self._move_to_section(gid, done_section_gid)
                     logger.info(f"Moved task {ticket_id} to Done section")
                 else:
                     logger.debug(
@@ -483,7 +565,7 @@ class AsanaPM:
         reason for blocking via the Asana stories API.
 
         Args:
-            ticket_id: Task GID in Asana
+            ticket_id: Task GID or human-readable ID (e.g., "SDLC-0067")
             reason: Reason why the task is blocked
 
         Returns:
@@ -492,16 +574,19 @@ class AsanaPM:
         SDLC-0057: AsanaPM add_blocked_label with comment
         """
         try:
+            # Resolve human-readable ID to GID if needed
+            gid = self.resolve_ticket_id(ticket_id)
+
             # 1. Get or create the blocked tag
             blocked_tag_gid = self._get_or_create_tag(self._blocked_label)
 
             # 2. Add the blocked tag to the task
-            self._post(f"/tasks/{ticket_id}/addTag", {"tag": blocked_tag_gid})
+            self._post(f"/tasks/{gid}/addTag", {"tag": blocked_tag_gid})
             logger.info(f"Added blocked tag to task {ticket_id}")
 
             # 3. Post a comment with the reason via stories API
             comment_text = f"Blocked: {reason}"
-            self._post(f"/tasks/{ticket_id}/stories", {"text": comment_text})
+            self._post(f"/tasks/{gid}/stories", {"text": comment_text})
             logger.info(f"Posted blocked reason comment to task {ticket_id}")
 
             return True
@@ -516,15 +601,18 @@ class AsanaPM:
         This matches the pattern used by claim_ticket (ralph-0 through ralph-5).
 
         Args:
-            ticket_id: Task GID in Asana
+            ticket_id: Task GID or human-readable ID (e.g., "SDLC-0067")
 
         Returns:
             Tuple of (is_claimed, claiming_label) where claiming_label
             is the ralph-* label if claimed, None otherwise
         """
         try:
+            # Resolve human-readable ID to GID if needed
+            gid = self.resolve_ticket_id(ticket_id)
+
             # Fetch task with tags
-            task_data = self._get(f"/tasks/{ticket_id}")
+            task_data = self._get(f"/tasks/{gid}")
 
             # Check for ralph-N tags (where N is a digit)
             tags = task_data.get("tags", [])
@@ -547,7 +635,7 @@ class AsanaPM:
         or fail to fetch are skipped gracefully.
 
         Args:
-            ticket_ids: List of task GIDs to check
+            ticket_ids: List of task GIDs or human-readable IDs to check
 
         Returns:
             List of TicketInfo for tasks that are open
@@ -561,8 +649,11 @@ class AsanaPM:
 
         for ticket_id in ticket_ids:
             try:
+                # Resolve human-readable ID to GID if needed
+                gid = self.resolve_ticket_id(ticket_id)
+
                 # Fetch task data
-                task_data = self._get(f"/tasks/{ticket_id}")
+                task_data = self._get(f"/tasks/{gid}")
 
                 # Check completion status
                 completed = task_data.get("completed", False)
@@ -603,7 +694,7 @@ class AsanaPM:
         returns False (can't remove a non-existent tag).
 
         Args:
-            ticket_id: Task GID in Asana
+            ticket_id: Task GID or human-readable ID (e.g., "SDLC-0067")
             label: Tag name to remove
 
         Returns:
@@ -612,6 +703,9 @@ class AsanaPM:
         SDLC-0058: AsanaPM remaining methods
         """
         try:
+            # Resolve human-readable ID to GID if needed
+            gid = self.resolve_ticket_id(ticket_id)
+
             # Look up the tag (don't create if it doesn't exist)
             tag_gid = self._find_tag(label)
             if tag_gid is None:
@@ -621,7 +715,7 @@ class AsanaPM:
                 return False
 
             # Remove the tag from the task
-            self._post(f"/tasks/{ticket_id}/removeTag", {"tag": tag_gid})
+            self._post(f"/tasks/{gid}/removeTag", {"tag": tag_gid})
 
             logger.info(f"Successfully removed label '{label}' from ticket {ticket_id}")
             return True
@@ -679,7 +773,7 @@ class AsanaPM:
         associated with the access token.
 
         Args:
-            ticket_id: Task GID in Asana
+            ticket_id: Task GID or human-readable ID (e.g., "SDLC-0067")
 
         Returns:
             True if assignment succeeded, False otherwise
@@ -687,9 +781,12 @@ class AsanaPM:
         SDLC-0058: AsanaPM remaining methods
         """
         try:
+            # Resolve human-readable ID to GID if needed
+            gid = self.resolve_ticket_id(ticket_id)
+
             # Update the task with assignee="me"
             # "me" is a special Asana value that refers to the authenticated user
-            self._put(f"/tasks/{ticket_id}", {"assignee": "me"})
+            self._put(f"/tasks/{gid}", {"assignee": "me"})
 
             logger.info(f"Successfully assigned ticket {ticket_id} to self")
             return True
@@ -852,7 +949,7 @@ class AsanaPM:
         to their corresponding Asana tasks.
 
         Args:
-            task_id: GID of the Asana task to comment on
+            task_id: GID or human-readable ID (e.g., "SDLC-0067")
             pr_url: URL of the pull request (e.g., https://github.com/org/repo/pull/42)
 
         Returns:
@@ -862,11 +959,14 @@ class AsanaPM:
         SDLC-0062: Update /pr slash command - Add Asana task comment with PR link
         """
         try:
+            # Resolve human-readable ID to GID if needed
+            gid = self.resolve_ticket_id(task_id)
+
             # Format the comment text with descriptive prefix
             comment_text = f"Pull Request: {pr_url}"
 
             # Post the comment via stories API
-            self._post(f"/tasks/{task_id}/stories", {"text": comment_text})
+            self._post(f"/tasks/{gid}/stories", {"text": comment_text})
 
             logger.info(f"Added PR comment to task {task_id}: {pr_url}")
             return True
@@ -891,7 +991,7 @@ class AsanaPM:
         full context about a task before implementation begins.
 
         Args:
-            task_id: GID of the Asana task to fetch
+            task_id: GID or human-readable ID (e.g., "SDLC-0067")
 
         Returns:
             Dictionary containing task details with keys:
@@ -908,11 +1008,14 @@ class AsanaPM:
 
         SDLC-0063: Update /implement slash command - Add Asana task detail fetch
         """
+        # Resolve human-readable ID to GID if needed
+        gid = self.resolve_ticket_id(task_id)
+
         # 1. Fetch the main task details
-        task_data = self._get(f"/tasks/{task_id}")
+        task_data = self._get(f"/tasks/{gid}")
 
         # 2. Fetch subtasks (acceptance criteria)
-        subtasks_data = self._get(f"/tasks/{task_id}/subtasks")
+        subtasks_data = self._get(f"/tasks/{gid}/subtasks")
 
         # Handle subtasks response (could be list directly or need extraction)
         if isinstance(subtasks_data, list):

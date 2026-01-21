@@ -130,7 +130,8 @@ def extract_tickets_from_prd(prd_path: Path) -> list[str]:
 
     # Fall back to plain ticket IDs in table format
     # Look for ticket IDs at the start of a table cell
-    plain_pattern = re.compile(r"\|\s*([A-Z]+-\d+)\s*\|")
+    # Require 3+ digits to exclude test case IDs like TC-1
+    plain_pattern = re.compile(r"\|\s*([A-Z]+-\d{3,})\s*\|")
     plain_matches = plain_pattern.findall(content)
 
     for ticket_id in plain_matches:
