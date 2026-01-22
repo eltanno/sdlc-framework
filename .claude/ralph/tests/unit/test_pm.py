@@ -80,8 +80,8 @@ class TestGitHubPMGetTicketStatus:
 class TestGitHubPMClaimTicket:
     """Tests for GitHubPM.claim_ticket method."""
 
-    def test_claim_ticket_returns_true_on_success(self, mock_pm_subprocess: MagicMock):
-        """Given ticket id and label, when claiming succeeds, then True is returned."""
+    def test_claim_ticket_returns_true_and_calls_gh_correctly(self, mock_pm_subprocess: MagicMock):
+        """Given ticket id and label, when claiming succeeds, then True is returned and correct gh command called."""
         from core.pm import GitHubPM
 
         mock_pm_subprocess.return_value.returncode = 0
@@ -91,6 +91,13 @@ class TestGitHubPMClaimTicket:
         result = pm.claim_ticket("74", "ralph-1")
 
         assert result is True
+        # Verify the actual command sent to gh
+        call_args = mock_pm_subprocess.call_args[0][0]
+        assert call_args[0] == "gh", "Should call gh CLI"
+        assert "issue" in call_args, "Should operate on issues"
+        assert "74" in call_args, "Should target issue 74"
+        assert "--add-label" in call_args, "Should add a label"
+        assert "ralph-1" in call_args, "Should add ralph-1 label"
 
     def test_claim_ticket_returns_false_on_failure(self, mock_pm_subprocess: MagicMock):
         """Given gh command fails, when claiming ticket, then False is returned and status unchanged."""
@@ -115,8 +122,8 @@ class TestGitHubPMClaimTicket:
 class TestGitHubPMCloseTicket:
     """Tests for GitHubPM.close_ticket method."""
 
-    def test_close_ticket_returns_true_on_success(self, mock_pm_subprocess: MagicMock):
-        """Given ticket id, when closing succeeds, then True is returned."""
+    def test_close_ticket_returns_true_and_calls_gh_correctly(self, mock_pm_subprocess: MagicMock):
+        """Given ticket id, when closing succeeds, then True is returned and correct gh command called."""
         from core.pm import GitHubPM
 
         mock_pm_subprocess.return_value.returncode = 0
@@ -126,6 +133,12 @@ class TestGitHubPMCloseTicket:
         result = pm.close_ticket("74")
 
         assert result is True
+        # Verify the actual command sent to gh
+        call_args = mock_pm_subprocess.call_args[0][0]
+        assert call_args[0] == "gh", "Should call gh CLI"
+        assert "issue" in call_args, "Should operate on issues"
+        assert "close" in call_args, "Should close the issue"
+        assert "74" in call_args, "Should target issue 74"
 
     def test_close_ticket_returns_false_on_failure(self, mock_pm_subprocess: MagicMock):
         """Given gh command fails, when closing ticket, then False is returned and status remains OPEN."""
@@ -150,8 +163,8 @@ class TestGitHubPMCloseTicket:
 class TestGitHubPMAddBlockedLabel:
     """Tests for GitHubPM.add_blocked_label method."""
 
-    def test_add_blocked_label_makes_two_calls(self, mock_pm_subprocess: MagicMock):
-        """Given ticket id and reason, when blocking, then both label and comment operations called."""
+    def test_add_blocked_label_adds_label_and_posts_comment(self, mock_pm_subprocess: MagicMock):
+        """Given ticket id and reason, when blocking, then label added and comment posted with reason."""
         from core.pm import GitHubPM
 
         mock_pm_subprocess.return_value.returncode = 0
@@ -161,8 +174,24 @@ class TestGitHubPMAddBlockedLabel:
         result = pm.add_blocked_label("74", "Test failures")
 
         assert result is True
-        # Should make exactly two calls: one for label, one for comment
-        assert mock_pm_subprocess.call_count == 2
+        assert mock_pm_subprocess.call_count == 2, "Should make two calls: label + comment"
+
+        # Verify first call adds the blocked label
+        first_call_args = mock_pm_subprocess.call_args_list[0][0][0]
+        assert "gh" == first_call_args[0], "Should call gh CLI"
+        assert "issue" in first_call_args, "Should operate on issues"
+        assert "--add-label" in first_call_args, "Should add a label"
+        assert "blocked" in first_call_args, "Should add blocked label"
+        assert "74" in first_call_args, "Should target issue 74"
+
+        # Verify second call posts a comment with the reason
+        second_call_args = mock_pm_subprocess.call_args_list[1][0][0]
+        assert "gh" == second_call_args[0], "Should call gh CLI"
+        assert "issue" in second_call_args, "Should operate on issues"
+        assert "comment" in second_call_args, "Should post a comment"
+        # Find the comment body argument
+        comment_body = " ".join(second_call_args)
+        assert "Test failures" in comment_body, "Comment should include the reason"
 
     def test_add_blocked_label_returns_false_on_failure(self, mock_pm_subprocess: MagicMock):
         """Given gh command fails, when blocking, then False is returned."""
@@ -282,8 +311,8 @@ class TestGitHubPMGetOpenTickets:
 class TestGitHubPMRemoveLabel:
     """Tests for GitHubPM.remove_label method."""
 
-    def test_remove_label_returns_true_on_success(self, mock_pm_subprocess: MagicMock):
-        """Given ticket id and label, when removal succeeds, then True is returned."""
+    def test_remove_label_returns_true_and_calls_gh_correctly(self, mock_pm_subprocess: MagicMock):
+        """Given ticket id and label, when removal succeeds, then True is returned and correct gh command called."""
         from core.pm import GitHubPM
 
         mock_pm_subprocess.return_value.returncode = 0
@@ -293,6 +322,13 @@ class TestGitHubPMRemoveLabel:
         result = pm.remove_label("74", "ralph-1")
 
         assert result is True
+        # Verify the actual command sent to gh
+        call_args = mock_pm_subprocess.call_args[0][0]
+        assert call_args[0] == "gh", "Should call gh CLI"
+        assert "issue" in call_args, "Should operate on issues"
+        assert "--remove-label" in call_args, "Should remove a label"
+        assert "ralph-1" in call_args, "Should remove ralph-1 label"
+        assert "74" in call_args, "Should target issue 74"
 
     def test_remove_label_returns_false_on_failure(self, mock_pm_subprocess: MagicMock):
         """Given gh command fails, when removing label, then False is returned."""
@@ -310,8 +346,8 @@ class TestGitHubPMRemoveLabel:
 class TestGitHubPMAssignToSelf:
     """Tests for GitHubPM.assign_to_self method."""
 
-    def test_assign_to_self_returns_true_on_success(self, mock_pm_subprocess: MagicMock):
-        """Given ticket id, when assignment succeeds, then True is returned."""
+    def test_assign_to_self_returns_true_and_calls_gh_correctly(self, mock_pm_subprocess: MagicMock):
+        """Given ticket id, when assignment succeeds, then True is returned and correct gh command called."""
         from core.pm import GitHubPM
 
         mock_pm_subprocess.return_value.returncode = 0
@@ -321,6 +357,13 @@ class TestGitHubPMAssignToSelf:
         result = pm.assign_to_self("74")
 
         assert result is True
+        # Verify the actual command sent to gh
+        call_args = mock_pm_subprocess.call_args[0][0]
+        assert call_args[0] == "gh", "Should call gh CLI"
+        assert "issue" in call_args, "Should operate on issues"
+        assert "--add-assignee" in call_args, "Should add an assignee"
+        assert "@me" in call_args, "Should assign to current user"
+        assert "74" in call_args, "Should target issue 74"
 
     def test_assign_to_self_returns_false_on_failure(self, mock_pm_subprocess: MagicMock):
         """Given gh command fails, when assigning to self, then False is returned."""
