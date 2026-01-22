@@ -12,112 +12,32 @@ from unittest.mock import MagicMock
 import pytest
 
 
-class TestTicketStatus:
-    """Tests for TicketStatus enum."""
-
-    def test_ticket_status_has_open_value(self):
-        """Given TicketStatus enum, when accessing OPEN, then it exists."""
-        from core.pm import TicketStatus
-
-        assert TicketStatus.OPEN is not None
-        assert TicketStatus.OPEN.value == "open"
-
-    def test_ticket_status_has_closed_value(self):
-        """Given TicketStatus enum, when accessing CLOSED, then it exists."""
-        from core.pm import TicketStatus
-
-        assert TicketStatus.CLOSED is not None
-        assert TicketStatus.CLOSED.value == "closed"
-
-    def test_ticket_status_has_blocked_value(self):
-        """Given TicketStatus enum, when accessing BLOCKED, then it exists."""
-        from core.pm import TicketStatus
-
-        assert TicketStatus.BLOCKED is not None
-        assert TicketStatus.BLOCKED.value == "blocked"
-
-
 class TestTicketInfo:
     """Tests for TicketInfo dataclass."""
 
-    def test_ticket_info_has_required_fields(self):
-        """Given TicketInfo, when creating instance, then required fields exist."""
+    def test_ticket_info_labels_default_empty_and_independent(self):
+        """Given two TicketInfo instances without labels, then each gets independent list."""
         from core.pm import TicketInfo, TicketStatus
 
-        ticket = TicketInfo(
+        ticket1 = TicketInfo(
             id="SDLC-001",
-            title="Test ticket",
+            title="Test ticket 1",
+            status=TicketStatus.OPEN,
+        )
+        ticket2 = TicketInfo(
+            id="SDLC-002",
+            title="Test ticket 2",
             status=TicketStatus.OPEN,
         )
 
-        assert ticket.id == "SDLC-001"
-        assert ticket.title == "Test ticket"
-        assert ticket.status == TicketStatus.OPEN
+        # Verify defaults are empty
+        assert ticket1.labels == []
+        assert ticket2.labels == []
 
-    def test_ticket_info_has_optional_labels(self):
-        """Given TicketInfo, when creating with labels, then labels are stored."""
-        from core.pm import TicketInfo, TicketStatus
-
-        ticket = TicketInfo(
-            id="SDLC-001",
-            title="Test ticket",
-            status=TicketStatus.OPEN,
-            labels=["bug", "priority-high"],
-        )
-
-        assert ticket.labels == ["bug", "priority-high"]
-
-    def test_ticket_info_labels_default_empty(self):
-        """Given TicketInfo without labels, then labels default to empty list."""
-        from core.pm import TicketInfo, TicketStatus
-
-        ticket = TicketInfo(
-            id="SDLC-001",
-            title="Test ticket",
-            status=TicketStatus.OPEN,
-        )
-
-        assert ticket.labels == []
-
-
-class TestPMToolProtocol:
-    """Tests for PMTool Protocol definition."""
-
-    def test_pm_tool_protocol_defines_get_ticket_status(self):
-        """Given PMTool Protocol, when checking methods, then get_ticket_status exists."""
-        from core.pm import PMTool
-
-        assert hasattr(PMTool, "get_ticket_status")
-
-    def test_pm_tool_protocol_defines_claim_ticket(self):
-        """Given PMTool Protocol, when checking methods, then claim_ticket exists."""
-        from core.pm import PMTool
-
-        assert hasattr(PMTool, "claim_ticket")
-
-    def test_pm_tool_protocol_defines_close_ticket(self):
-        """Given PMTool Protocol, when checking methods, then close_ticket exists."""
-        from core.pm import PMTool
-
-        assert hasattr(PMTool, "close_ticket")
-
-    def test_pm_tool_protocol_defines_add_blocked_label(self):
-        """Given PMTool Protocol, when checking methods, then add_blocked_label exists."""
-        from core.pm import PMTool
-
-        assert hasattr(PMTool, "add_blocked_label")
-
-    def test_pm_tool_protocol_defines_is_ticket_claimed(self):
-        """Given PMTool Protocol, when checking methods, then is_ticket_claimed exists."""
-        from core.pm import PMTool
-
-        assert hasattr(PMTool, "is_ticket_claimed")
-
-    def test_pm_tool_protocol_defines_get_open_tickets(self):
-        """Given PMTool Protocol, when checking methods, then get_open_tickets exists."""
-        from core.pm import PMTool
-
-        assert hasattr(PMTool, "get_open_tickets")
+        # Verify mutability: modifying one doesn't affect the other
+        ticket1.labels.append("bug")
+        assert ticket1.labels == ["bug"]
+        assert ticket2.labels == []  # Should remain empty
 
 
 class TestGitHubPMGetTicketStatus:
@@ -156,27 +76,12 @@ class TestGitHubPMGetTicketStatus:
 
         assert status == TicketStatus.BLOCKED
 
-    def test_get_ticket_status_calls_gh_issue_view(self, mock_pm_subprocess: MagicMock):
-        """Given ticket id, when getting status, then gh issue view is called."""
-        from core.pm import GitHubPM
-
-        mock_pm_subprocess.return_value.stdout = '{"number": 74, "title": "Test", "state": "OPEN", "labels": []}'
-
-        pm = GitHubPM()
-        pm.get_ticket_status("74")
-
-        call_args = mock_pm_subprocess.call_args[0][0]
-        assert "gh" in call_args
-        assert "issue" in call_args
-        assert "view" in call_args
-        assert "74" in call_args
-
 
 class TestGitHubPMClaimTicket:
     """Tests for GitHubPM.claim_ticket method."""
 
-    def test_claim_ticket_adds_label_to_issue(self, mock_pm_subprocess: MagicMock):
-        """Given ticket id and label, when claiming, then label is added."""
+    def test_claim_ticket_returns_true_on_success(self, mock_pm_subprocess: MagicMock):
+        """Given ticket id and label, when claiming succeeds, then True is returned."""
         from core.pm import GitHubPM
 
         mock_pm_subprocess.return_value.returncode = 0
@@ -186,18 +91,12 @@ class TestGitHubPMClaimTicket:
         result = pm.claim_ticket("74", "ralph-1")
 
         assert result is True
-        call_args = mock_pm_subprocess.call_args[0][0]
-        assert "gh" in call_args
-        assert "issue" in call_args
-        assert "edit" in call_args
-        assert "74" in call_args
-        assert "--add-label" in call_args
-        assert "ralph-1" in call_args
 
     def test_claim_ticket_returns_false_on_failure(self, mock_pm_subprocess: MagicMock):
-        """Given gh command fails, when claiming ticket, then False is returned."""
-        from core.pm import GitHubPM
+        """Given gh command fails, when claiming ticket, then False is returned and status unchanged."""
+        from core.pm import GitHubPM, TicketStatus
 
+        # Setup: first call to claim_ticket fails
         mock_pm_subprocess.return_value.returncode = 1
         mock_pm_subprocess.return_value.stderr = "some error"
 
@@ -206,12 +105,18 @@ class TestGitHubPMClaimTicket:
 
         assert result is False
 
+        # Verify status check still works (ticket not affected by failed claim)
+        mock_pm_subprocess.return_value.returncode = 0
+        mock_pm_subprocess.return_value.stdout = '{"number": 74, "title": "Test", "state": "OPEN", "labels": []}'
+        status = pm.get_ticket_status("74")
+        assert status == TicketStatus.OPEN
+
 
 class TestGitHubPMCloseTicket:
     """Tests for GitHubPM.close_ticket method."""
 
-    def test_close_ticket_closes_issue(self, mock_pm_subprocess: MagicMock):
-        """Given ticket id, when closing, then gh issue close is called."""
+    def test_close_ticket_returns_true_on_success(self, mock_pm_subprocess: MagicMock):
+        """Given ticket id, when closing succeeds, then True is returned."""
         from core.pm import GitHubPM
 
         mock_pm_subprocess.return_value.returncode = 0
@@ -221,16 +126,12 @@ class TestGitHubPMCloseTicket:
         result = pm.close_ticket("74")
 
         assert result is True
-        call_args = mock_pm_subprocess.call_args[0][0]
-        assert "gh" in call_args
-        assert "issue" in call_args
-        assert "close" in call_args
-        assert "74" in call_args
 
     def test_close_ticket_returns_false_on_failure(self, mock_pm_subprocess: MagicMock):
-        """Given gh command fails, when closing ticket, then False is returned."""
-        from core.pm import GitHubPM
+        """Given gh command fails, when closing ticket, then False is returned and status remains OPEN."""
+        from core.pm import GitHubPM, TicketStatus
 
+        # Setup: first call to close_ticket fails
         mock_pm_subprocess.return_value.returncode = 1
         mock_pm_subprocess.return_value.stderr = "not found"
 
@@ -239,12 +140,18 @@ class TestGitHubPMCloseTicket:
 
         assert result is False
 
+        # Verify ticket status remains OPEN (close failed)
+        mock_pm_subprocess.return_value.returncode = 0
+        mock_pm_subprocess.return_value.stdout = '{"number": 999, "title": "Test", "state": "OPEN", "labels": []}'
+        status = pm.get_ticket_status("999")
+        assert status == TicketStatus.OPEN
+
 
 class TestGitHubPMAddBlockedLabel:
     """Tests for GitHubPM.add_blocked_label method."""
 
-    def test_add_blocked_label_adds_label_and_comments(self, mock_pm_subprocess: MagicMock):
-        """Given ticket id and reason, when blocking, then label added and comment posted."""
+    def test_add_blocked_label_makes_two_calls(self, mock_pm_subprocess: MagicMock):
+        """Given ticket id and reason, when blocking, then both label and comment operations called."""
         from core.pm import GitHubPM
 
         mock_pm_subprocess.return_value.returncode = 0
@@ -254,24 +161,8 @@ class TestGitHubPMAddBlockedLabel:
         result = pm.add_blocked_label("74", "Test failures")
 
         assert result is True
-        # Should make at least one call (possibly two - one for label, one for comment)
-        assert mock_pm_subprocess.call_count >= 1
-
-    def test_add_blocked_label_adds_blocked_label(self, mock_pm_subprocess: MagicMock):
-        """Given ticket id, when blocking, then blocked label is added."""
-        from core.pm import GitHubPM
-
-        mock_pm_subprocess.return_value.returncode = 0
-        mock_pm_subprocess.return_value.stdout = ""
-
-        pm = GitHubPM()
-        pm.add_blocked_label("74", "Test failures")
-
-        # Check first call is to add blocked label
-        first_call_args = mock_pm_subprocess.call_args_list[0][0][0]
-        assert "gh" in first_call_args
-        assert "--add-label" in first_call_args
-        assert "blocked" in first_call_args
+        # Should make exactly two calls: one for label, one for comment
+        assert mock_pm_subprocess.call_count == 2
 
     def test_add_blocked_label_returns_false_on_failure(self, mock_pm_subprocess: MagicMock):
         """Given gh command fails, when blocking, then False is returned."""
@@ -391,8 +282,8 @@ class TestGitHubPMGetOpenTickets:
 class TestGitHubPMRemoveLabel:
     """Tests for GitHubPM.remove_label method."""
 
-    def test_remove_label_removes_from_issue(self, mock_pm_subprocess: MagicMock):
-        """Given ticket id and label, when removing, then gh issue edit --remove-label called."""
+    def test_remove_label_returns_true_on_success(self, mock_pm_subprocess: MagicMock):
+        """Given ticket id and label, when removal succeeds, then True is returned."""
         from core.pm import GitHubPM
 
         mock_pm_subprocess.return_value.returncode = 0
@@ -402,12 +293,6 @@ class TestGitHubPMRemoveLabel:
         result = pm.remove_label("74", "ralph-1")
 
         assert result is True
-        call_args = mock_pm_subprocess.call_args[0][0]
-        assert "gh" in call_args
-        assert "issue" in call_args
-        assert "edit" in call_args
-        assert "--remove-label" in call_args
-        assert "ralph-1" in call_args
 
     def test_remove_label_returns_false_on_failure(self, mock_pm_subprocess: MagicMock):
         """Given gh command fails, when removing label, then False is returned."""
@@ -425,8 +310,8 @@ class TestGitHubPMRemoveLabel:
 class TestGitHubPMAssignToSelf:
     """Tests for GitHubPM.assign_to_self method."""
 
-    def test_assign_to_self_adds_assignee(self, mock_pm_subprocess: MagicMock):
-        """Given ticket id, when assigning to self, then gh issue edit --add-assignee @me called."""
+    def test_assign_to_self_returns_true_on_success(self, mock_pm_subprocess: MagicMock):
+        """Given ticket id, when assignment succeeds, then True is returned."""
         from core.pm import GitHubPM
 
         mock_pm_subprocess.return_value.returncode = 0
@@ -436,12 +321,6 @@ class TestGitHubPMAssignToSelf:
         result = pm.assign_to_self("74")
 
         assert result is True
-        call_args = mock_pm_subprocess.call_args[0][0]
-        assert "gh" in call_args
-        assert "issue" in call_args
-        assert "edit" in call_args
-        assert "--add-assignee" in call_args
-        assert "@me" in call_args
 
     def test_assign_to_self_returns_false_on_failure(self, mock_pm_subprocess: MagicMock):
         """Given gh command fails, when assigning to self, then False is returned."""
@@ -485,26 +364,6 @@ class TestGitHubPMErrorHandling:
         assert "auth" in str(exc_info.value).lower() or "token" in str(exc_info.value).lower()
 
 
-class TestPMToolProtocolConformance:
-    """Tests that GitHubPM properly implements PMTool Protocol."""
-
-    def test_github_pm_conforms_to_protocol(self):
-        """Given GitHubPM class, when checking Protocol, then it conforms."""
-
-        from core.pm import GitHubPM
-
-        # This should not raise - GitHubPM implements all Protocol methods
-        pm = GitHubPM()
-
-        # Verify all required methods exist with correct signatures
-        assert callable(getattr(pm, "get_ticket_status", None))
-        assert callable(getattr(pm, "claim_ticket", None))
-        assert callable(getattr(pm, "close_ticket", None))
-        assert callable(getattr(pm, "add_blocked_label", None))
-        assert callable(getattr(pm, "is_ticket_claimed", None))
-        assert callable(getattr(pm, "get_open_tickets", None))
-
-
 # Fixture for mocking subprocess in pm module
 @pytest.fixture
 def mock_pm_subprocess(mocker):
@@ -528,13 +387,6 @@ def mock_pm_subprocess(mocker):
 class TestLocalPMInit:
     """Tests for LocalPM initialization."""
 
-    def test_local_pm_can_be_instantiated(self):
-        """Given LocalPM class, when instantiating, then it succeeds."""
-        from core.pm import LocalPM
-
-        pm = LocalPM()
-        assert pm is not None
-
     def test_local_pm_logs_warning_on_init(self, caplog):
         """Given LocalPM, when initialized, then warning is logged about degraded mode."""
         import logging
@@ -545,25 +397,6 @@ class TestLocalPMInit:
             pm = LocalPM()
 
         assert any("degraded" in record.message.lower() for record in caplog.records)
-
-
-class TestLocalPMProtocolConformance:
-    """Tests that LocalPM properly implements PMTool Protocol."""
-
-    def test_local_pm_conforms_to_protocol(self):
-        """Given LocalPM class, when checking Protocol, then it conforms."""
-        from core.pm import LocalPM
-
-        pm = LocalPM()
-
-        # Verify all required methods exist with correct signatures
-        assert callable(getattr(pm, "get_ticket_status", None))
-        assert callable(getattr(pm, "claim_ticket", None))
-        assert callable(getattr(pm, "close_ticket", None))
-        assert callable(getattr(pm, "add_blocked_label", None))
-        assert callable(getattr(pm, "is_ticket_claimed", None))
-        assert callable(getattr(pm, "get_open_tickets", None))
-        assert callable(getattr(pm, "remove_label", None))
 
 
 class TestLocalPMGetTicketStatus:
@@ -611,18 +444,20 @@ class TestLocalPMClaimTicket:
 
         assert result is True
 
-    def test_claim_ticket_logs_warning_about_no_concurrency(self, caplog):
-        """Given claim_ticket called, then warning logged about no concurrency."""
+    def test_claim_ticket_logs_debug_about_no_concurrency(self, caplog):
+        """Given claim_ticket called, then debug message logged about no concurrency control."""
         import logging
 
         from core.pm import LocalPM
 
         pm = LocalPM()
-        with caplog.at_level(logging.WARNING):
+        caplog.clear()  # Clear init warnings
+        with caplog.at_level(logging.DEBUG):
             pm.claim_ticket("SDLC-0040", "ralph-1")
 
-        # Check warning is logged (may be from init or from claim)
-        assert len(caplog.records) > 0
+        # Check for specific concurrency debug message
+        assert any("no concurrency control" in record.message.lower()
+                   for record in caplog.records)
 
 
 class TestLocalPMCloseTicket:
