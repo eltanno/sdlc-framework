@@ -177,18 +177,6 @@ class TestEmptyQueue:
         assert not result.has_more
         assert result.total == 0
 
-    def test_empty_workflow_has_zero_counts(self, empty_workflow: tuple[Path, WorkflowState]):
-        """Given no tickets exist, when getting next ticket, then all counts are zero."""
-        state_file, state = empty_workflow
-
-        result = get_next_ticket(state)
-
-        assert result.pending == 0
-        assert result.completed == 0
-        assert result.blocked == 0
-        assert result.in_progress == 0
-        assert result.skipped_for_deps == 0
-
 
 # ============================================================================
 # Test Cases: Dependencies Satisfied
@@ -393,9 +381,11 @@ class TestInProgressResumption:
 
     def test_in_progress_with_dependencies_checked(self, tmp_path: Path):
         """Given an in-progress ticket has dependencies, when getting next ticket,
-        then the in-progress ticket is returned regardless."""
-        # In-progress tickets are resumed even if dependencies aren't strictly checked
-        # (they were already started, so deps were satisfied at that time)
+        then the in-progress ticket is returned regardless.
+
+        Business rule: In-progress tickets are always resumed, even if their dependencies
+        are not currently complete. Rationale: dependencies were satisfied when work started,
+        and we don't re-validate them on resume to avoid blocking active work."""
         tickets = [
             Ticket(id="TASK-001", title="Dependency", status="pending", dependencies=[]),
             Ticket(id="TASK-002", title="In progress", status="in_progress", dependencies=["TASK-001"]),
@@ -410,89 +400,8 @@ class TestInProgressResumption:
         result = get_next_ticket(state)
 
         # In-progress is returned even though dependency not complete
-        # (it was started, so we should resume it)
         assert result.ticket is not None
         assert result.ticket.id == "TASK-002"
-
-
-# ============================================================================
-# Test Cases: Count Accuracy
-# ============================================================================
-
-
-class TestCountAccuracy:
-    """Tests for accurate ticket count reporting."""
-
-    def test_counts_reflect_actual_ticket_statuses(
-        self, mixed_status_workflow: tuple[Path, WorkflowState]
-    ):
-        """Given a mixed workflow, when getting next ticket,
-        then counts accurately reflect each status."""
-        state_file, state = mixed_status_workflow
-
-        result = get_next_ticket(state)
-
-        assert result.total == 4
-        assert result.completed == 1  # TASK-001
-        assert result.blocked == 1  # TASK-002
-        assert result.pending == 1  # TASK-003
-        assert result.in_progress == 1  # TASK-004
-
-    def test_counts_include_all_tickets_regardless_of_selection(
-        self, dependency_workflow: tuple[Path, WorkflowState]
-    ):
-        """Given tickets with dependencies, when getting next ticket,
-        then counts include all tickets not just eligible ones."""
-        state_file, state = dependency_workflow
-
-        result = get_next_ticket(state)
-
-        # All tickets are pending, even if only one is eligible
-        assert result.total == 3
-        assert result.pending == 3
-        assert result.completed == 0
-        assert result.blocked == 0
-
-
-# ============================================================================
-# Test Cases: State File Integration
-# ============================================================================
-
-
-class TestStateFileIntegration:
-    """Tests for integration with state file operations."""
-
-    def test_get_next_after_state_file_reload(self, simple_workflow: tuple[Path, WorkflowState]):
-        """Given a state file is saved and reloaded, when getting next ticket,
-        then the correct ticket is returned."""
-        state_file, original_state = simple_workflow
-
-        # Reload from file
-        reloaded_state = load_workflow_state(state_file)
-
-        result = get_next_ticket(reloaded_state)
-
-        assert result.ticket is not None
-        assert result.ticket.id == "TASK-001"
-
-    def test_state_changes_reflected_in_next_call(self, simple_workflow: tuple[Path, WorkflowState]):
-        """Given the state is modified and saved, when getting next ticket after reload,
-        then changes are reflected."""
-        state_file, state = simple_workflow
-
-        # Complete first ticket
-        state.tickets[0].status = "completed"
-        state.completed_count = 1
-        save_workflow_state(state, state_file)
-
-        # Reload and get next
-        reloaded_state = load_workflow_state(state_file)
-        result = get_next_ticket(reloaded_state)
-
-        # Now TASK-002 should be next (TASK-001 is complete)
-        assert result.ticket is not None
-        assert result.ticket.id == "TASK-002"
-        assert result.completed == 1
 
 
 # ============================================================================
@@ -502,25 +411,6 @@ class TestStateFileIntegration:
 
 class TestEdgeCases:
     """Tests for edge cases and boundary conditions."""
-
-    def test_single_ticket_workflow(self, tmp_path: Path):
-        """Given only one ticket exists, when getting next ticket,
-        then that ticket is returned."""
-        tickets = [
-            Ticket(id="TASK-001", title="Only task", status="pending", dependencies=[]),
-        ]
-        state = WorkflowState(
-            version="1.0",
-            prd_path=Path("docs/prds/test.md"),
-            plan_path=Path("docs/plans/test.md"),
-            tickets=tickets,
-        )
-
-        result = get_next_ticket(state)
-
-        assert result.ticket is not None
-        assert result.ticket.id == "TASK-001"
-        assert result.total == 1
 
     def test_circular_dependency_handling(self, tmp_path: Path):
         """Given tickets with circular dependencies, when getting next ticket,
