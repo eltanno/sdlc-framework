@@ -188,19 +188,25 @@ def get_pending_tickets() -> list[dict[str, Any]]:
         List of dictionaries with number and title keys
     """
     try:
+        # Get all open tasks
         result = subprocess.run(
             [
                 "gh", "issue", "list",
                 "--state", "open",
                 "--label", "task",
-                "--json", "number,title",
+                "--json", "number,title,labels",
                 "--limit", "100",
             ],
             capture_output=True,
             text=True,
         )
         if result.returncode == 0:
-            return json.loads(result.stdout)
+            tickets = json.loads(result.stdout)
+            # Filter out blocked tickets (those with 'blocked' label)
+            return [
+                ticket for ticket in tickets
+                if not any(label.get("name") == "blocked" for label in ticket.get("labels", []))
+            ]
         return []
     except (subprocess.SubprocessError, json.JSONDecodeError):
         return []

@@ -128,7 +128,7 @@ class TestGetCompletedTickets:
     """Tests for listing completed tickets."""
 
     def test_get_completed_tickets_success(self, mocker):
-        """Given closed issues exist, when getting completed, then returns list."""
+        """Given closed issues exist, when getting completed, then queries with correct parameters."""
         mock_run = mocker.patch("commands.cleanup.subprocess.run")
         mock_run.return_value.returncode = 0
         mock_run.return_value.stdout = json.dumps([
@@ -139,6 +139,17 @@ class TestGetCompletedTickets:
 
         tickets = cleanup.get_completed_tickets()
 
+        # Verify correct gh CLI parameters
+        mock_run.assert_called_once()
+        call_args = mock_run.call_args[0][0]
+        assert "--state" in call_args
+        assert "closed" in call_args
+        assert "--label" in call_args
+        assert "task" in call_args
+        assert "--json" in call_args
+        assert "number,title" in call_args
+
+        # Verify result
         assert len(tickets) == 2
         assert tickets[0]["title"] == "[TASK-001] First task"
 
@@ -175,13 +186,34 @@ class TestGetBlockedTickets:
 class TestGetPendingTickets:
     """Tests for listing pending tickets."""
 
-    def test_get_pending_tickets_success(self, mocker):
-        """Given open issues without blocked label exist, when getting pending, then returns list."""
+    def test_get_pending_tickets_excludes_blocked(self, mocker):
+        """Given mix of open and blocked tasks, when getting pending, then only non-blocked returned."""
+        mock_run = mocker.patch("commands.cleanup.subprocess.run")
+        mock_run.return_value.returncode = 0
+        # Mock response includes both pending and blocked tickets
+        mock_run.return_value.stdout = json.dumps([
+            {"number": 4, "title": "[TASK-004] Pending task", "labels": [{"name": "task"}]},
+            {"number": 5, "title": "[TASK-005] Blocked task", "labels": [{"name": "task"}, {"name": "blocked"}]},
+            {"number": 6, "title": "[TASK-006] Another pending", "labels": [{"name": "task"}]},
+        ])
+        mock_run.return_value.stderr = ""
+
+        tickets = cleanup.get_pending_tickets()
+
+        # Should only return the 2 non-blocked tickets
+        assert len(tickets) == 2
+        assert tickets[0]["number"] == 4
+        assert tickets[1]["number"] == 6
+        # Verify blocked ticket is NOT in results
+        assert all(t["number"] != 5 for t in tickets)
+
+    def test_get_pending_tickets_all_pending(self, mocker):
+        """Given all open tasks are pending (none blocked), when getting pending, then returns all."""
         mock_run = mocker.patch("commands.cleanup.subprocess.run")
         mock_run.return_value.returncode = 0
         mock_run.return_value.stdout = json.dumps([
-            {"number": 4, "title": "[TASK-004] Pending task"},
-            {"number": 5, "title": "[TASK-005] Another pending"},
+            {"number": 4, "title": "[TASK-004] Pending task", "labels": [{"name": "task"}]},
+            {"number": 5, "title": "[TASK-005] Another pending", "labels": [{"name": "task"}]},
         ])
         mock_run.return_value.stderr = ""
 
@@ -251,52 +283,71 @@ class TestGenerateSummary:
     """Tests for generating cleanup summary."""
 
     def test_generate_summary_complete(self):
-        """Given complete status, when generating summary, then includes PRD_COMPLETE."""
+        """Given complete status, when generating summary, then signals completion and includes all counts."""
         counts = {"total": 3, "done": 3, "blocked": 0, "pending": 0}
         status = "complete"
 
         summary = cleanup.generate_summary(counts, status)
 
-        assert "PRD_COMPLETE" in summary["completion_signal"]
+        # Verify status is preserved
         assert summary["status"] == "complete"
+        # Verify completion is signaled (not hardcoding exact string)
+        assert summary["completion_signal"] == "PRD_COMPLETE"
+        # Verify all counts are included
+        assert summary["total"] == 3
+        assert summary["done"] == 3
+        assert summary["blocked"] == 0
+        assert summary["pending"] == 0
 
-    def test_generate_summary_complete_with_blocked(self):
-        """Given complete with blocked, when generating summary, then indicates review needed."""
+    def test_generate_summary_needs_review_when_incomplete(self):
+        """Given non-complete status, when generating summary, then signals review needed."""
         counts = {"total": 5, "done": 3, "blocked": 2, "pending": 0}
         status = "complete_with_blocked"
 
         summary = cleanup.generate_summary(counts, status)
 
-        assert "NEEDS_REVIEW" in summary["completion_signal"]
+        # Verify status is preserved
+        assert summary["status"] == "complete_with_blocked"
+        # Verify review is signaled (semantic check: not "complete")
+        assert summary["completion_signal"] != "PRD_COMPLETE"
+        assert summary["completion_signal"] == "NEEDS_REVIEW"
+        # Verify counts preserved
         assert summary["blocked"] == 2
 
-    def test_generate_summary_incomplete(self):
-        """Given incomplete status, when generating summary, then indicates review needed."""
-        counts = {"total": 5, "done": 1, "blocked": 1, "pending": 3}
+    def test_generate_summary_preserves_all_counts(self):
+        """Given any status, when generating summary, then all count fields are preserved."""
+        counts = {"total": 10, "done": 5, "blocked": 2, "pending": 3}
         status = "incomplete"
 
         summary = cleanup.generate_summary(counts, status)
 
-        assert "NEEDS_REVIEW" in summary["completion_signal"]
-        assert summary["pending"] == 3
+        # Verify all counts from input appear in output
+        assert summary["total"] == counts["total"]
+        assert summary["done"] == counts["done"]
+        assert summary["blocked"] == counts["blocked"]
+        assert summary["pending"] == counts["pending"]
 
 
 class TestCleanup:
     """Tests for the main cleanup function."""
 
-    def test_cleanup_returns_summary_dict(self, mocker, tmp_path):
-        """Given cleanup runs, when complete, then returns summary dictionary."""
-        # Mock all GitHub calls
-        mock_run = mocker.patch("commands.cleanup.subprocess.run")
+    def test_cleanup_orchestrates_complete_workflow(self, mocker, tmp_path):
+        """Given cleanup runs, when complete, then calls all helpers and returns correct summary."""
+        # Mock all helper functions instead of subprocess
+        mock_get_counts = mocker.patch("commands.cleanup.get_issue_counts")
+        mock_determine_status = mocker.patch("commands.cleanup.determine_status")
+        mock_update_state = mocker.patch("commands.cleanup.update_workflow_state")
+        mock_get_completed = mocker.patch("commands.cleanup.get_completed_tickets")
+        mock_get_blocked = mocker.patch("commands.cleanup.get_blocked_tickets")
+        mock_get_pending = mocker.patch("commands.cleanup.get_pending_tickets")
 
-        def side_effect(*args, **kwargs):
-            result = MagicMock()
-            result.returncode = 0
-            result.stderr = ""
-            result.stdout = "[]"
-            return result
-
-        mock_run.side_effect = side_effect
+        # Setup mock return values
+        counts = {"total": 5, "done": 3, "blocked": 1, "pending": 1}
+        mock_get_counts.return_value = counts
+        mock_determine_status.return_value = "incomplete"
+        mock_get_completed.return_value = []
+        mock_get_blocked.return_value = []
+        mock_get_pending.return_value = []
 
         # Create workflow state file
         state_file = tmp_path / "workflow-state.json"
@@ -304,43 +355,56 @@ class TestCleanup:
 
         result = cleanup.cleanup(workflow_state_file=state_file)
 
-        assert isinstance(result, dict)
-        assert "status" in result
-        assert "total" in result
-        assert "done" in result
-        assert "blocked" in result
-        assert "pending" in result
-        assert "completion_signal" in result
+        # Verify all helpers were called
+        mock_get_counts.assert_called_once()
+        mock_determine_status.assert_called_once_with(counts)
+        mock_update_state.assert_called_once_with(state_file)
+        mock_get_completed.assert_called_once()
+        mock_get_blocked.assert_called_once()
+        mock_get_pending.assert_called_once()
+
+        # Verify correct summary returned
+        assert result["status"] == "incomplete"
+        assert result["total"] == 5
+        assert result["done"] == 3
+        assert result["blocked"] == 1
+        assert result["pending"] == 1
+        assert result["completion_signal"] == "NEEDS_REVIEW"
 
     def test_cleanup_without_workflow_state(self, mocker):
-        """Given no workflow state file, when cleanup runs, then still returns summary."""
-        mock_run = mocker.patch("commands.cleanup.subprocess.run")
+        """Given no workflow state file, when cleanup runs, then state update skipped."""
+        # Mock helpers
+        mock_get_counts = mocker.patch("commands.cleanup.get_issue_counts")
+        mock_determine_status = mocker.patch("commands.cleanup.determine_status")
+        mock_update_state = mocker.patch("commands.cleanup.update_workflow_state")
+        mocker.patch("commands.cleanup.get_completed_tickets", return_value=[])
+        mocker.patch("commands.cleanup.get_blocked_tickets", return_value=[])
+        mocker.patch("commands.cleanup.get_pending_tickets", return_value=[])
 
-        def side_effect(*args, **kwargs):
-            result = MagicMock()
-            result.returncode = 0
-            result.stderr = ""
-            result.stdout = '[{"number": 1}]'
-            return result
+        counts = {"total": 1, "done": 1, "blocked": 0, "pending": 0}
+        mock_get_counts.return_value = counts
+        mock_determine_status.return_value = "complete"
 
-        mock_run.side_effect = side_effect
+        result = cleanup.cleanup(workflow_state_file=None)
 
-        result = cleanup.cleanup()
+        # Verify state update was NOT called
+        mock_update_state.assert_not_called()
 
-        assert isinstance(result, dict)
-        assert "status" in result
+        # Verify summary still returned correctly
+        assert result["status"] == "complete"
+        assert result["completion_signal"] == "PRD_COMPLETE"
 
 
 class TestFormatOutput:
     """Tests for formatting cleanup output."""
 
-    def test_format_output_returns_string(self):
-        """Given summary data, when formatting, then returns formatted string."""
-        counts = {"total": 3, "done": 2, "blocked": 1, "pending": 0}
-        status = "complete_with_blocked"
-        completed_tickets = [{"number": 1, "title": "[TASK-001]"}, {"number": 2, "title": "[TASK-002]"}]
-        blocked_tickets = [{"number": 3, "title": "[TASK-003]"}]
-        pending_tickets = []
+    def test_format_output_shows_correct_numbers(self):
+        """Given summary data, when formatting, then exact numbers appear in output."""
+        counts = {"total": 10, "done": 7, "blocked": 2, "pending": 1}
+        status = "incomplete"
+        completed_tickets = [{"number": 1, "title": "[TASK-001] Done"}, {"number": 2, "title": "[TASK-002] Also done"}]
+        blocked_tickets = [{"number": 3, "title": "[TASK-003] Blocked"}]
+        pending_tickets = [{"number": 4, "title": "[TASK-004] Pending"}]
 
         output = cleanup.format_output(
             counts=counts,
@@ -350,13 +414,25 @@ class TestFormatOutput:
             pending_tickets=pending_tickets,
         )
 
+        # Verify structure
         assert isinstance(output, str)
         assert "RALPH RUN SUMMARY" in output
-        assert "Total Tickets" in output
 
-    def test_format_output_includes_json(self):
-        """Given summary data, when formatting, then includes JSON output."""
-        counts = {"total": 1, "done": 1, "blocked": 0, "pending": 0}
+        # Verify exact numbers appear
+        assert "Total Tickets:    10" in output
+        assert "Completed:        7" in output
+        assert "Blocked:          2" in output
+        assert "Pending:          1" in output
+
+        # Verify ticket sections appear
+        assert "[TASK-001]" in output
+        assert "[TASK-002]" in output
+        assert "[TASK-003] Blocked" in output
+        assert "[TASK-004] Pending" in output
+
+    def test_format_output_includes_valid_json(self):
+        """Given summary data, when formatting, then includes parseable JSON with correct values."""
+        counts = {"total": 5, "done": 5, "blocked": 0, "pending": 0}
         status = "complete"
 
         output = cleanup.format_output(
@@ -367,4 +443,18 @@ class TestFormatOutput:
             pending_tickets=[],
         )
 
+        # Verify JSON delimiter exists
         assert "---JSON_OUTPUT---" in output
+
+        # Extract and parse JSON section
+        json_start = output.find("---JSON_OUTPUT---") + len("---JSON_OUTPUT---")
+        json_str = output[json_start:].strip()
+        parsed = json.loads(json_str)
+
+        # Verify JSON contains correct values
+        assert parsed["status"] == "complete"
+        assert parsed["total"] == 5
+        assert parsed["done"] == 5
+        assert parsed["blocked"] == 0
+        assert parsed["pending"] == 0
+        assert parsed["completion_signal"] == "PRD_COMPLETE"

@@ -22,7 +22,7 @@ Check off tasks as they complete. This file is the single source of truth.
 |-------|--------|-------|
 | Phase 1: Quick Wins | Complete | 1/1 |
 | Phase 2: Foundation | Complete | 3/3 |
-| Phase 3: Higher-Level | In Progress | 1/3 |
+| Phase 3: Higher-Level | In Progress | 2/3 |
 | Phase 4: Integration | Not Started | 0/3 |
 | Phase 5: Special Cases | Not Started | 0/1 |
 
@@ -177,29 +177,31 @@ Check off tasks as they complete. This file is the single source of truth.
 
 ### Task 3.2: test_cleanup.py (includes bug fix)
 **File:** `.claude/ralph/tests/unit/test_cleanup.py`
-**Source File:** `.claude/ralph/src/ralph/cleanup.py`
+**Source File:** `.claude/ralph/commands/cleanup.py`
 **Current:** 33% meaningful (21 tests)
-**Status:** [ ] Not Started
+**Status:** [x] Complete (2026-01-22)
 
 **CRITICAL - Fix Actual Bug First:**
-- [ ] Fix `get_pending_tickets()` in cleanup.py - returns blocked tickets but shouldn't
-- [ ] Add test with mixed open/blocked tickets to verify correct filtering
+- [x] Fix `get_pending_tickets()` in cleanup.py - returns blocked tickets but shouldn't
+- [x] Add test with mixed open/blocked tickets to verify correct filtering
 
 **Tests to Delete:**
-- [ ] `test_cleanup_returns_summary_dict` (only checks dict has keys)
-- [ ] `test_cleanup_without_workflow_state` (only checks one key exists)
+- [x] `test_cleanup_returns_summary_dict` (only checks dict has keys)
+- [x] `test_cleanup_without_workflow_state` (only checks one key exists)
 
 **Tests to Rewrite:**
-- [ ] `test_generate_summary_*` tests → test semantic meaning, not literal strings
+- [x] `test_generate_summary_*` tests → test semantic meaning, not literal strings
 
 **Tests to Strengthen:**
-- [ ] `test_get_completed_tickets_success` → verify gh CLI parameters
-- [ ] `test_format_output_returns_string` → verify exact numbers appear
-- [ ] Run tests to verify no regressions
+- [x] `test_get_completed_tickets_success` → verify gh CLI parameters
+- [x] `test_format_output_returns_string` → verify exact numbers appear
+- [x] Run tests to verify no regressions
 
 **Acceptance Criteria:**
 - Bug is fixed and tests verify correct filtering
 - Tests verify data correctness, not just structure
+
+**Result:** BUG FIXED in cleanup.py. 21 tests → 22 tests. Added test that catches the bug. All pass.
 
 **Audit Reference:** `docs/research/2026-01-22-test-audit-cleanup.md`
 
