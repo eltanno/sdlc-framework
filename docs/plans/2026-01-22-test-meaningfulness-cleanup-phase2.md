@@ -20,7 +20,7 @@ Phase 1 fixed the 11 worst files (< 40% meaningful). Phase 2 addresses the remai
 |-------|--------|-------|
 | Phase 6: Critical (< 50%) | Complete | 4/4 |
 | Phase 7: Medium (50-70%) | Complete | 4/4 |
-| Phase 8: Polish (> 70%) | In Progress | 1/8 |
+| Phase 8: Polish (> 70%) | In Progress | 2/8 |
 
 ---
 
@@ -237,17 +237,18 @@ Phase 1 fixed the 11 worst files (< 40% meaningful). Phase 2 addresses the remai
 
 ### Task 8.2: test_ticket_done.py
 **File:** `.claude/ralph/tests/unit/test_ticket_done.py`
-**Current:** 71% meaningful (24 tests)
-**Status:** [ ] Not Started
+**Current:** 71% → ~91% meaningful (24 → 22 tests after cleanup)
+**Status:** [x] Complete
 
 **Issues:**
 - GitHub tests are implementation-coupled
 - Tests mock structure instead of behavior
 
-**Fixes Required:**
-- [ ] Verify exact GitHub API calls
-- [ ] Add outcome verification
-- [ ] Run tests to verify no regressions
+**Fixes Applied:**
+- [x] Deleted 2 redundant tests (label handling duplicates)
+- [x] Strengthened 2 weak tests with proper assertions
+- [x] Fixed 4 implementation-coupled tests to mock at helper boundary
+- [x] All 22 remaining tests pass
 
 **Audit Reference:** `docs/research/2026-01-22-test-audit-trial-ticket-done.md`
 

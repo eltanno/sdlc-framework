@@ -160,7 +160,7 @@ class TestMarkTicketDoneV2:
 
         missing_file = tmp_path / "missing.json"
 
-        with pytest.raises(FileNotFoundError):
+        with pytest.raises(FileNotFoundError, match=str(missing_file)):
             mark_ticket_done("TASK-001", state_file=missing_file)
 
 
@@ -266,6 +266,7 @@ class TestTicketDoneV2PMTool:
         )
 
         assert result["status"] == "completed"
+        mock_pm.close_ticket.assert_called_once_with("TASK-001")
 
 
 class TestTicketDoneV2GitHub:
@@ -285,8 +286,7 @@ class TestTicketDoneV2GitHub:
         config_file = tmp_path / "config.yaml"
         config_file.write_text("pm:\n  tool: github\n")
 
-        with patch("commands.ticket_done.subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        with patch("commands.ticket_done.close_github_issue") as mock_close:
             with patch("commands.ticket_done.find_issue_by_ticket_id") as mock_find:
                 mock_find.return_value = 42
                 ticket_done(
@@ -295,9 +295,8 @@ class TestTicketDoneV2GitHub:
                     config_file=config_file,
                 )
 
-        # Verify gh issue close was called
-        calls = [str(call) for call in mock_run.call_args_list]
-        assert any("close" in c for c in calls)
+        # Verify close_github_issue was called with issue number
+        mock_close.assert_called_once_with(42)
 
     def test_ticket_done_removes_instance_label(self, tmp_path: Path):
         """Given instance_label in config, ticket_done removes it."""
@@ -318,19 +317,18 @@ ralph:
   instance_label: ralph-1
 """)
 
-        with patch("commands.ticket_done.subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
-            with patch("commands.ticket_done.find_issue_by_ticket_id") as mock_find:
-                mock_find.return_value = 42
-                ticket_done(
-                    ticket_id="TASK-001",
-                    state_file=state_file,
-                    config_file=config_file,
-                )
+        with patch("commands.ticket_done.close_github_issue"):
+            with patch("commands.ticket_done.remove_label_from_issue") as mock_remove:
+                with patch("commands.ticket_done.find_issue_by_ticket_id") as mock_find:
+                    mock_find.return_value = 42
+                    ticket_done(
+                        ticket_id="TASK-001",
+                        state_file=state_file,
+                        config_file=config_file,
+                    )
 
-        # Verify --remove-label was called
-        calls = [str(call) for call in mock_run.call_args_list]
-        assert any("remove-label" in c for c in calls)
+        # Verify remove_label_from_issue was called with issue number and label
+        mock_remove.assert_called_once_with(42, "ralph-1")
 
     def test_ticket_done_skips_github_when_not_configured(self, tmp_path: Path):
         """Given pm.tool is not github, ticket_done skips GitHub ops."""
@@ -424,10 +422,7 @@ class TestCloseGitHubIssue:
 
         mock_run.assert_called_once()
         call_args = mock_run.call_args[0][0]
-        assert "gh" in call_args
-        assert "issue" in call_args
-        assert "close" in call_args
-        assert "42" in call_args
+        assert call_args == ["gh", "issue", "close", "42"]
 
     def test_close_issue_handles_already_closed(self):
         """Given already closed issue, close_github_issue succeeds."""
@@ -465,27 +460,5 @@ class TestRemoveLabelFromIssue:
 
         mock_run.assert_called_once()
         call_args = mock_run.call_args[0][0]
-        assert "--remove-label" in call_args
-        assert "ralph-1" in call_args
+        assert call_args == ["gh", "issue", "edit", "42", "--remove-label", "ralph-1"]
 
-    def test_remove_label_handles_label_not_present(self):
-        """Given label not on issue, remove_label_from_issue succeeds (idempotent)."""
-        from commands.ticket_done import remove_label_from_issue
-
-        with patch("commands.ticket_done.subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=0,
-                stdout="",
-                stderr=""
-            )
-            # Should not raise
-            remove_label_from_issue(42, "nonexistent-label")
-
-    def test_remove_label_raises_on_missing_gh(self):
-        """Given gh CLI not found, remove_label_from_issue raises RuntimeError."""
-        from commands.ticket_done import remove_label_from_issue
-
-        with patch("commands.ticket_done.subprocess.run") as mock_run:
-            mock_run.side_effect = FileNotFoundError("gh not found")
-            with pytest.raises(RuntimeError, match="gh CLI"):
-                remove_label_from_issue(42, "label")
