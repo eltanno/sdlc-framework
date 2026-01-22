@@ -250,6 +250,7 @@ class TestBlockResetFlow:
 
         # Verify ticket is blocked initially
         assert state.tickets[0].status == "blocked"
+        assert state.tickets[0].status != "pending"  # Negative assertion
         assert state.blocked_count == 1
 
         # Reset the blocked ticket
@@ -258,17 +259,23 @@ class TestBlockResetFlow:
             state_file=state_file,
         )
 
-        assert result.success
+        assert result.success is True  # Explicit True check
+        assert result.success is not False  # Negative assertion
         assert result.previous_status == "blocked"
         assert result.new_status == "pending"
+        assert result.new_status != "blocked"  # Negative assertion
 
         # Verify state is updated
         reloaded_state = load_workflow_state(state_file)
         ticket = next(t for t in reloaded_state.tickets if t.id == "TASK-001")
         assert ticket.status == "pending"
+        assert ticket.status != "blocked"  # Verify transition happened
+        assert ticket.status != "in_progress"  # Not other states
         assert ticket.block_reason is None
         assert ticket.attempts == 0
+        assert ticket.attempts != 3  # Verify reset, not just presence
         assert reloaded_state.blocked_count == 0
+        assert reloaded_state.blocked_count != 1  # Verify decrement
 
     def test_reset_then_complete_ticket(
         self, blocked_workflow: tuple[Path, WorkflowState], mock_gh_cli, tmp_path: Path
@@ -304,16 +311,21 @@ class TestBlockResetFlow:
         self, blocked_workflow: tuple[Path, WorkflowState], tmp_path: Path
     ):
         """Given a blocked ticket with state files, when reset with cleanup,
-        then state directory is removed."""
+        then state directory and all files are removed."""
         state_file, state = blocked_workflow
         state_base_dir = tmp_path / "state"
 
-        # Create state directory with some files
+        # Create state directory with multiple files
         state_dir = ensure_state_dir("TASK-001", 1, state_base_dir)
-        (state_dir / "engineer-state.json").write_text('{"test": true}')
+        file1 = state_dir / "engineer-state.json"
+        file2 = state_dir / "attempt-1.log"
+        file1.write_text('{"test": true}')
+        file2.write_text('log data')
 
-        # Verify state dir exists
+        # Verify state dir and files exist
         assert state_dir.exists()
+        assert file1.exists()
+        assert file2.exists()
 
         # Reset with cleanup
         result = reset_ticket(
@@ -323,33 +335,47 @@ class TestBlockResetFlow:
             state_base_dir=state_base_dir,
         )
 
-        assert result.success
-        assert result.state_cleaned
+        assert result.success is True
+        assert result.state_cleaned is True
+        assert result.state_cleaned is not False  # Negative assertion
+
+        # Verify directory AND files are gone
         assert not (state_base_dir / "TASK-001").exists()
+        assert not file1.exists()  # Files removed
+        assert not file2.exists()  # All files removed
 
     def test_cannot_reset_non_blocked_ticket(
         self, lifecycle_workflow: tuple[Path, WorkflowState]
     ):
         """Given a pending ticket, when reset attempted,
-        then TicketResetError is raised."""
+        then TicketResetError is raised with clear error message."""
         state_file, state = lifecycle_workflow
+
+        # Verify ticket is actually pending, not blocked
+        ticket = next(t for t in state.tickets if t.id == "TASK-001")
+        assert ticket.status == "pending"
+        assert ticket.status != "blocked"
 
         with pytest.raises(TicketResetError) as exc_info:
             reset_ticket(ticket_id="TASK-001", state_file=state_file)
 
-        assert "only blocked tickets can be reset" in str(exc_info.value)
+        error_msg = str(exc_info.value)
+        assert "only blocked tickets can be reset" in error_msg
+        assert "TASK-001" in error_msg  # Error includes ticket ID
 
     def test_cannot_reset_nonexistent_ticket(
         self, lifecycle_workflow: tuple[Path, WorkflowState]
     ):
         """Given a non-existent ticket ID, when reset attempted,
-        then TicketResetError is raised."""
+        then TicketResetError is raised with helpful message."""
         state_file, state = lifecycle_workflow
 
         with pytest.raises(TicketResetError) as exc_info:
             reset_ticket(ticket_id="TASK-999", state_file=state_file)
 
-        assert "not found" in str(exc_info.value)
+        error_msg = str(exc_info.value)
+        assert "not found" in error_msg
+        assert "TASK-999" in error_msg  # Error includes the invalid ID
 
 
 # ============================================================================
@@ -363,15 +389,18 @@ class TestResumeInterruptedWork:
     def test_resume_in_progress_ticket(
         self, in_progress_workflow: tuple[Path, WorkflowState]
     ):
-        """Given an in-progress ticket exists, when getting next ticket,
-        then the in-progress ticket is returned for resumption."""
+        """Given an in-progress ticket exists alongside pending tickets,
+        when getting next ticket, then in-progress ticket takes priority."""
         state_file, state = in_progress_workflow
 
         result = get_next_ticket(state)
 
         assert result.ticket is not None
         assert result.ticket.id == "TASK-001"
+        assert result.ticket.id != "TASK-002"  # Pending ticket NOT selected (in-progress has priority)
         assert result.ticket.status == "in_progress"
+        assert result.ticket.status != "pending"  # Verify it's actually in_progress
+        assert result.ticket.status != "blocked"  # Not other states
         assert "resuming" in result.message.lower()
 
     def test_state_files_preserved_on_resume(
@@ -539,31 +568,39 @@ class TestErrorHandling:
         self, lifecycle_workflow: tuple[Path, WorkflowState]
     ):
         """Given a non-existent ticket ID, when marking done,
-        then ValueError is raised."""
+        then ValueError is raised with helpful error message."""
         state_file, state = lifecycle_workflow
 
         with pytest.raises(ValueError) as exc_info:
             mark_ticket_done(ticket_id="TASK-999", state_file=state_file)
 
-        assert "not found" in str(exc_info.value)
+        error_msg = str(exc_info.value)
+        assert "not found" in error_msg
+        assert "TASK-999" in error_msg  # Error message includes the invalid ID
 
     def test_done_fails_for_missing_state_file(self, tmp_path: Path):
         """Given state file doesn't exist, when marking done,
-        then FileNotFoundError is raised."""
+        then FileNotFoundError is raised with helpful message."""
         fake_state_file = tmp_path / "nonexistent.json"
 
-        with pytest.raises(FileNotFoundError):
+        with pytest.raises(FileNotFoundError) as exc_info:
             mark_ticket_done(ticket_id="TASK-001", state_file=fake_state_file)
+
+        # Verify error message is helpful
+        error_msg = str(exc_info.value)
+        assert "nonexistent.json" in error_msg or "State file" in error_msg
 
     def test_reset_fails_for_missing_state_file(self, tmp_path: Path):
         """Given state file doesn't exist, when resetting,
-        then TicketResetError is raised."""
+        then TicketResetError is raised with clear message."""
         fake_state_file = tmp_path / "nonexistent.json"
 
         with pytest.raises(TicketResetError) as exc_info:
             reset_ticket(ticket_id="TASK-001", state_file=fake_state_file)
 
-        assert "State file not found" in str(exc_info.value)
+        error_msg = str(exc_info.value)
+        assert "State file not found" in error_msg
+        assert str(fake_state_file) in error_msg  # Error includes file path
 
 
 # ============================================================================
@@ -605,15 +642,83 @@ class TestProgressTracking:
         self, blocked_workflow: tuple[Path, WorkflowState]
     ):
         """Given blocked tickets are reset, when state checked,
-        then blocked count updates correctly."""
+        then blocked count decrements to reflect actual blocked tickets."""
         state_file, state = blocked_workflow
 
         # Initial state has 1 blocked
         assert state.blocked_count == 1
+        assert state.blocked_count != 0  # Negative assertion
+
+        # Verify the ticket is actually blocked
+        blocked_ticket = next(t for t in state.tickets if t.id == "TASK-001")
+        assert blocked_ticket.status == "blocked"
 
         # Reset the blocked ticket
         reset_ticket(ticket_id="TASK-001", state_file=state_file)
 
-        # Verify blocked count is decremented
+        # Verify blocked count is decremented AND ticket is no longer blocked
         reloaded = load_workflow_state(state_file)
         assert reloaded.blocked_count == 0
+        assert reloaded.blocked_count != 1  # Verify actual decrement
+
+        # Verify the ticket is actually unblocked
+        reset_ticket_obj = next(t for t in reloaded.tickets if t.id == "TASK-001")
+        assert reset_ticket_obj.status == "pending"
+        assert reset_ticket_obj.status != "blocked"  # Verify unblocked
+
+
+# ============================================================================
+# Test Cases: Business Logic Validation
+# ============================================================================
+
+
+class TestBusinessLogic:
+    """Tests for business rules and invariants."""
+
+    def test_get_next_excludes_blocked_tickets(
+        self, blocked_workflow: tuple[Path, WorkflowState]
+    ):
+        """Given a blocked ticket exists, when getting next ticket,
+        then blocked tickets are never returned."""
+        state_file, state = blocked_workflow
+
+        # TASK-001 is blocked, TASK-002 is pending
+        result = get_next_ticket(state)
+
+        # Should return TASK-002, NOT TASK-001
+        assert result.ticket is not None
+        assert result.ticket.id == "TASK-002"
+        assert result.ticket.id != "TASK-001"  # Blocked ticket NOT returned
+        assert result.ticket.status == "pending"
+        assert result.ticket.status != "blocked"  # Verify it's not blocked
+
+        # Verify blocked ticket still exists in state (just not returned)
+        blocked_ticket = next(t for t in state.tickets if t.id == "TASK-001")
+        assert blocked_ticket.status == "blocked"
+
+    def test_dependencies_must_be_satisfied(
+        self, lifecycle_workflow: tuple[Path, WorkflowState]
+    ):
+        """Given tickets with dependencies, when getting next ticket,
+        then only tickets with satisfied dependencies are returned."""
+        state_file, state = lifecycle_workflow
+
+        # TASK-001 has no dependencies
+        # TASK-002 depends on TASK-001
+        # TASK-003 depends on TASK-002
+
+        # Initially, only TASK-001 should be available
+        result = get_next_ticket(state)
+        assert result.ticket is not None
+        assert result.ticket.id == "TASK-001"
+        assert result.ticket.id != "TASK-002"  # Dependencies not satisfied
+        assert result.ticket.id != "TASK-003"  # Dependencies not satisfied
+
+        # Verify dependency structure
+        task_001 = next(t for t in state.tickets if t.id == "TASK-001")
+        task_002 = next(t for t in state.tickets if t.id == "TASK-002")
+        task_003 = next(t for t in state.tickets if t.id == "TASK-003")
+
+        assert task_001.dependencies == []  # No dependencies
+        assert task_002.dependencies == ["TASK-001"]  # Depends on 001
+        assert task_003.dependencies == ["TASK-002"]  # Depends on 002

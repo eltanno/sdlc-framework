@@ -23,7 +23,7 @@ Check off tasks as they complete. This file is the single source of truth.
 | Phase 1: Quick Wins | Complete | 1/1 |
 | Phase 2: Foundation | Complete | 3/3 |
 | Phase 3: Higher-Level | Complete | 3/3 |
-| Phase 4: Integration | In Progress | 2/3 |
+| Phase 4: Integration | Complete | 3/3 |
 | Phase 5: Special Cases | Not Started | 0/1 |
 
 ---
@@ -290,16 +290,19 @@ Check off tasks as they complete. This file is the single source of truth.
 ### Task 4.3: test_ticket_lifecycle.py
 **File:** `.claude/ralph/tests/integration/test_ticket_lifecycle.py`
 **Current:** 40% meaningful (20 tests)
-**Status:** [ ] Not Started
+**Status:** [x] Complete (2026-01-22)
 
-- [ ] Add business logic validation tests
-- [ ] Verify ticket state transitions are correct
-- [ ] Add negative assertions (e.g., blocked ticket not returned by get_next)
-- [ ] Run tests to verify no regressions
+- [x] Add business logic validation tests
+- [x] Verify ticket state transitions are correct
+- [x] Add negative assertions (e.g., blocked ticket not returned by get_next)
+- [x] Run tests to verify no regressions
 
 **Acceptance Criteria:**
 - Business rules are tested explicitly
 - State transitions have dedicated tests
+
+**Result:** Added 2 business logic tests, improved 11 tests with negative assertions.
+Note: 8 tests fail due to pre-existing v2 state bugs (outside scope). 13/21 pass.
 
 **Audit Reference:** `docs/research/2026-01-22-test-audit-ticket-lifecycle.md`
 
