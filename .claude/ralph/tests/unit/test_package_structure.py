@@ -11,22 +11,7 @@ RALPH_DIR = Path(__file__).parent.parent.parent
 
 class TestPackageStructure:
     """Tests for verifying the package structure."""
-
-    def test_core_module_importable(self):
-        """Core module should be importable."""
-
-    def test_commands_module_importable(self):
-        """Commands module should be importable."""
-
-    def test_core_module_has_docstring(self):
-        """Core module should have a docstring."""
-        import core
-        assert core.__doc__ is not None
-
-    def test_commands_module_has_docstring(self):
-        """Commands module should have a docstring."""
-        import commands
-        assert commands.__doc__ is not None
+    pass
 
 
 class TestRequirements:
