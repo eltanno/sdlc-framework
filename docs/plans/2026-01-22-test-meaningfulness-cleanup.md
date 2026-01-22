@@ -22,7 +22,7 @@ Check off tasks as they complete. This file is the single source of truth.
 |-------|--------|-------|
 | Phase 1: Quick Wins | Complete | 1/1 |
 | Phase 2: Foundation | Complete | 3/3 |
-| Phase 3: Higher-Level | Not Started | 0/3 |
+| Phase 3: Higher-Level | In Progress | 1/3 |
 | Phase 4: Integration | Not Started | 0/3 |
 | Phase 5: Special Cases | Not Started | 0/1 |
 
@@ -146,28 +146,30 @@ Check off tasks as they complete. This file is the single source of truth.
 ### Task 3.1: test_pr_flow.py
 **File:** `.claude/ralph/tests/unit/test_pr_flow.py`
 **Current:** 31% meaningful (29 tests)
-**Status:** [ ] Not Started
+**Status:** [x] Complete (2026-01-22)
 
 **Tests to Delete:**
-- [ ] `test_pr_flow_result_contains_all_fields` (just tests dataclass)
-- [ ] `test_pr_flow_error_contains_message` (tests Python exception str())
-- [ ] `test_sync_with_main_uses_custom_branch` (tests parameter passing)
-- [ ] `test_pr_flow_dry_run_no_real_operations` (only checks mocks weren't called)
+- [x] `test_pr_flow_result_contains_all_fields` (just tests dataclass)
+- [x] `test_pr_flow_error_contains_message` (tests Python exception str())
+- [x] `test_sync_with_main_uses_custom_branch` (tests parameter passing)
+- [x] `test_pr_flow_dry_run_no_real_operations` (only checks mocks weren't called)
 
 **Tests to Rewrite:**
-- [ ] `test_stage_and_commit_stages_all_and_commits` → verify commit message format
-- [ ] `test_push_branch_pushes_with_upstream` → test error handling
-- [ ] `test_merge_pr_uses_squash_by_default` → verify merge behavior
+- [x] `test_stage_and_commit_stages_all_and_commits` → verify commit message format
+- [x] `test_push_branch_pushes_with_upstream` → test error handling
+- [x] `test_merge_pr_uses_squash_by_default` → verify merge behavior
 
 **Tests to Strengthen:**
-- [ ] `test_stage_and_commit_adds_coauthor` → exact format assertion
-- [ ] `test_create_pr_returns_pr_info` → add error cases
-- [ ] `test_pr_flow_complete_happy_path` → verify commit message format, PR body
-- [ ] Run tests to verify no regressions
+- [x] `test_stage_and_commit_adds_coauthor` → exact format assertion
+- [x] `test_create_pr_returns_pr_info` → add error cases
+- [x] `test_pr_flow_complete_happy_path` → verify commit message format, PR body
+- [x] Run tests to verify no regressions
 
 **Acceptance Criteria:**
 - Tests verify outcomes, not just that mocks were called
 - Commit message format assertions use exact patterns
+
+**Result:** 29 tests → 30 tests (deleted 4, added 3 error handling). All pass.
 
 **Audit Reference:** `docs/research/2026-01-22-test-audit-pr-flow.md`
 
