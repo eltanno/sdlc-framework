@@ -60,12 +60,23 @@ class TestStartTicket:
         # Call the function
         result = start_ticket("TASK-001", state_file)
 
-        # Verify branch was created
+        # Verify branch was created with correct arguments
         mock_git.create_branch.assert_called_once_with(
             "feature/TASK-001-implementation", "origin/main"
         )
+
+        # Verify result object has correct values
+        assert result.ticket_id == "TASK-001"
         assert result.branch == "feature/TASK-001-implementation"
         assert result.status == "in_progress"
+        assert result.created_new_branch is True
+
+        # Verify state file was updated correctly
+        with open(state_file) as f:
+            state = json.load(f)
+        ticket = next(t for t in state["tickets"] if t["id"] == "TASK-001")
+        assert ticket["status"] == "in_progress"
+        assert state["current_ticket"] == "TASK-001"
 
     def test_start_ticket_checks_out_existing_branch(
         self, tmp_path: Path, mocker
@@ -80,12 +91,22 @@ class TestStartTicket:
 
         result = start_ticket("TASK-001", state_file)
 
-        # Verify existing branch was checked out instead of created
+        # Verify existing branch was checked out
         mock_git.checkout_branch.assert_called_once_with(
             "feature/TASK-001-implementation"
         )
+        # Verify no new branch was created
         mock_git.create_branch.assert_not_called()
+
+        # Verify result reflects checkout of existing branch
         assert result.branch == "feature/TASK-001-implementation"
+        assert result.created_new_branch is False
+        assert result.status == "in_progress"
+
+        # Verify state was updated
+        with open(state_file) as f:
+            state = json.load(f)
+        assert state["current_ticket"] == "TASK-001"
 
     def test_start_ticket_raises_error_with_dirty_working_directory(
         self, tmp_path: Path, mocker
@@ -150,13 +171,30 @@ class TestStartTicket:
         mock_git.branch_exists.return_value = True
         mock_git.get_current_branch.return_value = "feature/TASK-001-implementation"
 
+        # Read state before operation to verify idempotency
+        with open(state_file) as f:
+            state_before = json.load(f)
+
         # Should succeed without error - idempotent operation
         result = start_ticket("TASK-001", state_file)
 
         # No branch operations needed since we're already on the correct branch
         mock_git.create_branch.assert_not_called()
         mock_git.checkout_branch.assert_not_called()
+
+        # Verify result is consistent
         assert result.branch == "feature/TASK-001-implementation"
+        assert result.status == "in_progress"
+        assert result.ticket_id == "TASK-001"
+
+        # Verify state file critical fields remain unchanged (idempotent)
+        with open(state_file) as f:
+            state_after = json.load(f)
+        assert state_after["current_ticket"] == state_before["current_ticket"]
+        ticket_before = next(t for t in state_before["tickets"] if t["id"] == "TASK-001")
+        ticket_after = next(t for t in state_after["tickets"] if t["id"] == "TASK-001")
+        assert ticket_after["status"] == ticket_before["status"]
+        assert ticket_after["id"] == ticket_before["id"]
 
     def test_start_ticket_with_completed_ticket_raises_error(
         self, tmp_path: Path, mocker
@@ -187,39 +225,6 @@ class TestStartTicket:
             start_ticket("TASK-001", state_file)
 
         assert "blocked" in str(exc_info.value).lower()
-
-    def test_start_ticket_returns_result_with_all_fields(
-        self, tmp_path: Path, mocker
-    ):
-        """Test that start_ticket returns a complete result object."""
-        state_file = self._create_state_file(tmp_path, "TASK-001", "pending")
-
-        mock_git = mocker.patch("commands.ticket_start.git")
-        mock_git.is_dirty.return_value = False
-        mock_git.branch_exists.return_value = False
-        mock_git.get_current_branch.return_value = "main"
-
-        result = start_ticket("TASK-001", state_file)
-
-        assert result.ticket_id == "TASK-001"
-        assert result.branch == "feature/TASK-001-implementation"
-        assert result.status == "in_progress"
-        assert result.created_new_branch is True
-
-    def test_start_ticket_existing_branch_sets_created_new_branch_false(
-        self, tmp_path: Path, mocker
-    ):
-        """Test that checking out existing branch sets created_new_branch=False."""
-        state_file = self._create_state_file(tmp_path, "TASK-001", "pending")
-
-        mock_git = mocker.patch("commands.ticket_start.git")
-        mock_git.is_dirty.return_value = False
-        mock_git.branch_exists.return_value = True
-        mock_git.get_current_branch.return_value = "main"
-
-        result = start_ticket("TASK-001", state_file)
-
-        assert result.created_new_branch is False
 
     def _create_state_file(
         self,
