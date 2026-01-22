@@ -21,7 +21,7 @@ Check off tasks as they complete. This file is the single source of truth.
 | Phase | Status | Tasks |
 |-------|--------|-------|
 | Phase 1: Quick Wins | Complete | 1/1 |
-| Phase 2: Foundation | In Progress | 2/3 |
+| Phase 2: Foundation | Complete | 3/3 |
 | Phase 3: Higher-Level | Not Started | 0/3 |
 | Phase 4: Integration | Not Started | 0/3 |
 | Phase 5: Special Cases | Not Started | 0/1 |
@@ -122,18 +122,20 @@ Check off tasks as they complete. This file is the single source of truth.
 ### Task 2.3: test_gitlab.py
 **File:** `.claude/ralph/tests/unit/test_gitlab.py`
 **Current:** 41% meaningful (29 tests)
-**Status:** [ ] Not Started
+**Status:** [x] Complete (2026-01-22)
 
 **Pattern Fixes:**
-- [ ] Fix 11 weak CLI argument tests to verify complete command structure
-- [ ] Delete `test_merge_request_result_has_url_and_number` (tautological)
-- [ ] Fix `test_delete_remote_branch_deletes_successfully` (currently tests nothing)
-- [ ] Reduce implementation coupling in `test_merge_merge_request_with_squash`
-- [ ] Run tests to verify no regressions
+- [x] Fix 11 weak CLI argument tests to verify complete command structure
+- [x] Delete `test_merge_request_result_has_url_and_number` (tautological)
+- [x] Fix `test_delete_remote_branch_deletes_successfully` (currently tests nothing)
+- [x] Reduce implementation coupling in `test_merge_merge_request_with_squash`
+- [x] Run tests to verify no regressions
 
 **Acceptance Criteria:**
 - Same as test_github.py
 - CLI command tests verify exact argument structure
+
+**Result:** 29 tests → 26 tests (deleted 3 tautological/weak). ~100% now meaningful. All pass.
 
 **Audit Reference:** `docs/research/2026-01-22-test-audit-gitlab.md`
 

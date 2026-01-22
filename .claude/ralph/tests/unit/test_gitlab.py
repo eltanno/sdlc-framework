@@ -114,20 +114,6 @@ class TestGitLabNotAuthenticated:
         assert "auth" in str(exc_info.value).lower()
 
 
-class TestMergeRequestResult:
-    """Tests for MergeRequestResult dataclass."""
-
-    def test_merge_request_result_has_url_and_number(self):
-        """MergeRequestResult should have url and number attributes."""
-        from core.gitlab import MergeRequestResult
-
-        result = MergeRequestResult(
-            url="https://gitlab.example.com/group/project/-/merge_requests/123",
-            number=123
-        )
-
-        assert result.url == "https://gitlab.example.com/group/project/-/merge_requests/123"
-        assert result.number == 123
 
 
 class TestCreateMergeRequest:
@@ -159,9 +145,9 @@ class TestCreateMergeRequest:
             base="develop",
         )
 
-        call_args = mock_glab.call_args[0][0]
-        assert "--target-branch" in call_args or "-b" in call_args
-        assert "develop" in call_args
+        expected_cmd = ["glab", "mr", "create", "--title", "Test MR", "--description", "Body", "--target-branch", "develop"]
+        mock_glab.assert_called_once()
+        assert mock_glab.call_args[0][0] == expected_cmd
 
     def test_create_merge_request_extracts_mr_number_from_url(self, mock_glab: MagicMock):
         """Given MR URL returned, when parsing, then number is extracted correctly."""
@@ -185,8 +171,9 @@ class TestCreateMergeRequest:
             draft=True,
         )
 
-        call_args = mock_glab.call_args[0][0]
-        assert "--draft" in call_args
+        expected_cmd = ["glab", "mr", "create", "--title", "Draft MR", "--description", "Work in progress", "--draft"]
+        mock_glab.assert_called_once()
+        assert mock_glab.call_args[0][0] == expected_cmd
 
     def test_create_merge_request_raises_on_no_commits(self, mock_glab: MagicMock):
         """Given no commits to push, when creating MR, then error indicates nothing to push."""
@@ -198,7 +185,9 @@ class TestCreateMergeRequest:
         with pytest.raises(gitlab.GitLabError) as exc_info:
             gitlab.create_merge_request("Title", "Body")
 
-        assert "changes" in str(exc_info.value).lower() or "no" in str(exc_info.value).lower()
+        error_msg = str(exc_info.value).lower()
+        assert "changes" in error_msg
+        assert exc_info.value.stderr == "error creating merge request: there are no changes"
 
 
 class TestGetMergeRequest:
@@ -216,6 +205,10 @@ class TestGetMergeRequest:
         assert result["title"] == "Test MR"
         assert result["state"] == "opened"
 
+        expected_cmd = ["glab", "mr", "view", "123", "--output", "json"]
+        mock_glab.assert_called_once()
+        assert mock_glab.call_args[0][0] == expected_cmd
+
     def test_get_merge_request_raises_on_not_found(self, mock_glab: MagicMock):
         """Given MR doesn't exist, when fetching MR, then error is raised."""
         from core import gitlab
@@ -226,7 +219,9 @@ class TestGetMergeRequest:
         with pytest.raises(gitlab.GitLabError) as exc_info:
             gitlab.get_merge_request(999)
 
-        assert "999" in str(exc_info.value) or "not found" in str(exc_info.value).lower()
+        error_msg = str(exc_info.value).lower()
+        assert "not found" in error_msg
+        assert exc_info.value.stderr == "merge request !999 not found"
 
 
 class TestListMergeRequests:
@@ -243,6 +238,10 @@ class TestListMergeRequests:
         assert len(result) == 1
         assert result[0]["iid"] == 1
         assert result[0]["title"] == "Test MR"
+
+        expected_cmd = ["glab", "mr", "list", "--output", "json"]
+        mock_glab.assert_called_once()
+        assert mock_glab.call_args[0][0] == expected_cmd
 
     def test_list_merge_requests_returns_empty_list_when_none(self, mock_glab: MagicMock):
         """Given no MRs exist, when listing MRs, then empty list is returned."""
@@ -265,9 +264,9 @@ class TestListMergeRequests:
         assert len(result) == 1
         assert result[0]["iid"] == 50
 
-        call_args = mock_glab.call_args[0][0]
-        assert "--source-branch" in call_args
-        assert "feature/test" in call_args
+        expected_cmd = ["glab", "mr", "list", "--output", "json", "--source-branch", "feature/test"]
+        mock_glab.assert_called_once()
+        assert mock_glab.call_args[0][0] == expected_cmd
 
     def test_list_merge_requests_filters_by_state(self, mock_glab: MagicMock):
         """Given state filter, when listing MRs, then filter is applied."""
@@ -275,11 +274,13 @@ class TestListMergeRequests:
 
         mock_glab.return_value.stdout = "[]"
 
-        gitlab.list_merge_requests(state="merged")
+        result = gitlab.list_merge_requests(state="merged")
 
-        call_args = mock_glab.call_args[0][0]
-        assert "--state" in call_args
-        assert "merged" in call_args
+        assert result == []
+
+        expected_cmd = ["glab", "mr", "list", "--output", "json", "--state", "merged"]
+        mock_glab.assert_called_once()
+        assert mock_glab.call_args[0][0] == expected_cmd
 
 
 class TestMergeMergeRequest:
@@ -293,11 +294,9 @@ class TestMergeMergeRequest:
 
         gitlab.merge_merge_request(123, strategy="squash")
 
-        call_args = mock_glab.call_args[0][0]
-        assert "glab" in call_args
-        assert "mr" in call_args
-        assert "merge" in call_args
-        assert "--squash" in call_args or "-s" in call_args
+        expected_cmd = ["glab", "mr", "merge", "123", "--yes", "--squash"]
+        mock_glab.assert_called_once()
+        assert mock_glab.call_args[0][0] == expected_cmd
 
     def test_merge_merge_request_with_merge_commit(self, mock_glab: MagicMock):
         """Given mergeable MR, when merging with merge commit, then MR is merged."""
@@ -307,9 +306,9 @@ class TestMergeMergeRequest:
 
         gitlab.merge_merge_request(123, strategy="merge")
 
-        call_args = mock_glab.call_args[0][0]
-        # merge commit is the default, so no squash flag
-        assert "--squash" not in call_args and "-s" not in call_args
+        expected_cmd = ["glab", "mr", "merge", "123", "--yes"]
+        mock_glab.assert_called_once()
+        assert mock_glab.call_args[0][0] == expected_cmd
 
     def test_merge_merge_request_with_rebase(self, mock_glab: MagicMock):
         """Given mergeable MR, when merging with rebase, then MR is merged."""
@@ -319,8 +318,9 @@ class TestMergeMergeRequest:
 
         gitlab.merge_merge_request(123, strategy="rebase")
 
-        call_args = mock_glab.call_args[0][0]
-        assert "--rebase" in call_args or "-r" in call_args
+        expected_cmd = ["glab", "mr", "merge", "123", "--yes", "--rebase"]
+        mock_glab.assert_called_once()
+        assert mock_glab.call_args[0][0] == expected_cmd
 
     def test_merge_merge_request_raises_on_conflict(self, mock_glab: MagicMock):
         """Given MR has conflicts, when merging, then error is raised."""
@@ -332,7 +332,9 @@ class TestMergeMergeRequest:
         with pytest.raises(gitlab.GitLabError) as exc_info:
             gitlab.merge_merge_request(123)
 
-        assert "merge" in str(exc_info.value).lower() or "conflict" in str(exc_info.value).lower()
+        error_msg = str(exc_info.value).lower()
+        assert "merge" in error_msg
+        assert exc_info.value.stderr == "Merge request !123 cannot be merged: the merge commit cannot be cleanly created"
 
 
 class TestFindMergedMr:
@@ -347,6 +349,10 @@ class TestFindMergedMr:
         result = gitlab.find_merged_mr("TASK-001")
 
         assert result == 99
+
+        expected_cmd = ["glab", "mr", "list", "--state", "merged", "--search", "TASK-001", "--output", "json"]
+        mock_glab.assert_called_once()
+        assert mock_glab.call_args[0][0] == expected_cmd
 
     def test_find_merged_mr_returns_none_when_not_found(self, mock_glab: MagicMock):
         """Given no merged MR, when searching, then None is returned."""
@@ -368,10 +374,11 @@ class TestDeleteRemoteBranch:
 
         mock_glab.return_value.returncode = 0
 
-        # This may use git push or glab api - either way test the function works
         gitlab.delete_remote_branch("feature/old-branch")
 
-        # Just verify no exception is raised
+        expected_cmd = ["git", "push", "origin", "--delete", "feature/old-branch"]
+        mock_glab.assert_called_once()
+        assert mock_glab.call_args[0][0] == expected_cmd
 
     def test_delete_remote_branch_ignores_nonexistent_branch(self, mock_glab: MagicMock):
         """Given remote branch doesn't exist, when deleting, then no error is raised."""
