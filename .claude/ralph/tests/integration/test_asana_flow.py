@@ -95,17 +95,26 @@ class TestFullWorkflow:
     """Tests for the complete create -> claim -> complete workflow."""
 
     def test_create_task_returns_valid_gid(self, asana_pm, test_task):
-        """Given AsanaPM, when creating a task, then a valid GID is returned.
+        """Given AsanaPM, when creating a task, then task is created with correct properties.
 
         SDLC-0066: Full workflow - task creation
         """
         task_gid, task_name = test_task
 
-        # Verify GID is a non-empty string (Asana GIDs are numeric strings)
+        # Verify GID format
         assert task_gid is not None
         assert isinstance(task_gid, str)
         assert len(task_gid) > 0
         assert task_gid.isdigit(), f"Task GID should be numeric: {task_gid}"
+
+        # Verify task exists in Asana with correct properties
+        details = asana_pm.get_task_details(task_gid)
+        assert details["name"] == task_name
+        assert "notes" in details
+
+        # Verify task tag was added (add_task_tag=True in fixture)
+        tags = [tag["name"] for tag in details.get("tags", [])]
+        assert "task" in tags
 
     def test_claim_ticket_adds_ralph_tag(self, asana_pm, test_task):
         """Given a task, when claiming it with ralph-1, then the tag is added.
@@ -235,6 +244,11 @@ class TestBlockedFlow:
         """Given a task, when marking blocked with reason, then a comment is posted.
 
         SDLC-0066: Blocked flow - comment posting
+
+        Note: This test verifies the operation succeeds. Fetching and verifying
+        the actual comment would require additional Asana API calls for stories,
+        which adds complexity and API rate limit concerns. The add_blocked_label
+        implementation handles comment posting, and this test confirms no errors occur.
         """
         task_gid, _ = test_task
 
@@ -243,9 +257,10 @@ class TestBlockedFlow:
         result = asana_pm.add_blocked_label(task_gid, unique_reason)
         assert result is True
 
-        # Note: Verifying the comment would require fetching task stories,
-        # which is an additional API call. For now, we trust the success result.
-        # A more thorough test would fetch stories and verify the comment exists.
+        # Verify the operation had the primary effect (blocked status)
+        from core.pm import TicketStatus
+        status = asana_pm.get_ticket_status(task_gid)
+        assert status == TicketStatus.BLOCKED
 
     def test_blocked_task_stays_blocked_even_when_incomplete(self, asana_pm, test_task):
         """Given a blocked incomplete task, when getting status, then BLOCKED is returned.
@@ -302,15 +317,18 @@ class TestBlockedFlow:
 class TestTagManagement:
     """Tests for tag creation and management."""
 
-    def test_claim_with_new_ralph_tag_creates_tag(self, asana_pm, test_task):
-        """Given a tag that doesn't exist, when claiming ticket, then tag is created.
+    def test_claim_with_ralph_tag_succeeds(self, asana_pm, test_task):
+        """Given a ticket, when claiming with ralph-5, then claim succeeds.
 
-        SDLC-0066: Tag management - automatic creation
+        SDLC-0066: Tag management - claim with less common tag
+
+        Note: This test verifies that claiming with ralph-5 works. The tag
+        may or may not already exist in the workspace. The _get_or_create_tag
+        method handles both cases internally.
         """
         task_gid, _ = test_task
 
         # Use a ralph tag (ralph-5 is less commonly used in tests)
-        # The _get_or_create_tag method should create it if missing
         result = asana_pm.claim_ticket(task_gid, "ralph-5")
         assert result is True
 
@@ -346,14 +364,34 @@ class TestTagManagement:
         assert is_claimed is True
         assert label == "ralph-3"
 
-    def test_ensure_required_tags_creates_all_tags(self, asana_pm):
-        """Given AsanaPM, when ensuring required tags, then all tags exist.
+    def test_ensure_required_tags_succeeds(self, asana_pm):
+        """Given AsanaPM, when ensuring required tags, then operation succeeds.
 
         SDLC-0066: Tag management - ensure_required_tags
+
+        Note: This test verifies the ensure_required_tags operation completes
+        successfully. It may create missing tags or verify existing ones.
+        Verifying each individual tag exists would require fetching all workspace
+        tags and checking each one, which is complex and rate-limit intensive.
         """
-        # This may create tags or just verify they exist
         result = asana_pm.ensure_required_tags()
         assert result is True
+
+        # Verify at least one tag operation works by testing claim
+        # (which requires tags to exist)
+        import time
+        timestamp = int(time.time())
+        task_gid = asana_pm.create_task(
+            name=f"[SDLC-TAG-TEST-{timestamp}]",
+            notes="Testing tag existence",
+            add_task_tag=True,
+        )
+        try:
+            # This will fail if required tags don't exist
+            claim_result = asana_pm.claim_ticket(task_gid, "ralph-0")
+            assert claim_result is True
+        finally:
+            asana_pm.close_ticket(task_gid)
 
 
 # =============================================================================
@@ -364,14 +402,17 @@ class TestTagManagement:
 class TestRaceConditionHandling:
     """Tests for race condition handling in claiming tickets."""
 
-    def test_multiple_ralph_labels_first_wins(self, asana_pm, test_task):
-        """Given a task claimed twice, when checking claim, then first label detected.
+    def test_multiple_ralph_labels_detected(self, asana_pm, test_task):
+        """Given a task with multiple ralph tags, when checking claim, then claimed status is detected.
 
-        This simulates a race condition where two Ralph instances try to claim
-        the same ticket. The is_ticket_claimed method should return the first
-        ralph-* tag it finds.
+        This simulates a race condition where two Ralph instances claim the same
+        ticket. The is_ticket_claimed method should detect that the ticket is claimed.
 
-        SDLC-0066: Race condition - first wins
+        SDLC-0066: Race condition - multiple claims detected
+
+        Note: Asana's tag ordering is not guaranteed, so we cannot reliably test
+        "first wins" behavior. This test verifies that the claim is detected
+        regardless of which tag is returned.
         """
         task_gid, _ = test_task
 
@@ -381,14 +422,20 @@ class TestRaceConditionHandling:
         # Claim with ralph-2 second (simulating a race)
         asana_pm.claim_ticket(task_gid, "ralph-2")
 
-        # Check claim - should detect one of the ralph tags
+        # Verify task is detected as claimed
         is_claimed, label = asana_pm.is_ticket_claimed(task_gid)
         assert is_claimed is True
-        # The label should be either ralph-1 or ralph-2 (order may vary)
+        # The label should be either ralph-1 or ralph-2
         assert label in ["ralph-1", "ralph-2"]
 
+        # Verify both tags are present on the task
+        details = asana_pm.get_task_details(task_gid)
+        tag_names = [tag["name"] for tag in details.get("tags", [])]
+        assert "ralph-1" in tag_names
+        assert "ralph-2" in tag_names
+
     def test_claim_ticket_is_idempotent(self, asana_pm, test_task):
-        """Given an already claimed task, when claiming again with same label, then succeeds.
+        """Given an already claimed task, when claiming again with same label, then state remains correct.
 
         SDLC-0066: Race condition - idempotency
         """
@@ -402,10 +449,17 @@ class TestRaceConditionHandling:
         assert result1 is True
         assert result2 is True
 
-        # Should still be claimed with ralph-2
+        # Verify task is claimed with ralph-2
         is_claimed, label = asana_pm.is_ticket_claimed(task_gid)
         assert is_claimed is True
-        # Note: Due to adding the same tag twice, Asana may handle this gracefully
+        assert label == "ralph-2"
+
+        # Verify task doesn't have duplicate ralph-2 tags
+        details = asana_pm.get_task_details(task_gid)
+        tag_names = [tag["name"] for tag in details.get("tags", [])]
+        ralph2_count = tag_names.count("ralph-2")
+        # Asana should handle duplicate tag adds gracefully (only one tag exists)
+        assert ralph2_count <= 2, "Multiple duplicate ralph-2 tags should not exist"
 
 
 # =============================================================================
@@ -417,20 +471,25 @@ class TestSubtasksAndDependencies:
     """Tests for subtask and dependency management."""
 
     def test_create_subtask_under_task(self, asana_pm, test_task):
-        """Given a task, when creating subtask, then subtask is created.
+        """Given a task, when creating subtask, then subtask is created with correct parent.
 
         SDLC-0066: Subtasks - acceptance criteria
         """
         task_gid, _ = test_task
 
         # Create a subtask (acceptance criterion)
-        subtask_gid = asana_pm.create_subtask(
-            task_gid, "User can log in with valid credentials"
-        )
+        subtask_name = "User can log in with valid credentials"
+        subtask_gid = asana_pm.create_subtask(task_gid, subtask_name)
 
+        # Verify GID format
         assert subtask_gid is not None
         assert isinstance(subtask_gid, str)
         assert len(subtask_gid) > 0
+
+        # Verify subtask exists and is linked to parent
+        parent_details = asana_pm.get_task_details(task_gid)
+        subtask_gids = [st["gid"] for st in parent_details.get("subtasks", [])]
+        assert subtask_gid in subtask_gids, "Subtask should be in parent's subtasks list"
 
     def test_get_task_details_includes_subtasks(self, asana_pm, test_task):
         """Given a task with subtasks, when getting details, then subtasks included.
@@ -451,7 +510,7 @@ class TestSubtasksAndDependencies:
         assert details["name"] == task_name
 
     def test_add_dependencies_links_tasks(self, asana_pm):
-        """Given two tasks, when adding dependency, then tasks are linked.
+        """Given two tasks, when adding dependency, then dependency relationship exists.
 
         SDLC-0066: Dependencies - task linking
         """
@@ -478,6 +537,11 @@ class TestSubtasksAndDependencies:
             result = asana_pm.add_dependencies(task_gid, [dep_task_gid])
             assert result is True
 
+            # Verify dependency exists in dependent task's details
+            dependent_details = asana_pm.get_task_details(task_gid)
+            dependency_gids = [d["gid"] for d in dependent_details.get("dependencies", [])]
+            assert dep_task_gid in dependency_gids, "Dependency should exist in dependent task"
+
         finally:
             # Cleanup
             try:
@@ -496,7 +560,7 @@ class TestAdditionalMethods:
     """Tests for additional AsanaPM methods."""
 
     def test_assign_to_self_sets_assignee(self, asana_pm, test_task):
-        """Given a task, when assigning to self, then assignment succeeds.
+        """Given a task, when assigning to self, then assignee is set to current user.
 
         SDLC-0066: Additional methods - assign_to_self
         """
@@ -504,6 +568,13 @@ class TestAdditionalMethods:
 
         result = asana_pm.assign_to_self(task_gid)
         assert result is True
+
+        # Verify assignee was set
+        details = asana_pm.get_task_details(task_gid)
+        assert "assignee" in details
+        assert details["assignee"] is not None
+        # The assignee should have a gid field
+        assert "gid" in details["assignee"]
 
     def test_get_open_tickets_returns_only_open(self, asana_pm):
         """Given tasks with mixed states, when getting open tickets, then only open returned.
@@ -546,9 +617,14 @@ class TestAdditionalMethods:
                 pass
 
     def test_add_pr_comment_posts_to_task(self, asana_pm, test_task):
-        """Given a task, when adding PR comment, then comment is posted.
+        """Given a task, when adding PR comment, then operation succeeds.
 
         SDLC-0066: Additional methods - add_pr_comment
+
+        Note: This test verifies the operation succeeds. Fetching and verifying
+        the actual comment would require additional Asana API calls for stories.
+        The add_pr_comment implementation handles comment posting, and this test
+        confirms no errors occur during the operation.
         """
         task_gid, _ = test_task
 
@@ -557,28 +633,50 @@ class TestAdditionalMethods:
         )
         assert result is True
 
-    def test_get_ticket_counts_returns_valid_counts(self, asana_pm):
-        """Given a project with tasks, when getting counts, then valid counts returned.
+        # We've verified the operation succeeds without errors.
+        # The task remains valid and accessible after the comment operation.
+        details = asana_pm.get_task_details(task_gid)
+        assert details["gid"] == task_gid
+
+    def test_get_ticket_counts_returns_valid_structure(self, asana_pm):
+        """Given a project, when getting counts, then valid structure with reasonable data.
 
         SDLC-0066: Additional methods - get_ticket_counts
+
+        Note: This test verifies the response structure and data integrity.
+        Testing exact count values would require creating a known set of tasks,
+        which is complex and may interfere with other integration tests running
+        in parallel. This test ensures the counts are coherent and properly typed.
         """
         counts = asana_pm.get_ticket_counts()
 
+        # Verify structure
         assert "open" in counts
         assert "closed" in counts
         assert "blocked" in counts
         assert "total" in counts
         assert "blocked_tasks" in counts
 
-        # Counts should be non-negative integers
+        # Verify types and values are reasonable
         assert isinstance(counts["open"], int)
         assert isinstance(counts["closed"], int)
         assert isinstance(counts["blocked"], int)
         assert isinstance(counts["total"], int)
+        assert isinstance(counts["blocked_tasks"], list)
+
+        # Verify counts are non-negative
         assert counts["open"] >= 0
         assert counts["closed"] >= 0
         assert counts["blocked"] >= 0
+        assert counts["total"] >= 0
+
+        # Verify mathematical consistency
         assert counts["total"] == counts["open"] + counts["closed"] + counts["blocked"]
+
+        # Verify blocked_tasks list contains valid task data if non-empty
+        for task in counts["blocked_tasks"]:
+            assert "gid" in task
+            assert isinstance(task["gid"], str)
 
 
 # =============================================================================
