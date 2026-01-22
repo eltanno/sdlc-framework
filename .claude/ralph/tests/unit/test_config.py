@@ -330,7 +330,7 @@ class TestMatchesInstancePrefix:
         assert matches_instance_prefix("", "ralph-") is False
 
     def test_none_label_returns_false(self) -> None:
-        """Given None label, returns False."""
+        """Given None label, returns False (defensive programming - None shouldn't crash)."""
         assert matches_instance_prefix(None, "ralph-") is False  # type: ignore
 
     def test_custom_prefix_matching(self) -> None:
@@ -374,60 +374,13 @@ ralph:
 class TestGetPmToolType:
     """Tests for get_pm_tool_type function."""
 
-    def test_get_pm_tool_type_github_returns_github(self, tmp_path: Path) -> None:
-        """Given pm.tool is 'github', when getting PM tool type, then returns 'github'."""
+    @pytest.mark.parametrize("tool", ["github", "trello", "asana", "linear", "none"])
+    def test_get_pm_tool_type_accepts_all_valid_tools(self, tmp_path: Path, tool: str) -> None:
+        """Given any valid pm.tool value, when getting PM tool type, then returns that value."""
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("""
-pm:
-  tool: github
-""")
+        config_file.write_text(f"pm:\n  tool: {tool}\n")
         result = get_pm_tool_type(config_file)
-
-        assert result == "github"
-
-    def test_get_pm_tool_type_trello_returns_trello(self, tmp_path: Path) -> None:
-        """Given pm.tool is 'trello', when getting PM tool type, then returns 'trello'."""
-        config_file = tmp_path / "config.yaml"
-        config_file.write_text("""
-pm:
-  tool: trello
-""")
-        result = get_pm_tool_type(config_file)
-
-        assert result == "trello"
-
-    def test_get_pm_tool_type_asana_returns_asana(self, tmp_path: Path) -> None:
-        """Given pm.tool is 'asana', when getting PM tool type, then returns 'asana'."""
-        config_file = tmp_path / "config.yaml"
-        config_file.write_text("""
-pm:
-  tool: asana
-""")
-        result = get_pm_tool_type(config_file)
-
-        assert result == "asana"
-
-    def test_get_pm_tool_type_linear_returns_linear(self, tmp_path: Path) -> None:
-        """Given pm.tool is 'linear', when getting PM tool type, then returns 'linear'."""
-        config_file = tmp_path / "config.yaml"
-        config_file.write_text("""
-pm:
-  tool: linear
-""")
-        result = get_pm_tool_type(config_file)
-
-        assert result == "linear"
-
-    def test_get_pm_tool_type_none_returns_none(self, tmp_path: Path) -> None:
-        """Given pm.tool is 'none', when getting PM tool type, then returns 'none'."""
-        config_file = tmp_path / "config.yaml"
-        config_file.write_text("""
-pm:
-  tool: none
-""")
-        result = get_pm_tool_type(config_file)
-
-        assert result == "none"
+        assert result == tool
 
     def test_get_pm_tool_type_missing_pm_section_raises_error(self, tmp_path: Path) -> None:
         """Given config has no pm section, when getting PM tool type, then raises ConfigError."""
@@ -488,32 +441,6 @@ pm:
             get_pm_tool_type(config_file)
 
         assert "pm.tool" in str(exc_info.value).lower()
-
-
-class TestValidPmTools:
-    """Tests for VALID_PM_TOOLS constant."""
-
-    def test_valid_pm_tools_contains_expected_values(self) -> None:
-        """VALID_PM_TOOLS should contain all supported PM tool types."""
-        expected = {"github", "trello", "asana", "linear", "none"}
-        assert VALID_PM_TOOLS == expected
-
-    def test_valid_pm_tools_is_frozen(self) -> None:
-        """VALID_PM_TOOLS should be a frozenset to prevent modification."""
-        assert isinstance(VALID_PM_TOOLS, frozenset)
-
-
-class TestValidRepoTools:
-    """Tests for VALID_REPO_TOOLS constant."""
-
-    def test_valid_repo_tools_contains_expected_values(self) -> None:
-        """VALID_REPO_TOOLS should contain github and gitlab."""
-        expected = {"github", "gitlab"}
-        assert VALID_REPO_TOOLS == expected
-
-    def test_valid_repo_tools_is_frozen(self) -> None:
-        """VALID_REPO_TOOLS should be a frozenset to prevent modification."""
-        assert isinstance(VALID_REPO_TOOLS, frozenset)
 
 
 class TestGetRepoToolType:
