@@ -124,8 +124,9 @@ class TestResetTicket:
 
         assert ticket.attempts == 0
 
-    def test_reset_non_blocked_ticket_raises_error(self, tmp_path: Path):
-        """Given a non-blocked ticket, when resetting, then an error is raised."""
+    @pytest.mark.parametrize("status", ["pending", "in_progress", "completed"])
+    def test_reset_non_blocked_ticket_raises_error(self, tmp_path: Path, status: str):
+        """Given a non-blocked ticket (any status except blocked), when resetting, then an error is raised."""
         from commands.ticket_reset import reset_ticket, TicketResetError
 
         state = {
@@ -135,68 +136,14 @@ class TestResetTicket:
             "tickets": [
                 {
                     "id": "TASK-001",
-                    "title": "Pending ticket",
-                    "status": "pending",
+                    "title": f"{status.capitalize()} ticket",
+                    "status": status,
                     "dependencies": [],
-                    "attempts": 0,
+                    "attempts": 0 if status == "pending" else 1,
                 }
             ],
-            "current_ticket": None,
-            "completed_count": 0,
-            "blocked_count": 0,
-        }
-        state_file = tmp_path / "workflow-state.json"
-        state_file.write_text(json.dumps(state))
-
-        with pytest.raises(TicketResetError, match="only blocked tickets can be reset"):
-            reset_ticket("TASK-001", state_file)
-
-    def test_reset_in_progress_ticket_raises_error(self, tmp_path: Path):
-        """Given an in-progress ticket, when resetting, then an error is raised."""
-        from commands.ticket_reset import reset_ticket, TicketResetError
-
-        state = {
-            "version": "2.0",
-            "prd_path": "docs/prds/test.md",
-            "plan_path": "docs/plans/test.md",
-            "tickets": [
-                {
-                    "id": "TASK-001",
-                    "title": "In-progress ticket",
-                    "status": "in_progress",
-                    "dependencies": [],
-                    "attempts": 1,
-                }
-            ],
-            "current_ticket": "TASK-001",
-            "completed_count": 0,
-            "blocked_count": 0,
-        }
-        state_file = tmp_path / "workflow-state.json"
-        state_file.write_text(json.dumps(state))
-
-        with pytest.raises(TicketResetError, match="only blocked tickets can be reset"):
-            reset_ticket("TASK-001", state_file)
-
-    def test_reset_completed_ticket_raises_error(self, tmp_path: Path):
-        """Given a completed ticket, when resetting, then an error is raised."""
-        from commands.ticket_reset import reset_ticket, TicketResetError
-
-        state = {
-            "version": "2.0",
-            "prd_path": "docs/prds/test.md",
-            "plan_path": "docs/plans/test.md",
-            "tickets": [
-                {
-                    "id": "TASK-001",
-                    "title": "Completed ticket",
-                    "status": "completed",
-                    "dependencies": [],
-                    "attempts": 1,
-                }
-            ],
-            "current_ticket": None,
-            "completed_count": 1,
+            "current_ticket": "TASK-001" if status == "in_progress" else None,
+            "completed_count": 1 if status == "completed" else 0,
             "blocked_count": 0,
         }
         state_file = tmp_path / "workflow-state.json"
@@ -440,55 +387,68 @@ class TestResetTicketResult:
         result = reset_ticket("TASK-001", state_file)
         result_dict = result.to_dict()
 
-        # Should be JSON serializable
+        # Should be JSON serializable (verify by actually serializing)
         json_str = json.dumps(result_dict)
-        assert isinstance(json_str, str)
+        parsed = json.loads(json_str)
 
-        # Should contain expected keys
+        # Should contain expected keys with correct values
         assert result_dict["ticket"] == "TASK-001"
         assert result_dict["previous_status"] == "blocked"
         assert result_dict["new_status"] == "pending"
         assert result_dict["state_cleaned"] is False
 
+        # Verify round-trip preserves data
+        assert parsed == result_dict
+
 
 class TestResetTicketUpdatesBlockedCount:
     """Tests for blocked count updates in workflow state."""
 
-    def test_reset_decrements_blocked_count(self, tmp_path: Path):
-        """Given a blocked ticket, when resetting, then blocked_count is decremented."""
+    @pytest.mark.parametrize("initial_count,expected_count", [(2, 1), (1, 0)])
+    def test_reset_decrements_blocked_count(self, tmp_path: Path, initial_count: int, expected_count: int):
+        """Given a blocked ticket, when resetting, then blocked_count is decremented correctly."""
         from commands.ticket_reset import reset_ticket
         from core.state import load_workflow_state
+
+        tickets = [
+            {
+                "id": "TASK-001",
+                "title": "Blocked ticket to reset",
+                "status": "blocked",
+                "dependencies": [],
+                "attempts": 2,
+                "block_reason": "Error",
+            }
+        ]
+
+        # Add another blocked ticket if testing count 2→1
+        if initial_count == 2:
+            tickets.append({
+                "id": "TASK-002",
+                "title": "Another blocked ticket",
+                "status": "blocked",
+                "dependencies": [],
+                "attempts": 1,
+                "block_reason": "Another error",
+            })
 
         state = {
             "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
-            "tickets": [
-                {
-                    "id": "TASK-001",
-                    "title": "Blocked ticket",
-                    "status": "blocked",
-                    "dependencies": [],
-                    "attempts": 2,
-                    "block_reason": "Error",
-                },
-                {
-                    "id": "TASK-002",
-                    "title": "Another blocked ticket",
-                    "status": "blocked",
-                    "dependencies": [],
-                    "attempts": 1,
-                    "block_reason": "Another error",
-                },
-            ],
+            "tickets": tickets,
             "current_ticket": None,
             "completed_count": 0,
-            "blocked_count": 2,
+            "blocked_count": initial_count,
         }
         state_file = tmp_path / "workflow-state.json"
         state_file.write_text(json.dumps(state))
 
+        # Verify initial state has the expected blocked count
+        initial_state = load_workflow_state(state_file)
+        assert initial_state.blocked_count == initial_count
+
         reset_ticket("TASK-001", state_file)
 
         updated_state = load_workflow_state(state_file)
-        assert updated_state.blocked_count == 1
+        assert updated_state.blocked_count == expected_count

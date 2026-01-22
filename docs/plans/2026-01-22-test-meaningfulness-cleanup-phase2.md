@@ -20,7 +20,7 @@ Phase 1 fixed the 11 worst files (< 40% meaningful). Phase 2 addresses the remai
 |-------|--------|-------|
 | Phase 6: Critical (< 50%) | Complete | 4/4 |
 | Phase 7: Medium (50-70%) | Complete | 4/4 |
-| Phase 8: Polish (> 70%) | In Progress | 2/8 |
+| Phase 8: Polish (> 70%) | In Progress | 3/8 |
 
 ---
 
@@ -256,17 +256,18 @@ Phase 1 fixed the 11 worst files (< 40% meaningful). Phase 2 addresses the remai
 
 ### Task 8.3: test_ticket_reset.py
 **File:** `.claude/ralph/tests/unit/test_ticket_reset.py`
-**Current:** 73% meaningful (15 tests)
-**Status:** [ ] Not Started
+**Current:** 73% → ~87% meaningful (15 → 15 tests after cleanup)
+**Status:** [x] Complete
 
 **Issues:**
 - Redundant error case tests
 - Some tests overlap
 
-**Fixes Required:**
-- [ ] Consolidate redundant tests
-- [ ] Ensure each error case tested once
-- [ ] Run tests to verify no regressions
+**Fixes Applied:**
+- [x] Deleted 2 redundant tests, consolidated into parametrized test
+- [x] Strengthened 2 weak tests (removed tautological assertion, added boundary testing)
+- [x] Added blocked_count boundary case (1→0)
+- [x] All 15 tests pass (parametrized)
 
 **Audit Reference:** `docs/research/2026-01-22-test-audit-ticket-reset.md`
 
