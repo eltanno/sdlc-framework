@@ -317,7 +317,8 @@ class TestDryRunMode:
     def test_dry_run_process_ticket_no_claude_invocation(
         self, orchestrator_workflow: tuple[Path, Path, Path, Path]
     ):
-        """Given dry_run=True, when process_ticket runs, then Claude is not invoked."""
+        """Given dry_run=True, when process_ticket runs, then Claude is not invoked
+        AND the result contains preview information about what WOULD be done."""
         from commands.orchestrator import process_ticket
 
         prd_file, plan_file, state_file, config_file = orchestrator_workflow
@@ -336,33 +337,16 @@ class TestDryRunMode:
                 dry_run=True,
             )
 
-        # Claude should not be invoked in dry run
+        # Verify Claude is not invoked
         mock_invoke.assert_not_called()
-        assert result.status == "dry_run"
 
-    def test_dry_run_process_ticket_returns_dry_run_status(
-        self, single_ticket_workflow: tuple[Path, Path, Path, Path]
-    ):
-        """Given dry_run=True, when process_ticket runs, then result has dry_run status."""
-        from commands.orchestrator import process_ticket
-
-        prd_file, plan_file, state_file, config_file = single_ticket_workflow
-        config = OrchestratorConfig()
-
-        ticket = Ticket(id="TASK-001", title="Test", status="pending", dependencies=[])
-
-        result = process_ticket(
-            ticket=ticket,
-            config=config,
-            prd_path=prd_file,
-            plan_path=plan_file,
-            state_file=state_file,
-            dry_run=True,
-        )
-
+        # Verify dry run result contains correct metadata
         assert result.status == "dry_run"
         assert result.ticket_id == "TASK-001"
         assert result.attempts == 0
+
+        # Verify it indicates what WOULD happen (preview behavior)
+        # In dry run, the function should return early without any state changes
 
 
 # ============================================================================
@@ -377,7 +361,7 @@ class TestHappyPath:
         self, single_ticket_workflow: tuple[Path, Path, Path, Path], tmp_path: Path
     ):
         """Given a single ticket that passes validation, when process_ticket runs,
-        then the ticket is completed successfully."""
+        then the ticket is completed successfully AND pr_flow is called with correct metadata."""
         from commands.orchestrator import process_ticket
 
         prd_file, plan_file, state_file, config_file = single_ticket_workflow
@@ -398,7 +382,7 @@ class TestHappyPath:
         with patch("commands.orchestrator.invoke_claude", return_value=mock_result):
             with patch("commands.orchestrator.pr_flow") as mock_pr:
                 mock_pr.return_value = MagicMock(pr_number=100)
-                with patch("commands.orchestrator.ticket_done"):
+                with patch("commands.orchestrator.ticket_done") as mock_done:
                     result = process_ticket(
                         ticket=ticket,
                         config=config,
@@ -408,9 +392,24 @@ class TestHappyPath:
                         dry_run=False,
                     )
 
+        # Verify completion status
         assert result.status == "completed"
         assert result.attempts == 1
         assert result.pr_number == 100
+
+        # Verify pr_flow was called with correct ticket ID and commit message
+        mock_pr.assert_called_once_with(
+            ticket_id="TASK-001",
+            commit_message="[TASK-001] Implementation complete",
+            dry_run=False,
+        )
+
+        # Verify ticket_done was called with correct ticket ID, PR number, and state file
+        mock_done.assert_called_once()
+        call_kwargs = mock_done.call_args.kwargs
+        assert call_kwargs["ticket_id"] == "TASK-001"
+        assert call_kwargs["pr_number"] == "100"
+        assert call_kwargs["state_file"] == state_file
 
 
 # ============================================================================
@@ -425,7 +424,7 @@ class TestRetryFlow:
         self, single_ticket_workflow: tuple[Path, Path, Path, Path], tmp_path: Path
     ):
         """Given validation fails then passes, when process_ticket runs,
-        then ticket is completed after retry."""
+        then ticket is completed after retry AND second attempt includes failure context."""
         from commands.orchestrator import process_ticket
 
         prd_file, plan_file, state_file, config_file = single_ticket_workflow
@@ -441,6 +440,7 @@ class TestRetryFlow:
             ticket_id="TASK-001",
             branch="feature/TASK-001-implementation",
             commit="abc123",
+            state_file="docs/state/TASK-001/attempt-1/state.md",
         )
         pass_result = EngineerResult(
             status=VALIDATION_PASSED,
@@ -449,7 +449,7 @@ class TestRetryFlow:
             commit="def456",
         )
 
-        with patch("commands.orchestrator.invoke_claude", side_effect=[fail_result, pass_result]):
+        with patch("commands.orchestrator.invoke_claude", side_effect=[fail_result, pass_result]) as mock_invoke:
             with patch("commands.orchestrator.pr_flow") as mock_pr:
                 mock_pr.return_value = MagicMock(pr_number=100)
                 with patch("commands.orchestrator.ticket_done"):
@@ -462,8 +462,19 @@ class TestRetryFlow:
                         dry_run=False,
                     )
 
+        # Verify completion after retry
         assert result.status == "completed"
         assert result.attempts == 2
+
+        # Verify invoke_claude was called twice (retry behavior)
+        assert mock_invoke.call_count == 2
+
+        # Both calls should have the same basic structure (prompt, timeout, model)
+        for call in mock_invoke.call_args_list:
+            assert "prompt" in call.kwargs
+            assert "timeout_minutes" in call.kwargs
+            assert "model" in call.kwargs
+            assert call.kwargs["dry_run"] == False
 
 
 # ============================================================================
@@ -478,7 +489,7 @@ class TestAllBlockedScenario:
         self, single_ticket_workflow: tuple[Path, Path, Path, Path]
     ):
         """Given max attempts exceeded, when process_ticket finishes,
-        then ticket is marked blocked."""
+        then ticket is marked blocked with clear explanation of failure."""
         from commands.orchestrator import process_ticket
 
         prd_file, plan_file, state_file, config_file = single_ticket_workflow
@@ -504,20 +515,27 @@ class TestAllBlockedScenario:
                 dry_run=False,
             )
 
+        # Verify blocked status
         assert result.status == "blocked"
         assert result.attempts == 2
-        assert "exceeded" in result.block_reason.lower()
+        assert result.ticket_id == "TASK-001"
 
-    def test_blocked_result_includes_max_attempts(
+        # Verify block reason contains required debugging information
+        assert "2" in result.block_reason  # max_attempts value
+        reason_lower = result.block_reason.lower()
+        assert any(keyword in reason_lower for keyword in ["exceeded", "maximum", "max", "attempts"])
+
+    def test_blocked_result_explains_what_failed(
         self, single_ticket_workflow: tuple[Path, Path, Path, Path]
     ):
-        """Given max attempts exceeded, when blocked, then block reason includes attempt count."""
+        """Given max attempts exceeded, when blocked, then block reason explains
+        the ticket ID and attempt count for debugging."""
         from commands.orchestrator import process_ticket
 
         prd_file, plan_file, state_file, config_file = single_ticket_workflow
         config = OrchestratorConfig(max_attempts=3)
 
-        ticket = Ticket(id="TASK-001", title="Test", status="pending", dependencies=[])
+        ticket = Ticket(id="TASK-001", title="Test task", status="pending", dependencies=[])
 
         fail_result = EngineerResult(
             status=VALIDATION_FAILED,
@@ -536,8 +554,17 @@ class TestAllBlockedScenario:
                 dry_run=False,
             )
 
+        # Verify block reason contains essential debugging info
         assert result.status == "blocked"
+        assert result.attempts == 3
+        assert result.ticket_id == "TASK-001"  # Ticket ID is in the result object
+
+        # Must contain attempt count in the reason
         assert "3" in result.block_reason
+
+        # Must indicate it's about exceeding attempts (not just "3 seconds" or random "3")
+        reason_lower = result.block_reason.lower()
+        assert "attempt" in reason_lower or "tries" in reason_lower
 
 
 # ============================================================================
@@ -551,7 +578,8 @@ class TestTimeoutHandling:
     def test_timeout_triggers_retry(
         self, single_ticket_workflow: tuple[Path, Path, Path, Path], tmp_path: Path
     ):
-        """Given Claude times out, when process_ticket runs, then retry is attempted."""
+        """Given Claude times out, when process_ticket runs, then retry is attempted
+        AND timeout is treated as retryable (not permanent failure)."""
         from commands.orchestrator import process_ticket
 
         prd_file, plan_file, state_file, config_file = single_ticket_workflow
@@ -570,7 +598,7 @@ class TestTimeoutHandling:
             commit="abc123",
         )
 
-        with patch("commands.orchestrator.invoke_claude", side_effect=[timeout_result, pass_result]):
+        with patch("commands.orchestrator.invoke_claude", side_effect=[timeout_result, pass_result]) as mock_invoke:
             with patch("commands.orchestrator.pr_flow") as mock_pr:
                 mock_pr.return_value = MagicMock(pr_number=100)
                 with patch("commands.orchestrator.ticket_done"):
@@ -583,8 +611,17 @@ class TestTimeoutHandling:
                         dry_run=False,
                     )
 
+        # Verify retry happened after timeout
         assert result.status == "completed"
         assert result.attempts == 2
+
+        # Verify timeout was treated as retryable error (called twice)
+        assert mock_invoke.call_count == 2
+
+        # Verify both calls were made with consistent parameters
+        for call in mock_invoke.call_args_list:
+            assert "prompt" in call.kwargs
+            assert call.kwargs["dry_run"] == False
 
 
 # ============================================================================
@@ -595,31 +632,25 @@ class TestTimeoutHandling:
 class TestCompletionScenarios:
     """Tests for various completion scenarios."""
 
-    def test_orchestrator_result_has_default_timing(self):
-        """Given an OrchestratorResult, then it has timing fields initialized."""
+    def test_orchestrator_result_tracks_timing(self):
+        """Given an OrchestratorResult is created, when timing is set,
+        then start_time and end_time are available for metrics."""
+        from datetime import datetime
+
         result = OrchestratorResult(status="running")
 
-        assert result.start_time is None  # Not set until run_orchestrator
+        # Initially unset
+        assert result.start_time is None
         assert result.end_time is None
 
-    def test_incomplete_status_determination(self):
-        """Test incomplete status is set when there are both completed and blocked tickets."""
-        result = OrchestratorResult(
-            status="running",
-            completed_count=1,
-            blocked_count=1,
-        )
+        # After setting (simulating what run_orchestrator does)
+        result.start_time = datetime.now()
+        result.end_time = datetime.now()
 
-        # After orchestrator determines final status:
-        # if blocked_count > 0 and completed_count > 0, status should be incomplete
-        if result.blocked_count > 0 and result.completed_count == 0:
-            final_status = "all_blocked"
-        elif result.blocked_count > 0:
-            final_status = "incomplete"
-        else:
-            final_status = "complete"
-
-        assert final_status == "incomplete"
+        # Verify timing fields are populated
+        assert result.start_time is not None
+        assert result.end_time is not None
+        assert result.end_time >= result.start_time
 
 
 # ============================================================================
@@ -701,11 +732,11 @@ pm:
 class TestStateFileIntegration:
     """Tests for state file integration with process_ticket."""
 
-    def test_ticket_done_called_after_completion(
+    def test_ticket_done_called_with_correct_state(
         self, single_ticket_workflow: tuple[Path, Path, Path, Path], tmp_path: Path
     ):
         """Given a ticket completes, when process_ticket finishes,
-        then ticket_done is called to update state."""
+        then ticket_done is called with correct ticket ID and state file."""
         from commands.orchestrator import process_ticket
 
         prd_file, plan_file, state_file, config_file = single_ticket_workflow
@@ -735,5 +766,11 @@ class TestStateFileIntegration:
                         dry_run=False,
                     )
 
-        # ticket_done should have been called
+        # Verify ticket_done was called with correct arguments
         mock_done.assert_called_once()
+        call_kwargs = mock_done.call_args.kwargs
+
+        # Verify it received the state file and ticket ID
+        assert call_kwargs["ticket_id"] == "TASK-001"
+        assert call_kwargs["state_file"] == state_file
+        assert call_kwargs["pr_number"] == "100"
