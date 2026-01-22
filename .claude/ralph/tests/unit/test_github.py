@@ -41,25 +41,31 @@ class TestListIssues:
         """Given state filter, when listing issues, then filter is applied."""
         from core import github
 
-        mock_gh.return_value.stdout = "[]"
+        mock_gh.return_value.stdout = '[{"number": 1, "title": "Closed Issue", "state": "closed"}]'
 
-        github.list_issues(state="closed")
+        result = github.list_issues(state="closed")
 
-        call_args = mock_gh.call_args[0][0]
-        assert "--state" in call_args
-        assert "closed" in call_args
+        # Verify correct result
+        assert len(result) == 1
+        assert result[0]["state"] == "closed"
+        # Verify command structure
+        args, _ = mock_gh.call_args
+        assert args[0] == ["gh", "issue", "list", "--json", "number,title,state,labels,body", "--state", "closed"]
 
     def test_list_issues_filters_by_label(self, mock_gh: MagicMock):
         """Given label filter, when listing issues, then filter is applied."""
         from core import github
 
-        mock_gh.return_value.stdout = "[]"
+        mock_gh.return_value.stdout = '[{"number": 2, "title": "Bug report"}]'
 
-        github.list_issues(label="bug")
+        result = github.list_issues(label="bug")
 
-        call_args = mock_gh.call_args[0][0]
-        assert "--label" in call_args
-        assert "bug" in call_args
+        # Verify correct result
+        assert len(result) == 1
+        assert result[0]["number"] == 2
+        # Verify command structure
+        args, _ = mock_gh.call_args
+        assert args[0] == ["gh", "issue", "list", "--json", "number,title,state,labels,body", "--label", "bug"]
 
 
 class TestGetIssue:
@@ -88,7 +94,15 @@ class TestGetIssue:
         with pytest.raises(github.GitHubError) as exc_info:
             github.get_issue(999)
 
-        assert "999" in str(exc_info.value) or "not found" in str(exc_info.value).lower()
+        error = exc_info.value
+        # Verify error contains issue number
+        assert "999" in str(error)
+        # Verify stderr is included
+        assert error.stderr == "Could not resolve to an Issue with the number of 999"
+        # Verify command is included
+        assert error.command is not None
+        assert "issue" in error.command
+        assert "view" in error.command
 
 
 class TestCloseIssue:
@@ -103,11 +117,9 @@ class TestCloseIssue:
 
         github.close_issue(42)
 
-        call_args = mock_gh.call_args[0][0]
-        assert "gh" in call_args
-        assert "issue" in call_args
-        assert "close" in call_args
-        assert "42" in call_args
+        # Verify exact command structure
+        args, _ = mock_gh.call_args
+        assert args[0] == ["gh", "issue", "close", "42"]
 
 
 class TestFindIssueByTitle:
@@ -157,15 +169,17 @@ class TestCreatePullRequest:
 
         mock_gh.return_value.stdout = "https://github.com/owner/repo/pull/42"
 
-        github.create_pull_request(
+        result = github.create_pull_request(
             title="Test PR",
             body="Body",
             base="develop",
         )
 
-        call_args = mock_gh.call_args[0][0]
-        assert "--base" in call_args
-        assert "develop" in call_args
+        # Verify result
+        assert result.number == 42
+        # Verify exact command structure
+        args, _ = mock_gh.call_args
+        assert args[0] == ["gh", "pr", "create", "--title", "Test PR", "--body", "Body", "--base", "develop"]
 
     def test_create_pull_request_extracts_pr_number_from_url(self, mock_gh: MagicMock):
         """Given PR URL returned, when parsing, then number is extracted correctly."""
@@ -187,7 +201,15 @@ class TestCreatePullRequest:
         with pytest.raises(github.GitHubError) as exc_info:
             github.create_pull_request("Title", "Body")
 
-        assert "commits" in str(exc_info.value).lower() or "nothing" in str(exc_info.value).lower()
+        error = exc_info.value
+        # Verify error message mentions commits issue
+        assert "commits" in str(error).lower()
+        # Verify stderr is included
+        assert error.stderr == "pull request create failed: GraphQL: No commits between main and feature"
+        # Verify command is included
+        assert error.command is not None
+        assert "pr" in error.command
+        assert "create" in error.command
 
 
 class TestGetPullRequest:
@@ -242,11 +264,9 @@ class TestMergePullRequest:
 
         github.merge_pull_request(123, strategy="squash")
 
-        call_args = mock_gh.call_args[0][0]
-        assert "gh" in call_args
-        assert "pr" in call_args
-        assert "merge" in call_args
-        assert "--squash" in call_args
+        # Verify exact command structure
+        args, _ = mock_gh.call_args
+        assert args[0] == ["gh", "pr", "merge", "123", "--squash"]
 
     def test_merge_pull_request_with_merge_commit(self, mock_gh: MagicMock):
         """Given mergeable PR, when merging with merge commit, then PR is merged."""
@@ -256,8 +276,9 @@ class TestMergePullRequest:
 
         github.merge_pull_request(123, strategy="merge")
 
-        call_args = mock_gh.call_args[0][0]
-        assert "--merge" in call_args
+        # Verify exact command structure
+        args, _ = mock_gh.call_args
+        assert args[0] == ["gh", "pr", "merge", "123", "--merge"]
 
     def test_merge_pull_request_with_rebase(self, mock_gh: MagicMock):
         """Given mergeable PR, when merging with rebase, then PR is merged."""
@@ -267,8 +288,9 @@ class TestMergePullRequest:
 
         github.merge_pull_request(123, strategy="rebase")
 
-        call_args = mock_gh.call_args[0][0]
-        assert "--rebase" in call_args
+        # Verify exact command structure
+        args, _ = mock_gh.call_args
+        assert args[0] == ["gh", "pr", "merge", "123", "--rebase"]
 
     def test_merge_pull_request_raises_on_conflict(self, mock_gh: MagicMock):
         """Given PR has conflicts, when merging, then error is raised."""
@@ -280,7 +302,15 @@ class TestMergePullRequest:
         with pytest.raises(github.GitHubError) as exc_info:
             github.merge_pull_request(123)
 
-        assert "mergeable" in str(exc_info.value).lower() or "conflict" in str(exc_info.value).lower()
+        error = exc_info.value
+        # Verify error message mentions merge conflict
+        assert "mergeable" in str(error).lower()
+        # Verify stderr is included
+        assert error.stderr == "Pull request #123 is not mergeable: the merge commit cannot be cleanly created"
+        # Verify command is included
+        assert error.command is not None
+        assert "pr" in error.command
+        assert "merge" in error.command
 
 
 class TestFindMergedPr:
@@ -315,11 +345,18 @@ class TestDeleteRemoteBranch:
         from core import github
 
         mock_gh.return_value.returncode = 0
+        mock_gh.return_value.stdout = ""
+        mock_gh.return_value.stderr = ""
 
-        # This may use git push or gh api - either way test the function works
         github.delete_remote_branch("feature/old-branch")
 
-        # Just verify no exception is raised
+        # Verify command was called
+        mock_gh.assert_called_once()
+        # Verify command structure (should be git push --delete or gh api)
+        args, _ = mock_gh.call_args
+        cmd = args[0]
+        # Function uses git push origin --delete
+        assert cmd == ["git", "push", "origin", "--delete", "feature/old-branch"]
 
 
 class TestGitHubError:
@@ -355,7 +392,12 @@ class TestGitHubNotAuthenticated:
         with pytest.raises(github.GitHubAuthError) as exc_info:
             github.list_issues()
 
-        assert "auth" in str(exc_info.value).lower() or "token" in str(exc_info.value).lower()
+        error = exc_info.value
+        # Verify error message mentions authentication
+        error_str = str(error).lower()
+        assert "auth" in error_str or "token" in error_str
+        # Verify stderr is included
+        assert error.stderr == "gh: To use GitHub CLI in a GitHub Actions workflow, set the GH_TOKEN environment variable"
 
 
 class TestGitHubCLINotInstalled:

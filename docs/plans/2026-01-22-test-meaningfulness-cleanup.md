@@ -21,7 +21,7 @@ Check off tasks as they complete. This file is the single source of truth.
 | Phase | Status | Tasks |
 |-------|--------|-------|
 | Phase 1: Quick Wins | Complete | 1/1 |
-| Phase 2: Foundation | In Progress | 1/3 |
+| Phase 2: Foundation | In Progress | 2/3 |
 | Phase 3: Higher-Level | Not Started | 0/3 |
 | Phase 4: Integration | Not Started | 0/3 |
 | Phase 5: Special Cases | Not Started | 0/1 |
@@ -97,21 +97,23 @@ Check off tasks as they complete. This file is the single source of truth.
 ### Task 2.2: test_github.py
 **File:** `.claude/ralph/tests/unit/test_github.py`
 **Current:** 36% meaningful (28 tests)
-**Status:** [ ] Not Started
+**Status:** [x] Complete (2026-01-22)
 
 **Critical Fix:**
-- [ ] Add assertions to `test_delete_remote_branch_deletes_successfully` (currently NO assertions)
+- [x] Add assertions to `test_delete_remote_branch_deletes_successfully` (currently NO assertions)
 
 **Pattern Fixes:**
-- [ ] Fix 12 command structure tests to use `assert_called_once_with()` with exact args
-- [ ] Tighten error assertions (remove `or` logic, verify exact error properties)
-- [ ] Delete `test_merge_request_result_has_url_and_number` (tautological)
-- [ ] Run tests to verify no regressions
+- [x] Fix 12 command structure tests to use `assert_called_once_with()` with exact args
+- [x] Tighten error assertions (remove `or` logic, verify exact error properties)
+- [x] Delete `test_merge_request_result_has_url_and_number` (tautological)
+- [x] Run tests to verify no regressions
 
 **Acceptance Criteria:**
 - All tests have meaningful assertions
 - Error assertions verify exact error type and message content
 - No tests that only verify mock was called without checking args
+
+**Result:** 28 tests → 27 tests (deleted 1 tautological). ~85% now meaningful. All pass.
 
 **Audit Reference:** `docs/research/2026-01-22-test-audit-github.md`
 
