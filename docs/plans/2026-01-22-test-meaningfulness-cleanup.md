@@ -23,7 +23,7 @@ Check off tasks as they complete. This file is the single source of truth.
 | Phase 1: Quick Wins | Complete | 1/1 |
 | Phase 2: Foundation | Complete | 3/3 |
 | Phase 3: Higher-Level | Complete | 3/3 |
-| Phase 4: Integration | Not Started | 0/3 |
+| Phase 4: Integration | In Progress | 1/3 |
 | Phase 5: Special Cases | Not Started | 0/1 |
 
 ---
@@ -239,25 +239,27 @@ Check off tasks as they complete. This file is the single source of truth.
 ### Task 4.1: test_orchestrator.py (unit)
 **File:** `.claude/ralph/tests/unit/test_orchestrator.py`
 **Current:** 35% meaningful (20 tests)
-**Status:** [ ] Not Started
+**Status:** [x] Complete (2026-01-22)
 
 **Tests to Delete/Rewrite:**
-- [ ] `test_process_ticket_success_first_attempt` → verify data passed
-- [ ] `test_run_orchestrator_passes_pm_tool_to_*` (3 tests) → test data flow
-- [ ] `test_run_orchestrator_all_complete` → verify completion logic
+- [x] `test_process_ticket_success_first_attempt` → verify data passed
+- [x] `test_run_orchestrator_passes_pm_tool_to_*` (3 tests) → test data flow
+- [x] `test_run_orchestrator_all_complete` → verify completion logic
 
 **Tests to Strengthen:**
-- [ ] `test_parse_validation_passed` → test malformed format handling
-- [ ] `test_process_ticket_blocked_after_max_attempts` → verify mark_blocked args
-- [ ] `test_run_orchestrator_handles_pm_error_gracefully` → specific assertion
+- [x] `test_parse_validation_passed` → test malformed format handling
+- [x] `test_process_ticket_blocked_after_max_attempts` → verify mark_blocked args
+- [x] `test_run_orchestrator_handles_pm_error_gracefully` → specific assertion
 
 **Implementation-Coupled to Fix:**
-- [ ] `test_create_pm_tool_*` tests → verify tool works, not just isinstance
-- [ ] Run tests to verify no regressions
+- [x] `test_create_pm_tool_*` tests → verify tool works, not just isinstance
+- [x] Run tests to verify no regressions
 
 **Acceptance Criteria:**
 - Tests verify data flow and outcomes
 - No tests that just check isinstance or mock called
+
+**Result:** 20 tests → 30 tests (added malformed input tests). All pass.
 
 **Audit Reference:** `docs/research/2026-01-22-test-audit-orchestrator-unit.md`
 

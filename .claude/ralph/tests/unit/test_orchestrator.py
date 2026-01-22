@@ -199,8 +199,32 @@ Commit: abc1234
         assert result.branch == "feature/TASK-001-implementation"
         assert result.commit == "abc1234"
 
+    def test_parse_validation_passed_malformed_ticket_id(self) -> None:
+        """Test parsing handles missing ticket ID gracefully."""
+        output = """
+VALIDATION_PASSED
+
+Branch: feature/TASK-001-implementation
+Commit: abc1234
+"""
+        result = parse_engineer_result(output)
+
+        assert result.status == VALIDATION_PASSED
+        assert result.ticket_id is None  # Missing ticket ID
+        assert result.branch == "feature/TASK-001-implementation"
+
+    def test_parse_validation_passed_missing_all_fields(self) -> None:
+        """Test parsing handles output with marker but no metadata."""
+        output = "VALIDATION_PASSED"
+        result = parse_engineer_result(output)
+
+        assert result.status == VALIDATION_PASSED
+        assert result.ticket_id is None
+        assert result.branch is None
+        assert result.commit is None
+
     def test_parse_validation_failed(self) -> None:
-        """Test parsing VALIDATION_FAILED result."""
+        """Test parsing VALIDATION_FAILED result extracts correct state file path."""
         output = """
 VALIDATION_FAILED
 
@@ -213,7 +237,9 @@ State file: docs/state/TASK-002/attempt-1/engineer-state.md
 
         assert result.status == VALIDATION_FAILED
         assert result.ticket_id == "TASK-002"
-        assert result.state_file is not None
+        assert result.state_file == "docs/state/TASK-002/attempt-1/engineer-state.md"
+        assert result.branch == "feature/TASK-002-implementation"
+        assert result.commit == "def5678"
 
     def test_parse_no_marker(self) -> None:
         """Test parsing output with no validation marker."""
@@ -238,6 +264,9 @@ State file: docs/state/TASK-002/attempt-1/engineer-state.md
 class TestProcessTicket:
     """Tests for process_ticket function."""
 
+    @patch("commands.orchestrator.write_summary")
+    @patch("commands.orchestrator.ensure_state_dir")
+    @patch("commands.orchestrator.get_latest_attempt")
     @patch("commands.orchestrator.invoke_claude")
     @patch("commands.orchestrator.pr_flow")
     @patch("commands.orchestrator.ticket_done")
@@ -246,9 +275,12 @@ class TestProcessTicket:
         mock_ticket_done: MagicMock,
         mock_pr_flow: MagicMock,
         mock_invoke: MagicMock,
+        mock_get_latest_attempt: MagicMock,
+        mock_ensure_state_dir: MagicMock,
+        mock_write_summary: MagicMock,
         tmp_path: Path,
     ) -> None:
-        """Test processing a ticket that succeeds on first attempt."""
+        """Test processing a ticket that succeeds on first attempt verifies data flow."""
         # Setup
         ticket = Ticket(
             id="TASK-001",
@@ -264,6 +296,8 @@ class TestProcessTicket:
             engineer_timeout=30,
             validator_timeout=10,
         )
+
+        mock_get_latest_attempt.return_value = 0  # First attempt
 
         # Mock Claude returning VALIDATION_PASSED
         mock_invoke.return_value = EngineerResult(
@@ -288,23 +322,60 @@ class TestProcessTicket:
             plan_path=tmp_path / "plan.md",
             state_file=tmp_path / "state.json",
             dry_run=False,
+            pm_tool=None,
+            ralph_label="ralph-test",
         )
 
-        # Assert
+        # Verify result contains correct data
         assert result.ticket_id == "TASK-001"
         assert result.status == "completed"
         assert result.attempts == 1
         assert result.pr_number == 42
-        mock_invoke.assert_called_once()
-        mock_pr_flow.assert_called_once()
 
+        # Verify Claude was invoked with correct parameters
+        mock_invoke.assert_called_once()
+        invoke_call = mock_invoke.call_args
+        assert invoke_call[1]["timeout_minutes"] == 30
+        assert invoke_call[1]["dry_run"] is False
+
+        # Verify pr_flow was called with correct ticket_id
+        mock_pr_flow.assert_called_once()
+        pr_call = mock_pr_flow.call_args
+        assert pr_call[1]["ticket_id"] == "TASK-001"
+        assert pr_call[1]["dry_run"] is False
+
+        # Verify ticket_done was called with correct data
+        mock_ticket_done.assert_called_once()
+        ticket_done_call = mock_ticket_done.call_args
+        assert ticket_done_call[1]["ticket_id"] == "TASK-001"
+        assert ticket_done_call[1]["pr_number"] == "42"
+        assert ticket_done_call[1]["state_file"] == tmp_path / "state.json"
+        assert ticket_done_call[1]["pm_tool"] is None
+        assert ticket_done_call[1]["ralph_label"] == "ralph-test"
+
+        # Verify summary was written with correct data
+        mock_write_summary.assert_called_once()
+        summary_call = mock_write_summary.call_args
+        assert summary_call[1]["ticket_id"] == "TASK-001"
+        assert summary_call[1]["status"] == "SUCCESS"
+        assert summary_call[1]["total_attempts"] == 1
+        assert summary_call[1]["pr_number"] == "42"
+
+    @patch("commands.orchestrator.write_summary")
+    @patch("commands.orchestrator.mark_blocked")
+    @patch("commands.orchestrator.ensure_state_dir")
+    @patch("commands.orchestrator.get_latest_attempt")
     @patch("commands.orchestrator.invoke_claude")
     def test_process_ticket_blocked_after_max_attempts(
         self,
         mock_invoke: MagicMock,
+        mock_get_latest_attempt: MagicMock,
+        mock_ensure_state_dir: MagicMock,
+        mock_mark_blocked: MagicMock,
+        mock_write_summary: MagicMock,
         tmp_path: Path,
     ) -> None:
-        """Test processing a ticket that fails all attempts."""
+        """Test processing a ticket that fails all attempts calls mark_blocked with correct data."""
         ticket = Ticket(
             id="TASK-001",
             title="Test Ticket",
@@ -320,7 +391,9 @@ class TestProcessTicket:
             validator_timeout=10,
         )
 
-        # Mock Claude returning VALIDATION_FAILED
+        mock_get_latest_attempt.return_value = 0  # First attempt
+
+        # Mock Claude returning VALIDATION_FAILED both times
         mock_invoke.return_value = EngineerResult(
             status=VALIDATION_FAILED,
             ticket_id="TASK-001",
@@ -329,6 +402,9 @@ class TestProcessTicket:
             state_file=str(tmp_path / "docs/state/TASK-001/attempt-1/engineer-state.md"),
         )
 
+        # Create a mock PM tool to trigger mark_blocked call
+        mock_pm_tool = MagicMock()
+
         result = process_ticket(
             ticket=ticket,
             config=config,
@@ -336,11 +412,30 @@ class TestProcessTicket:
             plan_path=tmp_path / "plan.md",
             state_file=tmp_path / "state.json",
             dry_run=False,
+            pm_tool=mock_pm_tool,
+            ralph_label="ralph-test",
         )
 
         assert result.status == "blocked"
         assert result.attempts == 2
         assert mock_invoke.call_count == 2
+
+        # Verify mark_blocked was called with correct data
+        mock_mark_blocked.assert_called_once()
+        mark_blocked_call = mock_mark_blocked.call_args
+        assert mark_blocked_call[1]["ticket_id"] == "TASK-001"
+        assert mark_blocked_call[1]["state_file"] == tmp_path / "state.json"
+        assert mark_blocked_call[1]["pm_tool"] == mock_pm_tool
+        assert mark_blocked_call[1]["ralph_label"] == "ralph-test"
+        reason_lower = mark_blocked_call[1]["reason"].lower()
+        assert "exceeded" in reason_lower and "attempts" in reason_lower
+
+        # Verify summary was written with BLOCKED status
+        mock_write_summary.assert_called_once()
+        summary_call = mock_write_summary.call_args
+        assert summary_call[1]["ticket_id"] == "TASK-001"
+        assert summary_call[1]["status"] == "BLOCKED"
+        assert summary_call[1]["total_attempts"] == 2
 
     @patch("commands.orchestrator.invoke_claude")
     def test_process_ticket_dry_run(
@@ -391,6 +486,7 @@ class TestRunOrchestrator:
         with patch.dict(os.environ, {"RALPH_LABEL": "ralph-test"}):
             yield
 
+    @patch("commands.orchestrator.create_pm_tool")
     @patch("commands.orchestrator.process_ticket")
     @patch("commands.orchestrator.get_next_ticket")
     @patch("commands.orchestrator.load_workflow_state")
@@ -399,10 +495,11 @@ class TestRunOrchestrator:
         mock_load_state: MagicMock,
         mock_get_next: MagicMock,
         mock_process: MagicMock,
+        mock_create_pm: MagicMock,
         tmp_path: Path,
         sample_config_yaml: Path,
     ) -> None:
-        """Test running orchestrator when all tickets complete."""
+        """Test running orchestrator when all tickets complete verifies completion logic."""
         # Setup mock state
         mock_state = WorkflowState(
             version="1.0",
@@ -414,9 +511,12 @@ class TestRunOrchestrator:
         )
         mock_load_state.return_value = mock_state
 
+        mock_pm_tool = MagicMock()
+        mock_create_pm.return_value = mock_pm_tool
+
         # First call returns ticket, second call returns no more tickets
         mock_get_next.side_effect = [
-            MagicMock(ticket=mock_state.tickets[0], has_more=True),
+            MagicMock(ticket=mock_state.tickets[0], has_more=True, status="ready"),
             MagicMock(ticket=None, has_more=False, status="complete"),
         ]
 
@@ -436,9 +536,21 @@ class TestRunOrchestrator:
             dry_run=False,
         )
 
+        # Verify completion logic
         assert result.completed_count == 1
         assert result.blocked_count == 0
         assert result.status == "complete"
+        assert len(result.ticket_results) == 1
+        assert result.ticket_results[0].ticket_id == "TASK-001"
+        assert result.ticket_results[0].status == "completed"
+
+        # Verify process_ticket was called with correct config and paths
+        mock_process.assert_called_once()
+        process_call = mock_process.call_args
+        assert process_call[1]["ticket"].id == "TASK-001"
+        assert process_call[1]["prd_path"] == tmp_path / "prd.md"
+        assert process_call[1]["plan_path"] == tmp_path / "plan.md"
+        assert process_call[1]["pm_tool"] == mock_pm_tool
 
     @patch("commands.orchestrator.get_next_ticket")
     @patch("commands.orchestrator.load_workflow_state")
@@ -475,16 +587,18 @@ class TestRunOrchestrator:
         assert result.status == "complete"
         assert result.completed_count == 0
 
+    @patch("commands.orchestrator.create_pm_tool")
     @patch("commands.orchestrator.get_next_ticket")
     @patch("commands.orchestrator.load_workflow_state")
     def test_run_orchestrator_waiting_on_dependencies(
         self,
         mock_load_state: MagicMock,
         mock_get_next: MagicMock,
+        mock_create_pm: MagicMock,
         tmp_path: Path,
         sample_config_yaml: Path,
     ) -> None:
-        """Test orchestrator handling dependency waiting."""
+        """Test orchestrator retries when waiting on dependencies then completes."""
         mock_state = WorkflowState(
             version="1.0",
             prd_path=tmp_path / "prd.md",
@@ -499,6 +613,9 @@ class TestRunOrchestrator:
             ],
         )
         mock_load_state.return_value = mock_state
+
+        mock_pm_tool = MagicMock()
+        mock_create_pm.return_value = mock_pm_tool
 
         # Return waiting_on_dependencies status multiple times then complete
         mock_get_next.side_effect = [
@@ -516,7 +633,13 @@ class TestRunOrchestrator:
             max_wait_retries=3,
         )
 
+        # Verify orchestrator completes without processing tickets
         assert result.status == "complete"
+        assert result.completed_count == 0
+        assert result.blocked_count == 0
+
+        # Verify get_next_ticket was called 3 times (retries)
+        assert mock_get_next.call_count == 3
 
 
 # ============================================================================
@@ -609,23 +732,39 @@ git:
         return config_file
 
     def test_create_pm_tool_github(self, github_config_yaml: Path) -> None:
-        """Test that GitHubPM is created when pm.tool: github."""
+        """Test that GitHub PM tool is created and has correct interface."""
         from commands.orchestrator import create_pm_tool
         from core.pm import GitHubPM
 
         pm_tool = create_pm_tool(github_config_yaml)
 
+        # Verify tool exists and has required interface (PMTool protocol)
         assert pm_tool is not None
+        assert hasattr(pm_tool, 'get_ticket_status')
+        assert hasattr(pm_tool, 'claim_ticket')
+        assert hasattr(pm_tool, 'close_ticket')
+        assert hasattr(pm_tool, 'add_blocked_label')
+        assert hasattr(pm_tool, 'remove_label')
+
+        # Verify it's a GitHub PM implementation
         assert isinstance(pm_tool, GitHubPM)
 
     def test_create_pm_tool_local(self, local_config_yaml: Path) -> None:
-        """Test that LocalPM is created when pm.tool: none."""
+        """Test that local PM tool is created and has correct interface."""
         from commands.orchestrator import create_pm_tool
         from core.pm import LocalPM
 
         pm_tool = create_pm_tool(local_config_yaml)
 
+        # Verify tool exists and has required interface (PMTool protocol)
         assert pm_tool is not None
+        assert hasattr(pm_tool, 'get_ticket_status')
+        assert hasattr(pm_tool, 'claim_ticket')
+        assert hasattr(pm_tool, 'close_ticket')
+        assert hasattr(pm_tool, 'add_blocked_label')
+        assert hasattr(pm_tool, 'remove_label')
+
+        # Verify it's a LocalPM implementation
         assert isinstance(pm_tool, LocalPM)
 
     def test_create_pm_tool_missing_config_raises_error(self, tmp_path: Path) -> None:
@@ -673,19 +812,27 @@ git:
         "ASANA_PROJECT_ID": "project-456",
     })
     def test_create_pm_tool_asana(self, asana_config_yaml: Path) -> None:
-        """Test that AsanaPM is created when pm.tool: asana.
+        """Test that Asana PM tool is created and has correct interface.
 
         SDLC-0059: Orchestrator factory integration.
         FR-10 Acceptance Criteria:
         - Given pm.tool: asana in config.yaml, when create_pm_tool() is called,
-          then AsanaPM instance is returned.
+          then a PM tool with asana interface is returned.
         """
         from commands.orchestrator import create_pm_tool
         from core.asana_pm import AsanaPM
 
         pm_tool = create_pm_tool(asana_config_yaml)
 
+        # Verify tool exists and has required interface (PMTool protocol)
         assert pm_tool is not None
+        assert hasattr(pm_tool, 'get_ticket_status')
+        assert hasattr(pm_tool, 'claim_ticket')
+        assert hasattr(pm_tool, 'close_ticket')
+        assert hasattr(pm_tool, 'add_blocked_label')
+        assert hasattr(pm_tool, 'remove_label')
+
+        # Verify it's an AsanaPM implementation
         assert isinstance(pm_tool, AsanaPM)
 
     @patch.dict(os.environ, {}, clear=True)
@@ -726,7 +873,7 @@ git:
         tmp_path: Path,
         github_config_yaml: Path,
     ) -> None:
-        """Test that run_orchestrator passes PM tool to get_next_ticket."""
+        """Test that run_orchestrator passes correct PM tool and ralph_label to get_next_ticket."""
         # Setup
         mock_pm_tool = MagicMock()
         mock_create_pm.return_value = mock_pm_tool
@@ -755,11 +902,11 @@ git:
                 dry_run=False,
             )
 
-        # Verify get_next_ticket was called with pm_tool and ralph_label
+        # Verify get_next_ticket was called with correct pm_tool and ralph_label
         mock_get_next.assert_called()
         call_kwargs = mock_get_next.call_args[1]
-        assert call_kwargs.get("pm_tool") == mock_pm_tool
-        assert call_kwargs.get("ralph_label") == "ralph-1"
+        assert call_kwargs["pm_tool"] == mock_pm_tool
+        assert call_kwargs["ralph_label"] == "ralph-1"
 
     @patch("commands.orchestrator.write_summary")
     @patch("commands.orchestrator.ensure_state_dir")
@@ -784,9 +931,10 @@ git:
         tmp_path: Path,
         github_config_yaml: Path,
     ) -> None:
-        """Test that ticket_done is called with PM tool after successful validation."""
+        """Test that ticket_done receives correct PM tool, ticket_id, and PR data."""
         # Setup
         mock_pm_tool = MagicMock()
+        mock_pm_tool.get_pm_type.return_value = "github"
         mock_create_pm.return_value = mock_pm_tool
         mock_get_latest_attempt.return_value = 0  # First attempt
 
@@ -830,11 +978,14 @@ git:
                 dry_run=False,
             )
 
-        # Verify ticket_done was called with pm_tool and ralph_label
-        mock_ticket_done.assert_called()
+        # Verify ticket_done was called with correct complete data set
+        mock_ticket_done.assert_called_once()
         call_kwargs = mock_ticket_done.call_args[1]
-        assert call_kwargs.get("pm_tool") == mock_pm_tool
-        assert call_kwargs.get("ralph_label") == "ralph-1"
+        assert call_kwargs["ticket_id"] == "TASK-001"
+        assert call_kwargs["pr_number"] == "42"
+        assert call_kwargs["state_file"] == tmp_path / "state.json"
+        assert call_kwargs["pm_tool"] == mock_pm_tool
+        assert call_kwargs["ralph_label"] == "ralph-1"
 
     @patch("commands.orchestrator.write_summary")
     @patch("commands.orchestrator.ensure_state_dir")
@@ -857,9 +1008,10 @@ git:
         tmp_path: Path,
         github_config_yaml: Path,
     ) -> None:
-        """Test that mark_blocked is called with PM tool after max attempts exceeded."""
+        """Test that mark_blocked receives correct ticket_id, PM tool, and reason."""
         # Setup
         mock_pm_tool = MagicMock()
+        mock_pm_tool.get_pm_type.return_value = "github"
         mock_create_pm.return_value = mock_pm_tool
         mock_get_latest_attempt.return_value = 0  # First attempt
 
@@ -915,11 +1067,16 @@ git:
                 dry_run=False,
             )
 
-        # Verify mark_blocked was called with pm_tool and ralph_label
-        mock_mark_blocked.assert_called()
+        # Verify mark_blocked was called with complete data
+        mock_mark_blocked.assert_called_once()
         call_kwargs = mock_mark_blocked.call_args[1]
-        assert call_kwargs.get("pm_tool") == mock_pm_tool
-        assert call_kwargs.get("ralph_label") == "ralph-1"
+        assert call_kwargs["ticket_id"] == "TASK-001"
+        assert call_kwargs["state_file"] == tmp_path / "state.json"
+        assert call_kwargs["pm_tool"] == mock_pm_tool
+        assert call_kwargs["ralph_label"] == "ralph-1"
+        # Verify reason explains the failure
+        reason_lower = call_kwargs["reason"].lower()
+        assert "exceeded" in reason_lower and "attempts" in reason_lower
 
     @patch("commands.orchestrator.get_next_ticket")
     @patch("commands.orchestrator.load_workflow_state")
@@ -932,7 +1089,7 @@ git:
         tmp_path: Path,
         github_config_yaml: Path,
     ) -> None:
-        """Test that PMError from get_next_ticket is handled gracefully."""
+        """Test that PM error stops orchestrator gracefully with error status."""
 
         # Setup
         mock_pm_tool = MagicMock()
@@ -963,9 +1120,13 @@ git:
                 dry_run=False,
             )
 
-        # Should complete without crashing
+        # Verify orchestrator stops gracefully with specific error status
         assert result is not None
-        assert result.status in ("complete", "error")
+        # When PM tool errors, orchestrator should stop (status is "complete" because loop exits)
+        # But no tickets should be processed
+        assert result.status == "complete"
+        assert result.completed_count == 0
+        assert result.blocked_count == 0
 
     @patch("commands.orchestrator.get_next_ticket")
     @patch("commands.orchestrator.load_workflow_state")
@@ -978,7 +1139,7 @@ git:
         tmp_path: Path,
         github_config_yaml: Path,
     ) -> None:
-        """Test that RALPH_LABEL is read from environment."""
+        """Test that RALPH_LABEL environment variable is correctly passed to get_next_ticket."""
         # Setup
         mock_pm_tool = MagicMock()
         mock_create_pm.return_value = mock_pm_tool
@@ -997,7 +1158,7 @@ git:
             status="complete",
         )
 
-        # Test with different RALPH_LABEL values
+        # Test with specific RALPH_LABEL value
         with patch.dict(os.environ, {"RALPH_LABEL": "ralph-42"}):
             run_orchestrator(
                 prd_path=tmp_path / "prd.md",
@@ -1007,9 +1168,23 @@ git:
                 dry_run=False,
             )
 
-        # Verify ralph_label was passed correctly
+        # Verify exact ralph_label value was passed
         call_kwargs = mock_get_next.call_args[1]
-        assert call_kwargs.get("ralph_label") == "ralph-42"
+        assert call_kwargs["ralph_label"] == "ralph-42"
+
+        # Test with different label to verify it's not hardcoded
+        mock_get_next.reset_mock()
+        with patch.dict(os.environ, {"RALPH_LABEL": "ralph-99"}):
+            run_orchestrator(
+                prd_path=tmp_path / "prd.md",
+                plan_path=tmp_path / "plan.md",
+                state_file=tmp_path / "state.json",
+                config_file=github_config_yaml,
+                dry_run=False,
+            )
+
+        call_kwargs = mock_get_next.call_args[1]
+        assert call_kwargs["ralph_label"] == "ralph-99"
 
     @patch("commands.orchestrator.load_config")
     @patch("commands.orchestrator.create_pm_tool")
@@ -1044,17 +1219,8 @@ git:
 
         assert "RALPH_LABEL is required" in str(exc_info.value)
 
-    @patch("commands.orchestrator.get_next_ticket")
-    @patch("commands.orchestrator.load_workflow_state")
-    @patch("commands.orchestrator.create_pm_tool")
-    def test_run_orchestrator_reads_use_assignee_from_config(
-        self,
-        mock_create_pm: MagicMock,
-        mock_load_state: MagicMock,
-        mock_get_next: MagicMock,
-        tmp_path: Path,
-    ) -> None:
-        """Test that use_assignee setting is read from config."""
+    def test_load_config_reads_use_assignee(self, tmp_path: Path) -> None:
+        """Test that use_assignee setting is correctly loaded from config."""
         from commands.orchestrator import load_config
 
         # Create config with use_assignee: true
@@ -1072,6 +1238,23 @@ git:
 """)
 
         config = load_config(config_file)
-        # The use_assignee should be available in the orchestrator config
-        # This tests that the config is loaded correctly
-        assert hasattr(config, 'use_assignee') or True  # Will fail until implemented
+
+        # Verify use_assignee is loaded correctly
+        assert hasattr(config, 'use_assignee')
+        assert config.use_assignee is True
+
+        # Test with use_assignee: false
+        config_file.write_text("""
+ralph:
+  max_attempts: 3
+  use_assignee: false
+pm:
+  tool: github
+dev:
+  test_command: "npm test"
+git:
+  default_branch: main
+""")
+
+        config = load_config(config_file)
+        assert config.use_assignee is False
