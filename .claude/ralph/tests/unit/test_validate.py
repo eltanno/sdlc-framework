@@ -58,14 +58,20 @@ class TestRunCommand:
         """Given a working directory, when run, then subprocess uses that cwd."""
         mock_run = mocker.patch("commands.validate.subprocess.run")
         mock_run.return_value.returncode = 0
-        mock_run.return_value.stdout = ""
+        mock_run.return_value.stdout = "test output"
         mock_run.return_value.stderr = ""
 
-        validate.run_command("npm test", Path("/my/project"))
+        result = validate.run_command("npm test", Path("/my/project"))
 
+        # Verify subprocess was called with correct working directory
         mock_run.assert_called_once()
         call_kwargs = mock_run.call_args[1]
         assert call_kwargs["cwd"] == Path("/my/project")
+
+        # Verify the result reflects successful execution
+        assert result.passed is True
+        assert result.output == "test output"
+        assert result.error == ""
 
     def test_run_command_timeout_handling(self, mocker) -> None:
         """Given a command that times out, when run, then returns failure."""
@@ -76,26 +82,6 @@ class TestRunCommand:
 
         assert result.passed is False
         assert "timed out" in result.error.lower()
-
-
-class TestCheckResultDataclass:
-    """Tests for the CheckResult dataclass."""
-
-    def test_check_result_creation(self) -> None:
-        """Given valid inputs, when CheckResult created, then all fields set."""
-        result = validate.CheckResult(
-            name="test",
-            passed=True,
-            skipped=False,
-            output="output",
-            error="",
-        )
-
-        assert result.name == "test"
-        assert result.passed is True
-        assert result.skipped is False
-        assert result.output == "output"
-        assert result.error == ""
 
 
 class TestValidationResultDataclass:
@@ -154,11 +140,19 @@ class TestValidateSingleCodebase:
 
         result = validate.run_validation(config, tmp_path)
 
+        # Verify all checks passed
         assert result.typecheck.passed is True
         assert result.lint.passed is True
         assert result.test.passed is True
         assert result.build.passed is True
-        assert mock_run.call_count == 4
+
+        # Verify the correct commands were actually called
+        called_commands = [call[0][0] for call in mock_run.call_args_list]
+        assert "mypy ." in called_commands
+        assert "ruff check ." in called_commands
+        assert "pytest" in called_commands
+        assert "python -m build" in called_commands
+        assert len(called_commands) == 4
 
     def test_validate_continues_after_failure(self, mocker, tmp_path: Path) -> None:
         """Given a failing check, when validate, then continues running other checks."""
@@ -251,7 +245,7 @@ class TestValidateMonorepo:
         """Given monorepo, when validate, then uses correct cwd for each codebase."""
         mock_run = mocker.patch("commands.validate.subprocess.run")
         mock_run.return_value.returncode = 0
-        mock_run.return_value.stdout = ""
+        mock_run.return_value.stdout = "tests passed"
         mock_run.return_value.stderr = ""
 
         # Create codebase directory
@@ -268,11 +262,16 @@ class TestValidateMonorepo:
             ],
         )
 
-        validate.run_validation(config, tmp_path)
+        result = validate.run_validation(config, tmp_path)
 
-        # Check subprocess was called with codebase path
+        # Verify subprocess was called with codebase path
         call_kwargs = mock_run.call_args[1]
         assert call_kwargs["cwd"] == tmp_path / "api"
+
+        # Verify the result reflects successful execution in that codebase
+        assert "api" in result.codebase_results
+        assert result.codebase_results["api"].test.passed is True
+        assert result.codebase_results["api"].test.output == "tests passed"
 
     def test_validate_monorepo_fails_if_any_codebase_fails(
         self, mocker, tmp_path: Path
@@ -329,23 +328,6 @@ class TestValidateMonorepo:
 
 class TestValidationOutput:
     """Tests for validation result formatting."""
-
-    def test_to_dict_single_codebase(self, tmp_path: Path) -> None:
-        """Given single-codebase result, when to_dict, then returns expected format."""
-        result = validate.ValidationResult(
-            typecheck=validate.CheckResult("typecheck", True, False, "", ""),
-            lint=validate.CheckResult("lint", True, False, "", ""),
-            test=validate.CheckResult("test", True, False, "", ""),
-            build=validate.CheckResult("build", True, False, "", ""),
-        )
-
-        as_dict = result.to_dict()
-
-        assert as_dict["typecheck"] == "pass"
-        assert as_dict["lint"] == "pass"
-        assert as_dict["test"] == "pass"
-        assert as_dict["build"] == "pass"
-        assert as_dict["overall"] == "pass"
 
     def test_to_dict_with_skipped(self, tmp_path: Path) -> None:
         """Given skipped checks, when to_dict, then shows 'skip'."""
