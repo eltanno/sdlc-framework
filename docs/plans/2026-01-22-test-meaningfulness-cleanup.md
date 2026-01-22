@@ -22,7 +22,7 @@ Check off tasks as they complete. This file is the single source of truth.
 |-------|--------|-------|
 | Phase 1: Quick Wins | Complete | 1/1 |
 | Phase 2: Foundation | Complete | 3/3 |
-| Phase 3: Higher-Level | In Progress | 2/3 |
+| Phase 3: Higher-Level | Complete | 3/3 |
 | Phase 4: Integration | Not Started | 0/3 |
 | Phase 5: Special Cases | Not Started | 0/1 |
 
@@ -210,23 +210,25 @@ Check off tasks as they complete. This file is the single source of truth.
 ### Task 3.3: test_status.py
 **File:** `.claude/ralph/tests/unit/test_status.py`
 **Current:** 40% meaningful (15 tests)
-**Status:** [ ] Not Started
+**Status:** [x] Complete (2026-01-22)
 
 **Tests to Rewrite (TestFormatStatusDisplay class):**
-- [ ] `test_displays_no_workflow_message_when_not_initialized` → verify PRIMARY message
-- [ ] `test_displays_ticket_counts_when_active` → use regex: `r"completed:\s+5"`
-- [ ] `test_highlights_current_ticket_when_in_progress` → verify prominence
-- [ ] `test_displays_blocked_tickets_with_reasons` → verify association
+- [x] `test_displays_no_workflow_message_when_not_initialized` → verify PRIMARY message
+- [x] `test_displays_ticket_counts_when_active` → use regex: `r"completed:\s+5"`
+- [x] `test_highlights_current_ticket_when_in_progress` → verify prominence
+- [x] `test_displays_blocked_tickets_with_reasons` → verify association
 
 **Tests to Fix:**
-- [ ] `test_to_dict_returns_serializable_dict` → verify ALL fields
-- [ ] `test_handles_invalid_json_state_file` → assert ALL fields safe
-- [ ] `test_handles_blocked_ticket_without_reason` → truthy check, not exact string
-- [ ] Run tests to verify no regressions
+- [x] `test_to_dict_returns_serializable_dict` → verify ALL fields
+- [x] `test_handles_invalid_json_state_file` → assert ALL fields safe
+- [x] `test_handles_blocked_ticket_without_reason` → truthy check, not exact string
+- [x] Run tests to verify no regressions
 
 **Acceptance Criteria:**
 - Format tests verify structure with regex, not substring existence
 - No hardcoded implementation strings
+
+**Result:** 15 tests → 16 tests. All use regex for structure verification. All pass.
 
 **Audit Reference:** `docs/research/2026-01-22-test-audit-status.md`
 

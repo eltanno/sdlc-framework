@@ -8,6 +8,7 @@ Tests for:
 """
 
 import json
+import re
 from pathlib import Path
 
 
@@ -171,7 +172,11 @@ class TestFormatStatusDisplay:
 
         output = format_status_display(result)
 
-        assert "No active workflow" in output or "not initialized" in output.lower()
+        # Should show a clear "no workflow" message as the primary content
+        # Verify it's not just buried in output but is the main message
+        assert re.search(r"(no\s+(active\s+)?workflow|not\s+initialized)", output, re.IGNORECASE)
+        # Should NOT show ticket counts or other workflow details
+        assert not re.search(r"(completed|in.progress|pending|blocked):\s*\d+", output, re.IGNORECASE)
 
     def test_displays_ticket_counts_when_active(self) -> None:
         """Given an active workflow, should display ticket counts."""
@@ -192,10 +197,14 @@ class TestFormatStatusDisplay:
 
         output = format_status_display(result)
 
-        assert "5" in output  # completed
-        assert "1" in output  # in_progress
-        assert "10" in output  # pending
-        assert "2" in output  # blocked
+        # Verify each status label is associated with correct count
+        # Use regex to ensure counts appear with their labels, not just anywhere
+        assert re.search(r"completed[:\s]+5", output, re.IGNORECASE)
+        assert re.search(r"in.progress[:\s]+1", output, re.IGNORECASE)
+        assert re.search(r"pending[:\s]+10", output, re.IGNORECASE)
+        assert re.search(r"blocked[:\s]+2", output, re.IGNORECASE)
+        # Verify total is displayed (as "Progress: X/18" or similar)
+        assert re.search(r"(total|progress|all)[:\s]+\d+/18", output, re.IGNORECASE)
 
     def test_highlights_current_ticket_when_in_progress(self) -> None:
         """Given a ticket is in progress, should highlight it."""
@@ -215,8 +224,17 @@ class TestFormatStatusDisplay:
 
         output = format_status_display(result)
 
-        assert "TASK-042" in output
-        assert "Implement authentication" in output or "Current" in output
+        # Verify current ticket section exists
+        # Format is "Current Ticket:" header followed by ID/Title/Attempts
+        assert re.search(r"current\s+ticket", output, re.IGNORECASE)
+        # Verify title and ID are in current ticket section (extract section between headers)
+        current_section = re.search(r"current\s+ticket:.*?(ticket\s+status:|={5,}|$)", output, re.IGNORECASE | re.DOTALL)
+        assert current_section is not None
+        section_text = current_section.group(0)
+        assert "TASK-042" in section_text
+        assert "Implement authentication" in section_text
+        # Verify attempts is displayed in the same section
+        assert re.search(r"attempts?[:\s]+1", section_text, re.IGNORECASE)
 
     def test_displays_blocked_tickets_with_reasons(self) -> None:
         """Given blocked tickets exist, should display them with reasons."""
@@ -235,10 +253,15 @@ class TestFormatStatusDisplay:
 
         output = format_status_display(result)
 
-        assert "TASK-001" in output
-        assert "Waiting for API access" in output
-        assert "TASK-002" in output
-        assert "Dependency not resolved" in output
+        # Verify each blocked ticket is associated with its reason
+        # TASK-001 should be near its reason (same line or adjacent lines)
+        assert re.search(r"TASK-001[^\n]{0,100}Waiting for API access", output, re.IGNORECASE) or \
+               re.search(r"Waiting for API access[^\n]{0,100}TASK-001", output, re.IGNORECASE)
+        # TASK-002 should be near its reason
+        assert re.search(r"TASK-002[^\n]{0,100}Dependency not resolved", output, re.IGNORECASE) or \
+               re.search(r"Dependency not resolved[^\n]{0,100}TASK-002", output, re.IGNORECASE)
+        # Verify there's a blocked tickets section
+        assert re.search(r"blocked", output, re.IGNORECASE)
 
 
 class TestStatusResultDataclass:
@@ -262,10 +285,19 @@ class TestStatusResultDataclass:
         json_str = json.dumps(data)
         assert json_str is not None
 
-        # Should contain expected keys
+        # Verify ALL fields are present and correctly serialized
         assert data["initialized"] is True
         assert data["tickets_by_status"]["completed"] == 2
+        assert data["tickets_by_status"]["pending"] == 3
         assert data["total_tickets"] == 5
+        assert data["current_ticket"]["id"] == "TASK-001"
+        assert data["current_ticket"]["title"] == "Test"
+        assert data["current_ticket"]["attempts"] == 1
+        assert len(data["blocked_tickets"]) == 1
+        assert data["blocked_tickets"][0]["id"] == "TASK-002"
+        assert data["blocked_tickets"][0]["block_reason"] == "Blocked"
+        assert data["prd_path"] == "docs/prds/test.md"
+        assert data["plan_path"] == "docs/plans/test.md"
 
 
 class TestEdgeCases:
@@ -278,7 +310,14 @@ class TestEdgeCases:
 
         result = get_workflow_status(state_file)
 
+        # Verify ALL fields are safe defaults, not just initialized
         assert result.initialized is False
+        assert result.tickets_by_status == {}
+        assert result.total_tickets == 0
+        assert result.current_ticket is None
+        assert result.blocked_tickets == []
+        assert result.prd_path is None
+        assert result.plan_path is None
 
     def test_handles_empty_tickets_list(self, tmp_path: Path) -> None:
         """Given workflow with no tickets, should return empty counts."""
@@ -318,7 +357,7 @@ class TestEdgeCases:
         assert result.plan_path is None
 
     def test_handles_blocked_ticket_without_reason(self, tmp_path: Path) -> None:
-        """Given blocked ticket without reason, should use default message."""
+        """Given blocked ticket without reason, should provide a default."""
         state_data = {
             "version": "2.0",
             "prd_path": "docs/prds/test.md",
@@ -336,7 +375,9 @@ class TestEdgeCases:
         result = get_workflow_status(state_file)
 
         assert len(result.blocked_tickets) == 1
-        assert result.blocked_tickets[0]["block_reason"] == "No reason provided"
+        # Verify a default reason is provided (don't hardcode exact string)
+        assert result.blocked_tickets[0]["block_reason"]  # truthy check
+        assert len(result.blocked_tickets[0]["block_reason"]) > 0
 
     def test_handles_current_ticket_not_in_tickets_list(self, tmp_path: Path) -> None:
         """Given current_ticket ID that doesn't match any ticket, should return None."""
