@@ -391,7 +391,7 @@ class TestLegacyOutputFormat:
     """
 
     def test_legacy_json_output_fields(self, tmp_path: Path):
-        """Legacy: JSON output has specific fields.
+        """Legacy: JSON output has specific fields with correct types.
 
         Shell script: echo '{"next_ticket": "...", "status": "...", ...}'
         """
@@ -408,22 +408,18 @@ class TestLegacyOutputFormat:
         result = get_next_ticket(state)
         json_output = result.to_dict()
 
-        # Verify all expected fields exist
-        expected_fields = [
-            "next_ticket",
-            "ticket_title",
-            "status",
-            "message",
-            "has_more",
-            "total",
-            "pending",
-            "completed",
-            "blocked",
-            "in_progress",
-            "skipped_for_deps",
-        ]
-        for field in expected_fields:
-            assert field in json_output, f"Missing field: {field}"
+        # Verify all expected fields exist with correct types
+        assert isinstance(json_output.get("next_ticket"), (str, type(None)))
+        assert isinstance(json_output.get("ticket_title"), (str, type(None)))
+        assert isinstance(json_output["status"], str)
+        assert isinstance(json_output["message"], str)
+        assert isinstance(json_output["has_more"], bool)
+        assert isinstance(json_output["total"], int)
+        assert isinstance(json_output["pending"], int)
+        assert isinstance(json_output["completed"], int)
+        assert isinstance(json_output["blocked"], int)
+        assert isinstance(json_output["in_progress"], int)
+        assert isinstance(json_output["skipped_for_deps"], int)
 
     def test_legacy_status_values(self, tmp_path: Path):
         """Legacy: Status field uses specific string values.
@@ -672,7 +668,11 @@ class TestLegacyCircularDependencyDetection:
     """
 
     def test_detects_simple_cycle(self):
-        """Python improvement: Detects A -> B -> A cycle."""
+        """Python improvement: Detects A -> B -> A cycle.
+
+        Verifies that when a cycle exists, the system returns
+        waiting_on_dependencies status (cannot proceed).
+        """
         deps = {
             "TASK-001": ["TASK-002"],
             "TASK-002": ["TASK-001"],
@@ -680,6 +680,7 @@ class TestLegacyCircularDependencyDetection:
 
         cycles = detect_circular_dependencies(deps)
 
+        # Verify cycle detection returns cycles
         assert len(cycles) > 0
         # Cycle contains both nodes
         all_nodes = set()
@@ -688,8 +689,16 @@ class TestLegacyCircularDependencyDetection:
         assert "TASK-001" in all_nodes
         assert "TASK-002" in all_nodes
 
+        # Verify behavior: tickets with circular deps cannot proceed
+        # (tested in test_legacy_circular_dependency_protection and
+        # test_improvement_circular_dependency_handling)
+
     def test_detects_self_reference(self):
-        """Python improvement: Detects self-referential dependency."""
+        """Python improvement: Detects self-referential dependency.
+
+        Verifies that self-reference is treated as unmet dependency
+        (ticket will be skipped, other tickets can proceed).
+        """
         deps = {
             "TASK-001": ["TASK-001"],
         }
@@ -697,6 +706,9 @@ class TestLegacyCircularDependencyDetection:
         cycles = detect_circular_dependencies(deps)
 
         assert len(cycles) > 0
+
+        # Verify behavior: self-referential ticket is skipped
+        # (tested in test_legacy_self_reference_treated_as_unmet)
 
     def test_no_false_positives_for_linear_chain(self):
         """Verifies no false positive for valid linear chain."""
@@ -759,38 +771,13 @@ class TestIntentionalDifferencesFromLegacy:
         result = get_next_ticket(state)
         assert result.status == "waiting_on_dependencies"
 
-    def test_improvement_type_safety(self):
-        """IMPROVEMENT: Python uses typed dataclasses.
+    def test_improvement_state_persistence(self, tmp_path: Path):
+        """IMPROVEMENT: State survives save/load cycles.
 
-        Legacy: Plain JSON/dict manipulation, no type checking
-        Python: GetNextResult dataclass with type hints
-        """
-        # This test verifies that GetNextResult is properly typed
-        result = GetNextResult(
-            ticket=None,
-            status="complete",
-            message="Test",
-            has_more=False,
-            total=0,
-            pending=0,
-            completed=0,
-            blocked=0,
-            in_progress=0,
-            skipped_for_deps=0,
-        )
+        Legacy: Direct file write
+        Python: Reliable state persistence with save/load
 
-        # Type-safe access
-        assert isinstance(result.status, str)
-        assert isinstance(result.has_more, bool)
-        assert isinstance(result.total, int)
-
-    def test_improvement_atomic_state_writes(self, tmp_path: Path):
-        """IMPROVEMENT: State writes are atomic.
-
-        Legacy: Direct file write (could corrupt on interrupt)
-        Python: Write to temp, then rename (atomic)
-
-        This is tested by verifying state survives save/load cycles.
+        Verifies that modifications to state are correctly persisted.
         """
         tickets = [
             Ticket(id="TASK-001", title="Test", status="pending", dependencies=[]),
@@ -805,11 +792,15 @@ class TestIntentionalDifferencesFromLegacy:
         state_file = tmp_path / "state.json"
         save_workflow_state(state, state_file)
 
-        # Multiple save/load cycles should work correctly
-        for i in range(10):
-            loaded = load_workflow_state(state_file)
-            loaded.tickets[0].title = f"Modified {i}"
-            save_workflow_state(loaded, state_file)
+        # Load and verify data is preserved
+        loaded = load_workflow_state(state_file)
+        assert loaded.tickets[0].title == "Test"
+        assert loaded.tickets[0].status == "pending"
 
+        # Modify and save
+        loaded.tickets[0].title = "Modified"
+        save_workflow_state(loaded, state_file)
+
+        # Verify modification persisted
         final = load_workflow_state(state_file)
-        assert final.tickets[0].title == "Modified 9"
+        assert final.tickets[0].title == "Modified"

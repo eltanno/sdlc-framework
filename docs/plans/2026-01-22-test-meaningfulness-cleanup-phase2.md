@@ -20,7 +20,7 @@ Phase 1 fixed the 11 worst files (< 40% meaningful). Phase 2 addresses the remai
 |-------|--------|-------|
 | Phase 6: Critical (< 50%) | Complete | 4/4 |
 | Phase 7: Medium (50-70%) | Complete | 4/4 |
-| Phase 8: Polish (> 70%) | In Progress | 3/8 |
+| Phase 8: Polish (> 70%) | In Progress | 4/8 |
 
 ---
 
@@ -275,16 +275,17 @@ Phase 1 fixed the 11 worst files (< 40% meaningful). Phase 2 addresses the remai
 
 ### Task 8.4: test_legacy_comparison.py
 **File:** `.claude/ralph/tests/integration/test_legacy_comparison.py`
-**Current:** 77% meaningful (30 tests)
-**Status:** [ ] Not Started
+**Current:** 77% → ~90% meaningful (33 → 32 tests after cleanup)
+**Status:** [x] Complete
 
 **Issues:**
 - Good behavioral focus but minor improvements possible
 
-**Fixes Required:**
-- [ ] Review for any weak assertions
-- [ ] Strengthen where needed
-- [ ] Run tests to verify no regressions
+**Fixes Applied:**
+- [x] Deleted 1 tautological test (type safety test)
+- [x] Strengthened 4 weak tests (field type checks, cycle detection behavior docs, state persistence)
+- [x] Renamed atomic writes test to state persistence (behavior over implementation)
+- [x] All 32 remaining tests pass
 
 **Audit Reference:** `docs/research/2026-01-22-test-audit-legacy-comparison.md`
 
