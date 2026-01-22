@@ -71,10 +71,36 @@ describe('ComponentName', () => {
 });
 ```
 
+### Test Quality (Critical)
+
+**The test must answer: "If this code was subtly broken, would this test catch it?"**
+
+```python
+# BAD - passes even if function returns wrong data
+def test_get_user():
+    result = get_user(42)
+    assert result is not None  # Would pass for ANY non-None value
+
+# GOOD - verifies correct behavior
+def test_get_user():
+    result = get_user(42)
+    assert result["id"] == 42
+    assert result["email"] == "expected@example.com"
+```
+
+**Rules:**
+1. **Assert specific values**, not just existence (`== "completed"` not `is not None`)
+2. **Verify outcomes**, not implementation (`assert user.is_active` not `mock.assert_called()`)
+3. **Include negative assertions** (`assert blocked_ticket not in result`)
+4. **Don't test Python** - dataclass assignment, enum existence, etc. already work
+
+If your test would pass with a hardcoded return value, it's not testing behavior.
+
 ### Coverage Requirements
 - Minimum: 80% line coverage
 - Target: 90%+ for critical paths
 - All public functions must have tests
+- **Coverage without meaningful assertions is theater**
 
 ---
 
