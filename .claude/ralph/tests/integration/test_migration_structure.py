@@ -1,7 +1,22 @@
-"""Tests for legacy shell script backup structure.
+"""Migration structure verification tests.
 
-This module verifies that the shell scripts have been properly moved to
-the ralph-legacy directory for rollback purposes.
+IMPORTANT: These tests verify file system structure, NOT functionality.
+
+What these tests DO:
+- Verify files were moved to correct locations during migration
+- Check that files exist and have correct permissions
+- Ensure basic file structure is in place for rollback
+
+What these tests DO NOT do:
+- Verify that the Python implementation works correctly
+- Test that legacy scripts still function after being moved
+- Verify that the shell wrapper actually invokes Python
+- Confirm functional equivalence between shell and Python versions
+- Test that any of the code actually executes successfully
+
+These are structure smoke tests, not integration tests. They would all pass
+even if the Python implementation is completely broken or the legacy scripts
+are corrupted. For actual functional testing, see test_commands.py.
 """
 
 from pathlib import Path
@@ -9,8 +24,12 @@ from pathlib import Path
 import pytest
 
 
-class TestLegacyBackupStructure:
-    """Tests verifying the legacy backup structure is correct."""
+class TestMigrationStructure:
+    """Tests verifying the migration file structure is correct.
+
+    NOTE: These tests only verify files exist in the right places with
+    correct permissions. They do NOT test that the code works.
+    """
 
     @pytest.fixture
     def project_root(self) -> Path:

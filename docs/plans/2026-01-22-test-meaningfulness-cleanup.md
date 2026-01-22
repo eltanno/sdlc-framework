@@ -24,7 +24,7 @@ Check off tasks as they complete. This file is the single source of truth.
 | Phase 2: Foundation | Complete | 3/3 |
 | Phase 3: Higher-Level | Complete | 3/3 |
 | Phase 4: Integration | Complete | 3/3 |
-| Phase 5: Special Cases | Not Started | 0/1 |
+| Phase 5: Special Cases | Complete | 1/1 |
 
 ---
 
@@ -313,18 +313,20 @@ Note: 8 tests fail due to pre-existing v2 state bugs (outside scope). 13/21 pass
 ### Task 5.1: test_legacy_backup.py
 **File:** `.claude/ralph/tests/integration/test_legacy_backup.py`
 **Current:** 0% meaningful (10 tests)
-**Status:** [ ] Not Started
+**Status:** [x] Complete (2026-01-22)
 
 **Recommended Approach:** Rename + document (these are structure verification tests, not functionality tests)
 
-- [ ] Rename file to `test_migration_structure.py`
-- [ ] Add docstring explaining these are structure verification tests
-- [ ] Consider adding `test_migration_functionality.py` with behavioral tests (optional)
-- [ ] Run tests to verify no regressions
+- [x] Rename file to `test_migration_structure.py`
+- [x] Add docstring explaining these are structure verification tests
+- [ ] Consider adding `test_migration_functionality.py` with behavioral tests (optional - skipped)
+- [x] Run tests to verify no regressions
 
 **Acceptance Criteria:**
 - Test file name reflects what it actually tests
 - Clear documentation of test purpose
+
+**Result:** Renamed to test_migration_structure.py. Added clear docstring. 9 tests pass.
 
 **Audit Reference:** `docs/research/2026-01-22-test-audit-legacy-backup.md`
 
