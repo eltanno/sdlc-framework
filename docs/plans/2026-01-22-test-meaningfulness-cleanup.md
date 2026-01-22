@@ -21,7 +21,7 @@ Check off tasks as they complete. This file is the single source of truth.
 | Phase | Status | Tasks |
 |-------|--------|-------|
 | Phase 1: Quick Wins | Complete | 1/1 |
-| Phase 2: Foundation | Not Started | 0/3 |
+| Phase 2: Foundation | In Progress | 1/3 |
 | Phase 3: Higher-Level | Not Started | 0/3 |
 | Phase 4: Integration | Not Started | 0/3 |
 | Phase 5: Special Cases | Not Started | 0/1 |
@@ -71,22 +71,24 @@ Check off tasks as they complete. This file is the single source of truth.
 ### Task 2.1: test_git.py
 **File:** `.claude/ralph/tests/unit/test_git.py`
 **Current:** 29% meaningful (38 tests - WORST)
-**Status:** [ ] Not Started
+**Status:** [x] Complete (2026-01-22)
 
 **Pattern Fixes:**
-- [ ] Replace all `"git" in args` checks with `assert_called_once_with(["git", ...], ...)`
-- [ ] Fix `test_commit_returns_commit_sha` - test SHA parsing from realistic git output
-- [ ] Fix `test_create_branch_*` (7 tests) - verify exact command structure
-- [ ] Fix `test_has_remote_branch_*` - test actual ls-remote parsing
-- [ ] Fix `test_merge_*` - test merge behavior, not flag presence
-- [ ] Add parametrized tests for SHA parsing with multiple git output formats
-- [ ] Add status parsing test covering all git status flags (M, A, D, R, C, etc.)
-- [ ] Run tests to verify no regressions
+- [x] Replace all `"git" in args` checks with `assert_called_once_with(["git", ...], ...)`
+- [x] Fix `test_commit_returns_commit_sha` - test SHA parsing from realistic git output
+- [x] Fix `test_create_branch_*` (7 tests) - verify exact command structure
+- [x] Fix `test_has_remote_branch_*` - test actual ls-remote parsing
+- [x] Fix `test_merge_*` - test merge behavior, not flag presence
+- [x] Add parametrized tests for SHA parsing with multiple git output formats
+- [x] Add status parsing test covering all git status flags (M, A, D, R, C, etc.)
+- [x] Run tests to verify no regressions
 
 **Acceptance Criteria:**
 - No `assert "git" in args` patterns remain
 - All command tests use exact argument verification
 - Tests would fail if commands were malformed
+
+**Result:** 38 tests → 50 tests (added parametrized coverage). All pass.
 
 **Audit Reference:** `docs/research/2026-01-22-test-audit-git.md`
 

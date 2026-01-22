@@ -16,25 +16,28 @@ import pytest
 class TestGetCurrentBranch:
     """Tests for get_current_branch function."""
 
-    def test_get_current_branch_returns_branch_name(self, mock_git: MagicMock):
-        """Given on a branch, when getting current branch, then branch name is returned."""
+    @pytest.mark.parametrize(
+        "git_output,expected",
+        [
+            ("main\n", "main"),
+            ("  feature/test  \n", "feature/test"),
+            ("very-long-branch-name-123\n", "very-long-branch-name-123"),
+            ("main", "main"),  # No newline
+            ("  release/v1.0.0\n", "release/v1.0.0"),
+            ("hotfix/urgent-fix  ", "hotfix/urgent-fix"),
+        ],
+    )
+    def test_get_current_branch_parses_correctly(
+        self, mock_git: MagicMock, git_output: str, expected: str
+    ):
+        """Given various git outputs, when getting current branch, then branch name is correctly parsed and stripped."""
         from core import git
 
-        mock_git.return_value.stdout = "main\n"
+        mock_git.return_value.stdout = git_output
 
         result = git.get_current_branch()
 
-        assert result == "main"
-
-    def test_get_current_branch_strips_whitespace(self, mock_git: MagicMock):
-        """Given branch name with whitespace, when getting current branch, then whitespace is stripped."""
-        from core import git
-
-        mock_git.return_value.stdout = "  feature/test  \n"
-
-        result = git.get_current_branch()
-
-        assert result == "feature/test"
+        assert result == expected
 
 
 class TestCreateBranch:
@@ -49,11 +52,11 @@ class TestCreateBranch:
 
         git.create_branch("feature/TASK-001-implementation")
 
-        call_args = mock_git.call_args[0][0]
-        assert "git" in call_args
-        assert "checkout" in call_args
-        assert "-b" in call_args
-        assert "feature/TASK-001-implementation" in call_args
+        mock_git.assert_called_once_with(
+            ["git", "checkout", "-b", "feature/TASK-001-implementation"],
+            capture_output=True,
+            text=True
+        )
 
     def test_create_branch_raises_on_failure(self, mock_git: MagicMock):
         """Given branch creation fails, when creating branch, then error is raised."""
@@ -79,20 +82,26 @@ class TestCheckoutBranch:
 
         git.checkout_branch("main")
 
-        call_args = mock_git.call_args[0][0]
-        assert "git" in call_args
-        assert "checkout" in call_args
-        assert "main" in call_args
+        mock_git.assert_called_once_with(
+            ["git", "checkout", "main"],
+            capture_output=True,
+            text=True
+        )
 
     def test_checkout_branch_raises_on_not_found(self, mock_git: MagicMock):
-        """Given branch doesn't exist, when checking out, then error is raised."""
+        """Given branch doesn't exist, when checking out, then error is raised with helpful message."""
         from core import git
 
         mock_git.return_value.returncode = 1
         mock_git.return_value.stderr = "error: pathspec 'nonexistent' did not match any file(s)"
 
-        with pytest.raises(git.GitError):
+        with pytest.raises(git.GitError) as exc_info:
             git.checkout_branch("nonexistent")
+
+        error_msg = str(exc_info.value)
+        assert "nonexistent" in error_msg
+        assert "git checkout nonexistent" in error_msg
+        assert "did not match" in error_msg
 
 
 class TestBranchExists:
@@ -172,6 +181,32 @@ class TestGetStatus:
         assert "new_file.py" in result.staged
         assert "modified.py" in result.staged
 
+    def test_get_status_comprehensive_parsing(self, mock_git: MagicMock):
+        """Given realistic git status output with multiple file types, when getting status, then all types are correctly parsed."""
+        from core import git
+
+        mock_git.return_value.stdout = (
+            " M modified_unstaged.py\n"
+            "M  modified_staged.py\n"
+            "MM both_modified.py\n"
+            "A  new_file.py\n"
+            "D  deleted_staged.py\n"
+            " D deleted_unstaged.py\n"
+            "?? untracked.py\n"
+        )
+
+        result = git.get_status()
+
+        assert not result.is_clean
+        assert "modified_unstaged.py" in result.modified
+        assert "deleted_unstaged.py" in result.modified
+        assert "modified_staged.py" in result.staged
+        assert "both_modified.py" in result.staged
+        assert "both_modified.py" in result.modified
+        assert "new_file.py" in result.staged
+        assert "deleted_staged.py" in result.staged
+        assert "untracked.py" in result.untracked
+
 
 class TestIsDirty:
     """Tests for is_dirty function."""
@@ -208,11 +243,11 @@ class TestStageFiles:
 
         git.stage_files(["file1.py", "file2.py"])
 
-        call_args = mock_git.call_args[0][0]
-        assert "git" in call_args
-        assert "add" in call_args
-        assert "file1.py" in call_args
-        assert "file2.py" in call_args
+        mock_git.assert_called_once_with(
+            ["git", "add", "file1.py", "file2.py"],
+            capture_output=True,
+            text=True
+        )
 
     def test_stage_all_stages_everything(self, mock_git: MagicMock):
         """Given stage_all flag, when staging, then all files are staged."""
@@ -222,10 +257,11 @@ class TestStageFiles:
 
         git.stage_all()
 
-        call_args = mock_git.call_args[0][0]
-        assert "git" in call_args
-        assert "add" in call_args
-        assert "-A" in call_args
+        mock_git.assert_called_once_with(
+            ["git", "add", "-A"],
+            capture_output=True,
+            text=True
+        )
 
 
 class TestCommit:
@@ -240,22 +276,36 @@ class TestCommit:
 
         result = git.commit("Test commit message")
 
-        call_args = mock_git.call_args[0][0]
-        assert "git" in call_args
-        assert "commit" in call_args
-        assert "-m" in call_args
+        mock_git.assert_called_once_with(
+            ["git", "commit", "-m", "Test commit message"],
+            capture_output=True,
+            text=True
+        )
 
-    def test_commit_returns_commit_sha(self, mock_git: MagicMock):
-        """Given successful commit, when committing, then SHA is returned."""
+    @pytest.mark.parametrize(
+        "git_output,expected_sha",
+        [
+            ("[main abc1234] message", "abc1234"),
+            ("[feature/long-name 1234567] msg", "1234567"),
+            ("[main abc1234def] msg\n 1 file changed", "abc1234def"),
+            ("[develop f3e2a1b] Initial commit", "f3e2a1b"),
+            # If no match, return full output
+            ("No match here", "No match here"),
+            ("Weird output without SHA", "Weird output without SHA"),
+        ],
+    )
+    def test_commit_returns_commit_sha(
+        self, mock_git: MagicMock, git_output: str, expected_sha: str
+    ):
+        """Given successful commit with various output formats, when committing, then SHA is correctly parsed."""
         from core import git
 
         mock_git.return_value.returncode = 0
-        mock_git.return_value.stdout = "[main abc1234] Test commit\n 1 file changed"
+        mock_git.return_value.stdout = git_output
 
         result = git.commit("Test message")
 
-        assert result is not None
-        # Should return some commit info
+        assert result == expected_sha
 
     def test_commit_raises_on_nothing_to_commit(self, mock_git: MagicMock):
         """Given nothing staged, when committing, then error is raised."""
@@ -278,8 +328,11 @@ class TestCommit:
 
         git.commit("Test message", author="Test User <test@example.com>")
 
-        call_args = mock_git.call_args[0][0]
-        assert "--author" in call_args
+        mock_git.assert_called_once_with(
+            ["git", "commit", "-m", "Test message", "--author", "Test User <test@example.com>"],
+            capture_output=True,
+            text=True
+        )
 
 
 class TestPush:
@@ -293,9 +346,11 @@ class TestPush:
 
         git.push()
 
-        call_args = mock_git.call_args[0][0]
-        assert "git" in call_args
-        assert "push" in call_args
+        mock_git.assert_called_once_with(
+            ["git", "push"],
+            capture_output=True,
+            text=True
+        )
 
     def test_push_with_set_upstream(self, mock_git: MagicMock):
         """Given set_upstream flag, when pushing, then -u flag is used."""
@@ -305,8 +360,8 @@ class TestPush:
 
         git.push(set_upstream=True)
 
-        call_args = mock_git.call_args[0][0]
-        assert "-u" in call_args or "--set-upstream" in call_args
+        args, kwargs = mock_git.call_args
+        assert args[0] == ["git", "push", "-u"]
 
     def test_push_to_specific_remote(self, mock_git: MagicMock):
         """Given remote and branch, when pushing, then they are used."""
@@ -316,9 +371,11 @@ class TestPush:
 
         git.push(remote="origin", branch="feature/test")
 
-        call_args = mock_git.call_args[0][0]
-        assert "origin" in call_args
-        assert "feature/test" in call_args
+        mock_git.assert_called_once_with(
+            ["git", "push", "origin", "feature/test"],
+            capture_output=True,
+            text=True
+        )
 
     def test_push_raises_on_conflict(self, mock_git: MagicMock):
         """Given remote has changes, when pushing, then error is raised."""
@@ -344,23 +401,36 @@ class TestPull:
 
         git.pull()
 
-        call_args = mock_git.call_args[0][0]
-        assert "git" in call_args
-        assert "pull" in call_args
+        mock_git.assert_called_once_with(
+            ["git", "pull"],
+            capture_output=True,
+            text=True
+        )
 
 
 class TestGetLatestCommitSha:
     """Tests for get_latest_commit_sha function."""
 
-    def test_get_latest_commit_sha_returns_sha(self, mock_git: MagicMock):
-        """Given commits exist, when getting SHA, then SHA is returned."""
+    @pytest.mark.parametrize(
+        "git_output,expected",
+        [
+            ("abc123def456\n", "abc123def456"),
+            ("a1b2c3d\n", "a1b2c3d"),
+            ("  f3e2a1b99  \n", "f3e2a1b99"),
+            ("1234567890abcdef", "1234567890abcdef"),  # No newline
+        ],
+    )
+    def test_get_latest_commit_sha_returns_sha(
+        self, mock_git: MagicMock, git_output: str, expected: str
+    ):
+        """Given commits exist with various output formats, when getting SHA, then SHA is correctly parsed."""
         from core import git
 
-        mock_git.return_value.stdout = "abc123def456\n"
+        mock_git.return_value.stdout = git_output
 
         result = git.get_latest_commit_sha()
 
-        assert result == "abc123def456"
+        assert result == expected
 
 
 class TestGitError:
@@ -437,9 +507,11 @@ class TestFetch:
 
         git.fetch()
 
-        call_args = mock_git.call_args[0][0]
-        assert "git" in call_args
-        assert "fetch" in call_args
+        mock_git.assert_called_once_with(
+            ["git", "fetch"],
+            capture_output=True,
+            text=True
+        )
 
     def test_fetch_prunes_stale_refs(self, mock_git: MagicMock):
         """Given prune option, when fetching, then --prune flag is used."""
@@ -449,8 +521,11 @@ class TestFetch:
 
         git.fetch(prune=True)
 
-        call_args = mock_git.call_args[0][0]
-        assert "--prune" in call_args
+        mock_git.assert_called_once_with(
+            ["git", "fetch", "--prune"],
+            capture_output=True,
+            text=True
+        )
 
 
 class TestMerge:
@@ -464,10 +539,8 @@ class TestMerge:
 
         git.merge("origin/main")
 
-        call_args = mock_git.call_args[0][0]
-        assert "git" in call_args
-        assert "merge" in call_args
-        assert "origin/main" in call_args
+        args, kwargs = mock_git.call_args
+        assert args[0] == ["git", "merge", "origin/main", "--no-edit"]
 
     def test_merge_uses_no_edit_by_default(self, mock_git: MagicMock):
         """Given default options, when merging, then --no-edit is used."""
@@ -477,8 +550,11 @@ class TestMerge:
 
         git.merge("origin/main")
 
-        call_args = mock_git.call_args[0][0]
-        assert "--no-edit" in call_args
+        mock_git.assert_called_once_with(
+            ["git", "merge", "origin/main", "--no-edit"],
+            capture_output=True,
+            text=True
+        )
 
     def test_merge_with_custom_message(self, mock_git: MagicMock):
         """Given custom message, when merging, then -m flag is used."""
@@ -488,9 +564,13 @@ class TestMerge:
 
         git.merge("origin/main", message="Merge main into feature")
 
-        call_args = mock_git.call_args[0][0]
-        assert "-m" in call_args
-        assert "Merge main into feature" in call_args
+        args, kwargs = mock_git.call_args
+        # Message should include both -m and message, may or may not include --no-edit
+        assert "git" == args[0][0]
+        assert "merge" == args[0][1]
+        assert "origin/main" in args[0]
+        assert "-m" in args[0]
+        assert "Merge main into feature" in args[0]
 
     def test_merge_raises_on_conflict(self, mock_git: MagicMock):
         """Given merge conflict, when merging, then GitError is raised."""
