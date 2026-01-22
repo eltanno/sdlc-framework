@@ -400,34 +400,6 @@ class TestRunSetup:
         assert "No tickets found" in (result.warning or "")
 
 
-class TestSetupResult:
-    """Tests for SetupResult dataclass."""
-
-    def test_setup_result_success(self) -> None:
-        """Given success parameters, when creating result, then fields are set."""
-        result = setup.SetupResult(
-            success=True,
-            ticket_count=5,
-            ticket_prefix="TASK",
-        )
-
-        assert result.success is True
-        assert result.ticket_count == 5
-        assert result.ticket_prefix == "TASK"
-        assert result.error is None
-
-    def test_setup_result_failure(self) -> None:
-        """Given failure parameters, when creating result, then error is set."""
-        result = setup.SetupResult(
-            success=False,
-            error="Something went wrong",
-        )
-
-        assert result.success is False
-        assert result.error == "Something went wrong"
-        assert result.ticket_count == 0
-
-
 class TestDetectTicketMismatch:
     """Tests for detecting PRD/state ticket mismatch."""
 
@@ -531,6 +503,8 @@ class TestResetStateFromPRD:
         assert new_ralph.tickets == ["SDLC-0001", "SDLC-0002"]
         assert new_ralph.dependencies == {"SDLC-0002": ["SDLC-0001"]}
         assert new_ralph.source == "github"
+        # New tickets should have no attempts recorded
+        assert new_ralph.attempts == {}
 
     def test_reset_state_preserves_attempt_counts_for_matching_tickets(
         self, tmp_path: Path
@@ -738,8 +712,10 @@ class TestSetupWithExistingState:
 
         result = setup.run_setup(prd_path, plan_path, state_file, interactive=True)
 
-        # Should have prompted user
+        # Should have prompted user with reset confirmation
         assert mock_input.called
+        call_args = mock_input.call_args[0][0]
+        assert "Reset" in call_args and "PRD" in call_args
         assert result.success is True
         assert result.mismatch_detected is True
 
@@ -781,7 +757,7 @@ class TestSetupWithExistingState:
 
         # Should fail/abort due to user rejection
         assert result.success is False
-        assert "abort" in (result.error or "").lower() or "reject" in (result.error or "").lower()
+        assert "abort" in (result.error or "").lower()
 
     def test_setup_no_mismatch_proceeds_normally(self, tmp_path: Path) -> None:
         """Given existing state matches PRD, when setup runs, then proceeds without reset."""

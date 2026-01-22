@@ -20,7 +20,7 @@ Phase 1 fixed the 11 worst files (< 40% meaningful). Phase 2 addresses the remai
 |-------|--------|-------|
 | Phase 6: Critical (< 50%) | Complete | 4/4 |
 | Phase 7: Medium (50-70%) | Complete | 4/4 |
-| Phase 8: Polish (> 70%) | In Progress | 7/8 |
+| Phase 8: Polish (> 70%) | Complete | 8/8 |
 
 ---
 
@@ -347,15 +347,16 @@ Phase 1 fixed the 11 worst files (< 40% meaningful). Phase 2 addresses the remai
 
 ### Task 8.8: test_setup.py
 **File:** `.claude/ralph/tests/unit/test_setup.py`
-**Current:** 83% meaningful (47 tests)
-**Status:** [ ] Not Started
+**Current:** 83% → ~95% meaningful (40 → 38 tests after cleanup)
+**Status:** [x] Complete
 
 **Issues:**
 - 2 dataclass tests are tautological
 
-**Fixes Required:**
-- [ ] Remove 2 tautological dataclass tests
-- [ ] Run tests to verify no regressions
+**Fixes Applied:**
+- [x] Deleted 2 tautological dataclass tests (TestSetupResult class)
+- [x] Strengthened 3 weak tests with better assertions
+- [x] All 38 remaining tests pass
 
 **Audit Reference:** `docs/research/2026-01-22-test-audit-setup.md`
 
