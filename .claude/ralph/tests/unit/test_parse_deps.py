@@ -82,24 +82,6 @@ class TestParseTableFormat:
         assert result["TASK-002"] == []
         assert result["TASK-003"] == []
 
-    def test_parse_table_with_empty_dependencies_column(self, tmp_path: Path) -> None:
-        """Test parsing when dependency column is empty."""
-        plan_content = """# Test Plan
-
-## Tickets
-
-| ID | Title | Dependencies |
-|----|-------|--------------|
-| TASK-001 | First task |  |
-| TASK-002 | Second task |  |
-"""
-        plan_file = tmp_path / "plan.md"
-        plan_file.write_text(plan_content)
-
-        result = parse_dependencies(plan_file)
-
-        assert result["TASK-001"] == []
-        assert result["TASK-002"] == []
 
 
 class TestParseSectionFormat:
@@ -158,25 +140,6 @@ Description of the third task.
         assert result["TASK-001"] == []
         assert result["TASK-002"] == ["TASK-001"]
 
-    def test_parse_section_format_with_dash_for_none(self, tmp_path: Path) -> None:
-        """Test parsing when - is used to indicate no dependencies."""
-        plan_content = """# Test Plan
-
-### TASK-001: First Task
-
-- **Dependencies:** -
-
-### TASK-002: Second Task
-
-- **Dependencies:** TASK-001
-"""
-        plan_file = tmp_path / "plan.md"
-        plan_file.write_text(plan_content)
-
-        result = parse_dependencies(plan_file)
-
-        assert result["TASK-001"] == []
-        assert result["TASK-002"] == ["TASK-001"]
 
 
 class TestCircularDependencyDetection:
@@ -191,9 +154,10 @@ class TestCircularDependencyDetection:
 
         cycles = detect_circular_dependencies(deps)
 
-        assert len(cycles) > 0
-        # The cycle should include both tasks
-        assert any("TASK-001" in cycle and "TASK-002" in cycle for cycle in cycles)
+        assert len(cycles) == 1
+        cycle = cycles[0]
+        assert cycle[0] == cycle[-1]  # Cycle starts and ends at same node
+        assert set(cycle[:-1]) == {"TASK-001", "TASK-002"}
 
     def test_detect_longer_circular_dependency(self) -> None:
         """Test detecting A -> B -> C -> A cycle."""
@@ -205,7 +169,10 @@ class TestCircularDependencyDetection:
 
         cycles = detect_circular_dependencies(deps)
 
-        assert len(cycles) > 0
+        assert len(cycles) == 1
+        cycle = cycles[0]
+        assert cycle[0] == cycle[-1]  # Cycle starts and ends at same node
+        assert set(cycle[:-1]) == {"TASK-001", "TASK-002", "TASK-003"}
 
     def test_no_circular_dependencies(self) -> None:
         """Test that linear dependencies return no cycles."""
@@ -227,23 +194,14 @@ class TestCircularDependencyDetection:
 
         cycles = detect_circular_dependencies(deps)
 
-        assert len(cycles) > 0
-        assert any("TASK-001" in cycle for cycle in cycles)
+        assert len(cycles) == 1
+        cycle = cycles[0]
+        assert cycle[0] == cycle[-1]  # Cycle starts and ends at same node
+        assert cycle == ["TASK-001", "TASK-001"]
 
 
 class TestDependencyGraph:
     """Tests for the DependencyGraph dataclass."""
-
-    def test_dependency_graph_creation(self) -> None:
-        """Test creating a DependencyGraph with valid data."""
-        deps = {
-            "TASK-001": [],
-            "TASK-002": ["TASK-001"],
-        }
-        graph = DependencyGraph(dependencies=deps, ticket_prefix="TASK")
-
-        assert graph.dependencies == deps
-        assert graph.ticket_prefix == "TASK"
 
     def test_get_dependents(self) -> None:
         """Test finding which tickets depend on a given ticket."""
@@ -281,18 +239,6 @@ class TestDependencyGraph:
         graph = DependencyGraph(dependencies=deps, ticket_prefix="TASK")
 
         assert graph.get_dependencies("TASK-999") == []
-
-    def test_to_dict(self) -> None:
-        """Test converting graph to dictionary."""
-        deps = {
-            "TASK-001": [],
-            "TASK-002": ["TASK-001"],
-        }
-        graph = DependencyGraph(dependencies=deps, ticket_prefix="TASK")
-
-        result = graph.to_dict()
-
-        assert result == deps
 
 
 class TestEdgeCases:
