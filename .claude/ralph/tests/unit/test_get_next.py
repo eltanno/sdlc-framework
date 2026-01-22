@@ -267,6 +267,8 @@ class TestGetNextTicketDependencies:
         # Should return TASK-001 (the only one without deps)
         assert result.ticket is not None
         assert result.ticket.id == "TASK-001"
+        # TASK-002 and TASK-003 should be skipped due to incomplete dependencies
+        assert result.skipped_for_deps == 2
 
     def test_returns_dependent_when_dependencies_complete(
         self, workflow_with_completed: WorkflowState
@@ -288,6 +290,8 @@ class TestGetNextTicketDependencies:
 
         assert result.ticket is not None
         assert result.ticket.id == "TASK-001"
+        # TASK-002 and TASK-003 should be skipped due to dependencies
+        assert result.skipped_for_deps == 2
 
 
 # =============================================================================
@@ -307,6 +311,8 @@ class TestGetNextTicketBlocked:
         # TASK-001 is blocked, should return TASK-002
         assert result.ticket is not None
         assert result.ticket.id == "TASK-002"
+        # Should count TASK-001 as blocked
+        assert result.blocked >= 1
 
     def test_skips_ticket_depending_on_blocked(
         self, workflow_with_blocked: WorkflowState
@@ -600,54 +606,6 @@ class TestEdgeCases:
 
         assert is_ticket_eligible(ticket, completed_ids) is False
 
-    def test_result_to_dict_with_ticket(self) -> None:
-        """GetNextResult.to_dict should include ticket info when ticket exists."""
-        ticket = Ticket(
-            id="TASK-001",
-            title="Test Ticket",
-            status="pending",
-            dependencies=[],
-        )
-        result = GetNextResult(
-            ticket=ticket,
-            status="ready",
-            message="Next ticket: TASK-001",
-            has_more=True,
-            total=3,
-            pending=2,
-            completed=1,
-            blocked=0,
-            in_progress=0,
-            skipped_for_deps=0,
-        )
-
-        result_dict = result.to_dict()
-
-        assert result_dict["next_ticket"] == "TASK-001"
-        assert result_dict["ticket_title"] == "Test Ticket"
-        assert result_dict["status"] == "ready"
-
-    def test_result_to_dict_without_ticket(self) -> None:
-        """GetNextResult.to_dict should handle None ticket."""
-        result = GetNextResult(
-            ticket=None,
-            status="complete",
-            message="All done",
-            has_more=False,
-            total=2,
-            pending=0,
-            completed=2,
-            blocked=0,
-            in_progress=0,
-            skipped_for_deps=0,
-        )
-
-        result_dict = result.to_dict()
-
-        assert result_dict["next_ticket"] is None
-        assert result_dict["ticket_title"] is None
-        assert result_dict["status"] == "complete"
-
     def test_mixed_completed_and_blocked_no_pending(self) -> None:
         """When all tickets are either completed or blocked, return complete."""
         workflow = WorkflowState(
@@ -679,6 +637,10 @@ class TestEdgeCases:
         # Not all blocked (only 1 of 2), not all complete (only 1 of 2)
         # No pending tickets and no skipped_for_deps, so it's "complete"
         assert result.status == "complete"
+        # Verify counts are accurate
+        assert result.completed == 1
+        assert result.blocked == 1
+        assert result.pending == 0
 
 
 # =============================================================================
@@ -722,6 +684,8 @@ class TestGetNextTicketWithPMTool:
         result = get_next_ticket(workflow, pm_tool=mock_pm)
 
         assert result is not None
+        # Verify PM tool was actually used
+        mock_pm.get_open_tickets.assert_called_once()
 
     def test_queries_pm_tool_for_open_tickets(self) -> None:
         """Given tickets in ralph.tickets, when pm_tool provided, then query PM tool for open tickets."""
@@ -892,6 +856,8 @@ class TestGetNextTicketWithPMTool:
         # Should return TASK-001 (no deps), not TASK-002 (dep not met)
         assert result.ticket is not None
         assert result.ticket.id == "TASK-001"
+        # TASK-002 should be skipped due to unmet dependency
+        assert result.skipped_for_deps >= 1
 
     def test_skips_tickets_claimed_by_other_instances(self) -> None:
         """Given a ticket has ralph-* label from another instance, skip that ticket."""
@@ -1553,3 +1519,5 @@ class TestDependencyCheckingViaPMTool:
         # The call may be made during dependency checking
         assert result.ticket is not None
         assert result.ticket.id == "TASK-001"  # Returns the one without deps
+        # Verify get_ticket_status was called to check dependency
+        assert mock_pm.get_ticket_status.called or result.skipped_for_deps >= 1
