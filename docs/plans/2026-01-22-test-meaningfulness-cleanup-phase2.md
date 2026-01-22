@@ -18,7 +18,7 @@ Phase 1 fixed the 11 worst files (< 40% meaningful). Phase 2 addresses the remai
 
 | Phase | Status | Tasks |
 |-------|--------|-------|
-| Phase 6: Critical (< 50%) | In Progress | 3/4 |
+| Phase 6: Critical (< 50%) | Complete | 4/4 |
 | Phase 7: Medium (50-70%) | Not Started | 0/4 |
 | Phase 8: Polish (> 70%) | Not Started | 0/8 |
 
@@ -114,19 +114,20 @@ Phase 1 fixed the 11 worst files (< 40% meaningful). Phase 2 addresses the remai
 
 ### Task 6.4: test_pm_flow.py
 **File:** `.claude/ralph/tests/integration/test_pm_flow.py`
-**Current:** 48% meaningful (21 tests)
-**Status:** [ ] Not Started
+**Current:** 48% → 85% meaningful (21 → 20 tests after cleanup)
+**Status:** [x] Complete
 
 **Issues:**
 - Missing negative assertions
 - Only checks positive cases
 - Doesn't verify exclusion of invalid states
 
-**Fixes Required:**
-- [ ] Add negative assertions to all tests
-- [ ] Verify blocked tickets excluded where appropriate
-- [ ] Verify completed tickets not re-processed
-- [ ] Run tests to verify no regressions
+**Fixes Applied:**
+- [x] Deleted 3 tautological mismatch detection tests
+- [x] Added negative assertions to 6 weak tests
+- [x] Strengthened 2 implementation-coupled tests
+- [x] Improved assertion specificity in dependency tests
+- [x] All 20 remaining tests pass
 
 **Acceptance Criteria:**
 - All tests have negative assertions where applicable

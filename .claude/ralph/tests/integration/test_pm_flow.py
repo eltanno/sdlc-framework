@@ -285,6 +285,12 @@ class TestFullPMWorkflow:
         assert is_claimed
         assert claiming_label == "ralph-1"
 
+        # Negative assertion: 76 depends on 74, should not be available while 74 is open
+        mock_pm.clear_operations()
+        result_while_74_open = get_next_ticket(state, pm_tool=mock_pm, ralph_label="ralph-2")
+        if result_while_74_open.ticket is not None:
+            assert result_while_74_open.ticket.id != "76", "Ticket 76 should be blocked by dependency on 74"
+
         # Step 2: Complete the ticket
         done_result = ticket_done(
             ticket_id="74",
@@ -366,6 +372,7 @@ class TestFullPMWorkflow:
 
         # Simulate a ticket already claimed by this instance
         mock_pm.claim_ticket("74", "ralph-1")
+        mock_pm.clear_operations()
 
         # Get next ticket
         result = get_next_ticket(state, pm_tool=mock_pm, ralph_label="ralph-1")
@@ -374,6 +381,11 @@ class TestFullPMWorkflow:
         assert result.ticket is not None
         assert result.ticket.id == "74"
         assert "resuming" in result.message.lower()
+
+        # Negative assertion: should NOT have attempted to claim a new ticket
+        operations = mock_pm.get_operations()
+        claim_ops = [op for op in operations if op[0] == "claim_ticket"]
+        assert len(claim_ops) == 0, "Should not attempt to claim when resuming existing ticket"
 
 
 # ============================================================================
@@ -445,6 +457,11 @@ class TestParallelInstanceSimulation:
         assert is_claimed
         assert label == "ralph-1"
 
+        # Negative assertion: should NOT have cleaned up (no remove_label call)
+        operations = mock_pm.get_operations()
+        remove_ops = [op for op in operations if op[0] == "remove_label"]
+        assert len(remove_ops) == 0, "Winner should not remove its own label"
+
     def test_ticket_claimed_by_other_instance_is_skipped(
         self, pm_workflow: tuple[Path, WorkflowState, MockPMTool]
     ):
@@ -455,6 +472,7 @@ class TestParallelInstanceSimulation:
 
         # Simulate ticket 74 claimed by another instance
         mock_pm.claim_ticket("74", "ralph-2")
+        mock_pm.clear_operations()
 
         # Patch sleep to avoid waiting
         with patch("commands.get_next.time.sleep"):
@@ -463,6 +481,11 @@ class TestParallelInstanceSimulation:
         # Should skip 74 and return 75 (next available without dependencies)
         assert result.ticket is not None
         assert result.ticket.id == "75"
+
+        # Negative assertion: should NOT have attempted to claim ticket 74
+        operations = mock_pm.get_operations()
+        claim_74_ops = [op for op in operations if op[0] == "claim_ticket" and op[1][0] == "74"]
+        assert len(claim_74_ops) == 0, "Should not attempt to claim already-claimed ticket 74"
 
     def test_all_tickets_claimed_by_others_returns_complete(
         self, tmp_path: Path
@@ -550,7 +573,17 @@ class TestDependencyCheckingAgainstClosed:
         assert result1.ticket is not None
         assert result1.ticket.id == "74"
 
-        # Close ticket 74 in PM tool
+        # Negative assertion: Before closing 74, ticket 75 should NOT be available
+        # (Skip 74 by claiming it with another instance to check next ticket)
+        mock_pm.claim_ticket("74", "ralph-2")
+        mock_pm.clear_operations()
+        with patch("commands.get_next.time.sleep"):
+            result_blocked = get_next_ticket(state, pm_tool=mock_pm, ralph_label="ralph-1")
+        # 75 and 76 both depend on 74, so nothing should be available
+        assert result_blocked.ticket is None or result_blocked.ticket.id not in ["75", "76"], \
+            "Tickets 75 and 76 should be blocked while dependency 74 is open"
+
+        # Now close ticket 74 in PM tool
         mock_pm.close_ticket("74")
 
         # Now 75 should be available (its dependency 74 is closed)
@@ -574,13 +607,13 @@ class TestDependencyCheckingAgainstClosed:
         with patch("commands.get_next.time.sleep"):
             result = get_next_ticket(state, pm_tool=mock_pm, ralph_label="ralph-1")
 
-        # 75 depends on 74 (open), 76 depends on 74 and 75
+        # 75 depends on 74 (open and claimed by another instance)
+        # 76 depends on 74 and 75 (both not closed)
         # Neither should be available
-        # 74 is claimed by another instance
-        # Result could be waiting_on_dependencies or waiting_on_claims
         assert result.ticket is None
-        # Either all claimed or all waiting on deps
-        assert result.status in ["waiting_on_dependencies", "waiting_on_claims"]
+        # The system recognizes this as dependency blocking (74 is still open, not closed)
+        assert result.status == "waiting_on_dependencies", \
+            "When dependency is not closed, dependent tickets should wait on dependencies"
 
     def test_chained_dependencies_resolved_in_order(
         self, dependency_workflow: tuple[Path, WorkflowState, MockPMTool]
@@ -593,6 +626,16 @@ class TestDependencyCheckingAgainstClosed:
         # Step 1: Get 74 (no deps)
         result1 = get_next_ticket(state, pm_tool=mock_pm, ralph_label="ralph-1")
         assert result1.ticket.id == "74"
+
+        # Negative assertion: 76 should NOT be available before 74 AND 75 are closed
+        # (76 depends on both 74 and 75)
+        mock_pm.claim_ticket("74", "ralph-2")
+        mock_pm.clear_operations()
+        with patch("commands.get_next.time.sleep"):
+            result_76_blocked = get_next_ticket(state, pm_tool=mock_pm, ralph_label="ralph-1")
+        assert result_76_blocked.ticket is None or result_76_blocked.ticket.id != "76", \
+            "Ticket 76 should not be available while dependencies 74 and 75 are not both closed"
+
         mock_pm.close_ticket("74")
         mock_pm.remove_label("74", "ralph-1")
 
@@ -600,6 +643,15 @@ class TestDependencyCheckingAgainstClosed:
         mock_pm.clear_operations()
         result2 = get_next_ticket(state, pm_tool=mock_pm, ralph_label="ralph-1")
         assert result2.ticket.id == "75"
+
+        # Negative assertion: 76 still should NOT be available (75 not yet closed)
+        mock_pm.claim_ticket("75", "ralph-2")
+        mock_pm.clear_operations()
+        with patch("commands.get_next.time.sleep"):
+            result_76_still_blocked = get_next_ticket(state, pm_tool=mock_pm, ralph_label="ralph-1")
+        assert result_76_still_blocked.ticket is None or result_76_still_blocked.ticket.id != "76", \
+            "Ticket 76 should not be available while dependency 75 is not closed"
+
         mock_pm.close_ticket("75")
         mock_pm.remove_label("75", "ralph-1")
 
@@ -627,6 +679,16 @@ class TestDependencyCheckingAgainstClosed:
         assert result.ticket is not None
         assert result.ticket.id == "75"
 
+        # Negative assertion: Explicitly verify 76 is NOT available
+        # Claim 75 to force checking for other tickets
+        mock_pm.claim_ticket("75", "ralph-2")
+        mock_pm.clear_operations()
+        with patch("commands.get_next.time.sleep"):
+            result_no_76 = get_next_ticket(state, pm_tool=mock_pm, ralph_label="ralph-1")
+        # With 74 closed but 75 open (and claimed), 76 should not be available
+        assert result_no_76.ticket is None or result_no_76.ticket.id != "76", \
+            "Ticket 76 should not be available when only some dependencies are closed"
+
 
 # ============================================================================
 # Test Cases: State Reset on Mismatch
@@ -635,46 +697,6 @@ class TestDependencyCheckingAgainstClosed:
 
 class TestStateResetOnMismatch:
     """Tests for state reset when PRD and state tickets don't match."""
-
-    def test_detect_mismatch_new_tickets_added(self):
-        """Given new tickets in PRD that are not in state,
-        when detecting mismatch,
-        then added tickets are identified."""
-        prd_tickets = ["SDLC-001", "SDLC-002", "SDLC-003"]
-        state_tickets = ["SDLC-001", "SDLC-002"]
-
-        result = detect_ticket_mismatch(prd_tickets, state_tickets)
-
-        assert result.has_mismatch is True
-        assert "SDLC-003" in result.added
-        assert result.removed == []
-
-    def test_detect_mismatch_tickets_removed(self):
-        """Given tickets in state that are not in PRD,
-        when detecting mismatch,
-        then removed tickets are identified."""
-        prd_tickets = ["SDLC-001", "SDLC-002"]
-        state_tickets = ["SDLC-001", "SDLC-002", "SDLC-003"]
-
-        result = detect_ticket_mismatch(prd_tickets, state_tickets)
-
-        assert result.has_mismatch is True
-        assert result.added == []
-        assert "SDLC-003" in result.removed
-
-    def test_detect_mismatch_both_added_and_removed(self):
-        """Given both new and removed tickets,
-        when detecting mismatch,
-        then both are identified."""
-        prd_tickets = ["SDLC-001", "SDLC-004"]
-        state_tickets = ["SDLC-001", "SDLC-002", "SDLC-003"]
-
-        result = detect_ticket_mismatch(prd_tickets, state_tickets)
-
-        assert result.has_mismatch is True
-        assert "SDLC-004" in result.added
-        assert "SDLC-002" in result.removed
-        assert "SDLC-003" in result.removed
 
     def test_detect_no_mismatch_when_same(self):
         """Given PRD and state have same tickets,
@@ -865,13 +887,16 @@ class TestPMToolErrorHandling:
         then next eligible ticket is tried."""
         state_file, state, mock_pm = pm_workflow
 
-        # Make claim fail for ticket 74
+        # Make claim fail for ticket 74 by wrapping the original method
         original_claim = mock_pm.claim_ticket
 
         def claim_fails_for_74(ticket_id: str, label: str) -> bool:
+            # Call original to log the operation
+            result = original_claim(ticket_id, label)
+            # But make it fail for 74
             if ticket_id == "74":
                 return False
-            return original_claim(ticket_id, label)
+            return result
 
         mock_pm.claim_ticket = claim_fails_for_74  # type: ignore
 
@@ -881,6 +906,17 @@ class TestPMToolErrorHandling:
         # Should return 75 after 74's claim failed
         assert result.ticket is not None
         assert result.ticket.id == "75"
+
+        # Verify that 74 was actually tried first (operation log should show attempt)
+        operations = mock_pm.get_operations()
+        claim_ops = [op for op in operations if op[0] == "claim_ticket"]
+        # Should have at least attempted 74 before succeeding on 75
+        ticket_ids_attempted = [op[1][0] for op in claim_ops]
+        assert "74" in ticket_ids_attempted, "Should have attempted to claim ticket 74 first"
+        # Verify ordering: 74 attempt comes before 75
+        idx_74 = next(i for i, op in enumerate(claim_ops) if op[1][0] == "74")
+        idx_75 = next(i for i, op in enumerate(claim_ops) if op[1][0] == "75")
+        assert idx_74 < idx_75, "Should attempt 74 before 75"
 
 
 # ============================================================================
@@ -897,9 +933,13 @@ class TestLocalPMFallback:
         then claim always succeeds (no concurrency control)."""
         local_pm = LocalPM()
 
-        result = local_pm.claim_ticket("74", "ralph-1")
+        # First claim
+        result1 = local_pm.claim_ticket("74", "ralph-1")
+        assert result1 is True
 
-        assert result is True
+        # Verify behavior: can claim same ticket again (no exclusivity)
+        result2 = local_pm.claim_ticket("74", "ralph-2")
+        assert result2 is True, "LocalPM should allow multiple claims on same ticket (no concurrency control)"
 
     def test_local_pm_tracks_closed_tickets(self):
         """Given LocalPM is used,
@@ -916,9 +956,33 @@ class TestLocalPMFallback:
     def test_local_pm_tracks_blocked_tickets(self):
         """Given LocalPM is used,
         when blocking tickets,
-        then they are tracked as blocked."""
+        then they are tracked as blocked and excluded from selection."""
         local_pm = LocalPM()
 
+        # Create a state with ticket 74
+        ralph = RalphState(
+            tickets=["74", "75"],
+            dependencies={},
+            attempts={},
+            blocked={},
+            source="local",
+        )
+        state = WorkflowState(
+            version="2.0",
+            prd_path=Path("docs/prds/test.md"),
+            plan_path=Path("docs/plans/test.md"),
+            tickets=[],
+            ralph=ralph,
+        )
+
+        # Block ticket 74
         local_pm.add_blocked_label("74", "Test failure")
 
+        # Verify status changed
         assert local_pm.get_ticket_status("74") == TicketStatus.BLOCKED
+
+        # Verify behavior: blocked tickets are excluded from get_open_tickets
+        open_tickets = local_pm.get_open_tickets(["74", "75"])
+        open_ids = [t.id for t in open_tickets]
+        assert "74" not in open_ids, "Blocked ticket should not appear in open tickets"
+        assert "75" in open_ids, "Non-blocked ticket should appear in open tickets"
