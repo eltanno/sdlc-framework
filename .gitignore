@@ -51,6 +51,8 @@ coverage/
 htmlcov/
 **/.pytest_cache/
 *.egg-info/
+**/venv/
+**/.venv/
 
 # Misc
 *.tgz
@@ -65,3 +67,6 @@ temp/
 # Project-specific
 # Add project-specific ignores below
 workflow-state.json
+
+# Ralph testing artifacts
+.claude/ralph/docs/

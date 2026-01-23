@@ -122,7 +122,9 @@ mkdir -p "$PROJECT_PATH"
 echo -e "${BLUE}→${NC} Copying framework files..."
 
 # Copy framework files (exclude git, node_modules, project-specific content)
+# Note: --filter=':- .gitignore' respects .gitignore patterns
 rsync -a \
+    --filter=':- .gitignore' \
     --exclude='.git' \
     --exclude='node_modules' \
     --exclude='.env' \
@@ -138,7 +140,6 @@ rsync -a \
     --exclude='docs/rca/*' \
     --exclude='docs/execution-reports/*' \
     --exclude='docs/system-reviews/*' \
-    --exclude='capture-workflow-changes.sh' \
     "$PROJECT_ROOT/" "$PROJECT_PATH/"
 
 echo -e "${GREEN}✓${NC} Framework files copied"
