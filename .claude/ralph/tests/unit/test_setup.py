@@ -490,11 +490,13 @@ class TestResetStateFromPRD:
         """Given PRD with tickets, when resetting state, then new state is created."""
         prd_tickets = ["SDLC-0001", "SDLC-0002"]
         dependencies = {"SDLC-0002": ["SDLC-0001"]}
+        complexity = {"SDLC-0001": 2, "SDLC-0002": 3}
         old_attempts: dict[str, int] = {}
 
         new_ralph = setup.reset_state_from_prd(
             prd_tickets=prd_tickets,
             dependencies=dependencies,
+            complexity=complexity,
             old_attempts=old_attempts,
             old_blocked={},
             source="github",
@@ -502,6 +504,7 @@ class TestResetStateFromPRD:
 
         assert new_ralph.tickets == ["SDLC-0001", "SDLC-0002"]
         assert new_ralph.dependencies == {"SDLC-0002": ["SDLC-0001"]}
+        assert new_ralph.complexity == {"SDLC-0001": 2, "SDLC-0002": 3}
         assert new_ralph.source == "github"
         # New tickets should have no attempts recorded
         assert new_ralph.attempts == {}
@@ -512,11 +515,13 @@ class TestResetStateFromPRD:
         """Given old state has attempts, when resetting, then matching ticket attempts preserved."""
         prd_tickets = ["SDLC-0001", "SDLC-0002", "SDLC-0003"]
         dependencies: dict[str, list[str]] = {}
+        complexity: dict[str, int] = {}
         old_attempts = {"SDLC-0001": 2, "SDLC-0002": 1, "SDLC-0004": 3}  # SDLC-0004 not in PRD
 
         new_ralph = setup.reset_state_from_prd(
             prd_tickets=prd_tickets,
             dependencies=dependencies,
+            complexity=complexity,
             old_attempts=old_attempts,
             old_blocked={},
             source="github",
@@ -533,6 +538,7 @@ class TestResetStateFromPRD:
         """Given old state has blocked tickets, when resetting, then removed tickets' blocked cleared."""
         prd_tickets = ["SDLC-0001", "SDLC-0002"]
         dependencies: dict[str, list[str]] = {}
+        complexity: dict[str, int] = {}
         old_attempts: dict[str, int] = {}
         old_blocked = {
             "SDLC-0001": "Test failures",
@@ -542,6 +548,7 @@ class TestResetStateFromPRD:
         new_ralph = setup.reset_state_from_prd(
             prd_tickets=prd_tickets,
             dependencies=dependencies,
+            complexity=complexity,
             old_attempts=old_attempts,
             old_blocked=old_blocked,
             source="github",
@@ -555,11 +562,13 @@ class TestResetStateFromPRD:
         """Given new dependencies from plan, when resetting, then new dependencies used."""
         prd_tickets = ["SDLC-0001", "SDLC-0002"]
         new_dependencies = {"SDLC-0002": ["SDLC-0001"]}
+        complexity: dict[str, int] = {}
         old_attempts: dict[str, int] = {}
 
         new_ralph = setup.reset_state_from_prd(
             prd_tickets=prd_tickets,
             dependencies=new_dependencies,
+            complexity=complexity,
             old_attempts=old_attempts,
             old_blocked={},
             source="github",

@@ -1084,6 +1084,7 @@ class TestRalphStateV2:
         ralph = RalphState(
             tickets=["SDLC-0001", "SDLC-0002"],
             dependencies={"SDLC-0002": ["SDLC-0001"]},
+            complexity={"SDLC-0001": 2, "SDLC-0002": 4},
             attempts={"SDLC-0001": 1},
             blocked={"SDLC-0002": "Blocked"},
             source="github",
@@ -1094,6 +1095,7 @@ class TestRalphStateV2:
         assert result == {
             "tickets": ["SDLC-0001", "SDLC-0002"],
             "dependencies": {"SDLC-0002": ["SDLC-0001"]},
+            "complexity": {"SDLC-0001": 2, "SDLC-0002": 4},
             "attempts": {"SDLC-0001": 1},
             "blocked": {"SDLC-0002": "Blocked"},
             "source": "github",

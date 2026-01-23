@@ -15,7 +15,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from commands.parse_deps import parse_dependencies
+from commands.parse_deps import parse_dependencies, parse_ticket_metadata
 from core.state import (
     WorkflowState,
     Ticket,
@@ -229,6 +229,7 @@ def detect_ticket_mismatch(
 def reset_state_from_prd(
     prd_tickets: list[str],
     dependencies: dict[str, list[str]],
+    complexity: dict[str, int],
     old_attempts: dict[str, int],
     old_blocked: dict[str, str],
     source: str,
@@ -238,6 +239,7 @@ def reset_state_from_prd(
     Args:
         prd_tickets: List of ticket IDs from PRD (source of truth)
         dependencies: Dependencies parsed from plan
+        complexity: Complexity scores parsed from PRD (1-5)
         old_attempts: Previous attempt counts (preserved for matching tickets)
         old_blocked: Previous blocked reasons (preserved for matching tickets)
         source: PM tool source (e.g., "github", "trello")
@@ -264,6 +266,7 @@ def reset_state_from_prd(
     return RalphState(
         tickets=prd_tickets,
         dependencies=dependencies,
+        complexity=complexity,
         attempts=preserved_attempts,
         blocked=preserved_blocked,
         source=source,
@@ -282,8 +285,8 @@ def initialize_workflow_state(
 ) -> WorkflowState:
     """Initialize workflow state from PRD and plan.
 
-    Extracts tickets from PRD, parses dependencies from plan,
-    and creates the initial workflow state file in v2 format.
+    Extracts tickets from PRD, parses dependencies and complexity from PRD
+    (or plan as fallback), and creates the initial workflow state file in v2 format.
 
     Args:
         prd_path: Path to the PRD document
@@ -296,14 +299,25 @@ def initialize_workflow_state(
     # Extract tickets from PRD
     ticket_ids = extract_tickets_from_prd(prd_path)
 
-    # Parse dependencies from plan
-    dependencies = parse_dependencies(plan_path)
+    # Parse ticket metadata (dependencies + complexity) from PRD first
+    # The PRD has the canonical ticket table with all metadata
+    ticket_metadata = parse_ticket_metadata(prd_path)
+
+    # If PRD didn't have dependencies/complexity, try the plan as fallback
+    # (for backwards compatibility with older PRDs without full ticket tables)
+    if not ticket_metadata:
+        ticket_metadata = parse_ticket_metadata(plan_path)
+
+    # Extract dependencies and complexity from metadata
+    dependencies = {tid: meta.dependencies for tid, meta in ticket_metadata.items()}
+    complexity = {tid: meta.complexity for tid, meta in ticket_metadata.items()}
 
     # Create RalphState (v2 format) - status comes from PM tool
     ralph = RalphState(
         source="unknown",  # Will be set by PM tool detection
         tickets=ticket_ids,
         dependencies=dependencies,
+        complexity=complexity,
         attempts={},
         blocked={},
     )
@@ -362,8 +376,10 @@ def run_setup(
     # Extract tickets from PRD
     prd_tickets = extract_tickets_from_prd(prd_path)
 
-    # Parse dependencies from plan
-    dependencies = parse_dependencies(plan_path)
+    # Parse ticket metadata (dependencies + complexity) from PRD
+    ticket_metadata = parse_ticket_metadata(prd_path)
+    dependencies = {tid: meta.dependencies for tid, meta in ticket_metadata.items()}
+    complexity = {tid: meta.complexity for tid, meta in ticket_metadata.items()}
 
     # Check if state file already exists
     mismatch_detected = False
@@ -427,6 +443,7 @@ def run_setup(
                 new_ralph = reset_state_from_prd(
                     prd_tickets=prd_tickets,
                     dependencies=dependencies,
+                    complexity=complexity,
                     old_attempts=old_attempts,
                     old_blocked=old_blocked,
                     source=source,

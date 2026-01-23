@@ -50,6 +50,7 @@ class Ticket:
         dependencies: List of ticket IDs that must complete first
         attempts: Number of implementation attempts made
         block_reason: Reason for blocking (if status is blocked)
+        complexity: Complexity score (1-5) for model selection
     """
 
     id: str
@@ -58,6 +59,7 @@ class Ticket:
     dependencies: list[str]
     attempts: int = 0
     block_reason: str | None = None
+    complexity: int = 3
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -74,6 +76,7 @@ class RalphState:
     This dataclass tracks:
     - Which tickets exist (IDs only, not full objects)
     - Dependencies between tickets
+    - Complexity scores for model selection
     - Attempt counts per ticket
     - Blocked status and reasons
     - Source PM tool type
@@ -81,6 +84,7 @@ class RalphState:
     Attributes:
         tickets: List of ticket IDs (strings only, not full ticket objects)
         dependencies: Map of ticket ID to list of dependency ticket IDs
+        complexity: Map of ticket ID to complexity score (1-5)
         attempts: Map of ticket ID to attempt count
         blocked: Map of ticket ID to block reason
         source: PM tool type (e.g., "github", "trello", "asana")
@@ -89,6 +93,7 @@ class RalphState:
     source: str
     tickets: list[str] = field(default_factory=list)
     dependencies: dict[str, list[str]] = field(default_factory=dict)
+    complexity: dict[str, int] = field(default_factory=dict)
     attempts: dict[str, int] = field(default_factory=dict)
     blocked: dict[str, str] = field(default_factory=dict)
 
@@ -97,6 +102,7 @@ class RalphState:
         return {
             "tickets": self.tickets,
             "dependencies": self.dependencies,
+            "complexity": self.complexity,
             "attempts": self.attempts,
             "blocked": self.blocked,
             "source": self.source,
@@ -115,6 +121,7 @@ class RalphState:
         return cls(
             tickets=data.get("tickets", []),
             dependencies=data.get("dependencies", {}),
+            complexity=data.get("complexity", {}),
             attempts=data.get("attempts", {}),
             blocked=data.get("blocked", {}),
             source=data.get("source", "unknown"),

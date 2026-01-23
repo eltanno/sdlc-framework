@@ -378,12 +378,17 @@ def _get_next_ticket_with_pm_tool(
 
             # Check if this ticket is claimed by us
             if ralph_label in ticket_info.labels:
+                # Get complexity from state (defaults to 3)
+                complexity_map = state.ralph.complexity if state.ralph else {}
+                ticket_complexity = complexity_map.get(ticket_id, 3)
+
                 # Create a Ticket object for the result
                 ticket = Ticket(
                     id=ticket_info.id,
                     title=ticket_info.title,
                     status="in_progress",
                     dependencies=dependencies.get(ticket_id, []),
+                    complexity=ticket_complexity,
                 )
                 return GetNextResult(
                     ticket=ticket,
@@ -461,12 +466,17 @@ def _get_next_ticket_with_pm_tool(
                             if not deps_met:
                                 skipped_for_deps += 1
 
+            # Get complexity from state (defaults to 3)
+            complexity_map = state.ralph.complexity if state.ralph else {}
+            ticket_complexity = complexity_map.get(ticket_id, 3)
+
             # Create a Ticket object for the result
             ticket = Ticket(
                 id=ticket_info.id,
                 title=ticket_info.title,
                 status="pending",
                 dependencies=ticket_deps,
+                complexity=ticket_complexity,
             )
             return GetNextResult(
                 ticket=ticket,

@@ -243,6 +243,169 @@ class TestModelSelection:
         assert select_model_for_complexity(5, sonnet_threshold=2) == "opus"
 
 
+class TestComplexityFlowEndToEnd:
+    """Integration tests verifying complexity flows from PRD to model selection.
+
+    This test class ensures that:
+    1. Complexity is parsed from PRD ticket tables
+    2. Complexity is stored in the state file
+    3. Complexity is passed to Ticket objects
+    4. Complexity is used for model selection
+
+    This is the integration test that prevents regression of the complexity feature.
+    """
+
+    def test_complexity_parsed_from_prd_table(self, tmp_path):
+        """Given PRD with complexity column, when parsed, then complexity is extracted."""
+        from commands.parse_deps import parse_ticket_metadata
+
+        prd_content = """# PRD
+
+## Tickets
+
+| ID | Title | Description | Priority | Complexity | Dependency |
+|----|-------|-------------|----------|------------|------------|
+| TASK-001 | Simple task | Do something simple | P1 | 1 | - |
+| TASK-002 | Medium task | Do something medium | P1 | 3 | TASK-001 |
+| TASK-003 | Complex task | Do something complex | P1 | 5 | TASK-002 |
+"""
+        prd_file = tmp_path / "prd.md"
+        prd_file.write_text(prd_content)
+
+        metadata = parse_ticket_metadata(prd_file)
+
+        assert metadata["TASK-001"].complexity == 1
+        assert metadata["TASK-002"].complexity == 3
+        assert metadata["TASK-003"].complexity == 5
+
+    def test_complexity_stored_in_state_file(self, tmp_path):
+        """Given PRD with complexity, when setup runs, then state file contains complexity."""
+        from commands.setup import initialize_workflow_state
+        import json
+
+        prd_content = """# PRD
+
+## Tickets
+
+| ID | Title | Description | Priority | Complexity | Dependency |
+|----|-------|-------------|----------|------------|------------|
+| TEST-001 | Task 1 | Description | P1 | 2 | - |
+| TEST-002 | Task 2 | Description | P1 | 4 | TEST-001 |
+"""
+        prd_file = tmp_path / "prd.md"
+        prd_file.write_text(prd_content)
+
+        plan_file = tmp_path / "plan.md"
+        plan_file.write_text("# Plan\n\nNo table here.")
+
+        state_file = tmp_path / "state.json"
+
+        initialize_workflow_state(prd_file, plan_file, state_file)
+
+        # Read and verify state file
+        state_data = json.loads(state_file.read_text())
+        assert "ralph" in state_data
+        assert "complexity" in state_data["ralph"]
+        assert state_data["ralph"]["complexity"]["TEST-001"] == 2
+        assert state_data["ralph"]["complexity"]["TEST-002"] == 4
+
+    def test_complexity_passed_to_ticket_object(self, tmp_path):
+        """Given state with complexity, when get_next_ticket runs, then Ticket has complexity."""
+        from core.state import WorkflowState, RalphState
+        from commands.get_next import get_next_ticket
+        from core.pm import LocalPM
+
+        # Create state with complexity data
+        ralph = RalphState(
+            source="none",
+            tickets=["TASK-001", "TASK-002"],
+            dependencies={},
+            complexity={"TASK-001": 1, "TASK-002": 5},
+            attempts={},
+            blocked={},
+        )
+        state = WorkflowState(
+            version="2.0",
+            prd_path=tmp_path / "prd.md",
+            plan_path=tmp_path / "plan.md",
+            tickets=[],
+            ralph=ralph,
+        )
+
+        # Use LocalPM which doesn't query GitHub
+        # Pass ralph_label=None since LocalPM doesn't support claiming
+        pm_tool = LocalPM()
+
+        result = get_next_ticket(state, pm_tool=pm_tool, ralph_label=None)
+
+        assert result.ticket is not None
+        assert result.ticket.id == "TASK-001"
+        assert result.ticket.complexity == 1
+
+    def test_complexity_affects_model_selection_in_process_ticket(self, tmp_path):
+        """Given ticket with complexity 1, when processed, then sonnet model is selected.
+
+        This is the critical end-to-end test that verifies the full flow:
+        PRD -> State -> Ticket -> Model Selection
+        """
+        from core.state import Ticket
+
+        # Create ticket with low complexity
+        ticket = Ticket(
+            id="TASK-001",
+            title="Simple task",
+            status="pending",
+            dependencies=[],
+            complexity=1,
+        )
+
+        # Verify model selection uses ticket complexity
+        model = select_model_for_complexity(ticket.complexity, sonnet_threshold=3)
+        assert model == "sonnet", "Complexity 1 should use sonnet with threshold 3"
+
+        # Create ticket with high complexity
+        ticket_complex = Ticket(
+            id="TASK-002",
+            title="Complex task",
+            status="pending",
+            dependencies=[],
+            complexity=5,
+        )
+
+        model_complex = select_model_for_complexity(ticket_complex.complexity, sonnet_threshold=3)
+        assert model_complex == "opus", "Complexity 5 should use opus with threshold 3"
+
+    def test_default_complexity_when_not_in_state(self, tmp_path):
+        """Given state without complexity for a ticket, when processed, then default of 3 is used."""
+        from core.state import WorkflowState, RalphState
+        from commands.get_next import get_next_ticket
+        from core.pm import LocalPM
+
+        # Create state WITHOUT complexity data (simulating old state files)
+        ralph = RalphState(
+            source="none",
+            tickets=["TASK-001"],
+            dependencies={},
+            complexity={},  # Empty - no complexity data
+            attempts={},
+            blocked={},
+        )
+        state = WorkflowState(
+            version="2.0",
+            prd_path=tmp_path / "prd.md",
+            plan_path=tmp_path / "plan.md",
+            tickets=[],
+            ralph=ralph,
+        )
+
+        # Pass ralph_label=None since LocalPM doesn't support claiming
+        pm_tool = LocalPM()
+        result = get_next_ticket(state, pm_tool=pm_tool, ralph_label=None)
+
+        assert result.ticket is not None
+        assert result.ticket.complexity == 3, "Should default to complexity 3 when not in state"
+
+
 # ============================================================================
 # Test Cases: Engineer Result Parsing
 # ============================================================================

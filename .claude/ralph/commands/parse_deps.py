@@ -39,16 +39,31 @@ class ParseError(Exception):
 
 
 @dataclass
+class TicketMetadata:
+    """Metadata for a single ticket parsed from PRD/plan.
+
+    Attributes:
+        dependencies: List of ticket IDs this ticket depends on
+        complexity: Complexity score (1-5), defaults to 3 if not specified
+    """
+
+    dependencies: list[str]
+    complexity: int = 3
+
+
+@dataclass
 class DependencyGraph:
     """Represents a dependency graph of tickets.
 
     Attributes:
         dependencies: Dictionary mapping ticket ID to list of dependency IDs
         ticket_prefix: The prefix used for ticket IDs (e.g., "TASK", "SDLC")
+        complexity: Dictionary mapping ticket ID to complexity score (1-5)
     """
 
     dependencies: dict[str, list[str]]
     ticket_prefix: str = ""
+    complexity: dict[str, int] | None = None
 
     def get_dependencies(self, ticket_id: str) -> list[str]:
         """Get the list of dependencies for a ticket.
@@ -110,6 +125,34 @@ def parse_dependencies(
     Raises:
         FileNotFoundError: If the plan file doesn't exist
     """
+    metadata = parse_ticket_metadata(plan_path, ticket_prefix, start_num)
+    # Return just dependencies for backwards compatibility
+    return {tid: meta.dependencies for tid, meta in metadata.items()}
+
+
+def parse_ticket_metadata(
+    plan_path: Path,
+    ticket_prefix: str | None = None,
+    start_num: int | None = None,
+) -> dict[str, TicketMetadata]:
+    """Parse ticket metadata (dependencies and complexity) from a plan document.
+
+    Supports both table format and section format. Automatically detects
+    which format is used based on content.
+
+    Args:
+        plan_path: Path to the plan markdown file (PRD or plan)
+        ticket_prefix: Optional prefix for ticket IDs (e.g., "TASK").
+                      Required if using row number format.
+        start_num: Starting number for ticket ID mapping when using row numbers.
+                  Required if using row number format.
+
+    Returns:
+        Dictionary mapping ticket IDs to TicketMetadata (dependencies + complexity).
+
+    Raises:
+        FileNotFoundError: If the plan file doesn't exist
+    """
     if not plan_path.exists():
         raise FileNotFoundError(f"Plan file not found: {plan_path}")
 
@@ -119,11 +162,13 @@ def parse_dependencies(
         return {}
 
     # Try table format first
-    result = _parse_table_format(content, ticket_prefix, start_num)
+    result = _parse_table_format_full(content, ticket_prefix, start_num)
 
     # If no results from table format, try section format
     if not result:
-        result = _parse_section_format(content)
+        # Convert old format to new format
+        deps = _parse_section_format(content)
+        result = {tid: TicketMetadata(dependencies=dep_list) for tid, dep_list in deps.items()}
 
     return result
 
@@ -143,7 +188,26 @@ def _parse_table_format(
     Returns:
         Dictionary of dependencies
     """
-    result: dict[str, list[str]] = {}
+    metadata = _parse_table_format_full(content, ticket_prefix, start_num)
+    return {tid: meta.dependencies for tid, meta in metadata.items()}
+
+
+def _parse_table_format_full(
+    content: str,
+    ticket_prefix: str | None = None,
+    start_num: int | None = None,
+) -> dict[str, TicketMetadata]:
+    """Parse dependencies and complexity from table format.
+
+    Args:
+        content: The plan content
+        ticket_prefix: Optional prefix for row number mapping
+        start_num: Starting number for row number mapping
+
+    Returns:
+        Dictionary mapping ticket ID to TicketMetadata
+    """
+    result: dict[str, TicketMetadata] = {}
 
     # Find table header row
     lines = content.split("\n")
@@ -151,6 +215,7 @@ def _parse_table_format(
     header_cols: list[str] = []
     id_col_idx = -1
     deps_col_idx = -1
+    complexity_col_idx = -1
 
     for line in lines:
         line = line.strip()
@@ -165,13 +230,15 @@ def _parse_table_format(
             # Find non-empty columns for header detection
             non_empty_cols = [(i, c) for i, c in enumerate(cols) if c]
 
-            # Look for ID/# column and Dependencies column
+            # Look for ID/# column, Dependencies column, and Complexity column
             for i, col in non_empty_cols:
                 col_lower = col.lower()
                 if col_lower in ("id", "#"):
                     id_col_idx = i
                 elif "dependencies" in col_lower or "dependency" in col_lower:
                     deps_col_idx = i
+                elif "complexity" in col_lower:
+                    complexity_col_idx = i
 
             if id_col_idx >= 0 and deps_col_idx >= 0:
                 header_cols = cols
@@ -198,6 +265,12 @@ def _parse_table_format(
             id_value = cols[id_col_idx] if id_col_idx < len(cols) else ""
             deps_value = cols[deps_col_idx] if deps_col_idx < len(cols) else ""
 
+            # Extract complexity if column exists
+            complexity = 3  # Default
+            if complexity_col_idx >= 0 and complexity_col_idx < len(cols):
+                complexity_value = cols[complexity_col_idx]
+                complexity = _parse_complexity_value(complexity_value)
+
             # Determine ticket ID
             ticket_id = _extract_ticket_id(id_value, ticket_prefix, start_num)
             if not ticket_id:
@@ -206,9 +279,33 @@ def _parse_table_format(
             # Parse dependencies
             deps = _parse_deps_value(deps_value, ticket_prefix, start_num)
 
-            result[ticket_id] = deps
+            result[ticket_id] = TicketMetadata(dependencies=deps, complexity=complexity)
 
     return result
+
+
+def _parse_complexity_value(value: str) -> int:
+    """Parse a complexity value from a table cell.
+
+    Args:
+        value: The raw complexity value (e.g., "3", "2 (Simple)", etc.)
+
+    Returns:
+        Complexity as integer 1-5, defaults to 3 if unparseable
+    """
+    value = value.strip()
+
+    if not value or value == "-":
+        return 3
+
+    # Try to extract leading number (handles "3", "3 (Medium)", etc.)
+    match = re.match(r"^(\d+)", value)
+    if match:
+        complexity = int(match.group(1))
+        # Clamp to valid range
+        return max(1, min(5, complexity))
+
+    return 3
 
 
 def _extract_ticket_id(
