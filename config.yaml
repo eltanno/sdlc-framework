@@ -4,7 +4,7 @@
 
 # Project Management Tool
 pm:
-  tool: asana                    # asana | trello | github (must be set before /ticket)
+  tool: github                    # asana | trello | github (must be set before /ticket)
 
 # Development Commands
 # This is the SDLC framework itself - mostly markdown/scripts, no compiled code
