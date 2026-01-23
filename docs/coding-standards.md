@@ -417,6 +417,22 @@ class NotFoundError extends AppError {
 
 ---
 
+## Avoid Cruft
+
+**Cruft** = useless code that accumulates. Lint won't catch it - it's syntactically valid but adds noise.
+
+| Pattern | Cruft | Clean |
+|---------|-------|-------|
+| Single-use intermediate | `x = getData(); y = x; return y` | `return getData()` |
+| Lying comment | `x = val  # caching for performance` (used once) | Just use `val` directly |
+| No-op assignment | `result = None; result = calc()` | `result = calc()` |
+| Over-verbose name | `temporary_variable_for_user_object` | `user` |
+| Redundant check | `u = User(); if u is not None: save(u)` | `u = User(); save(u)` |
+
+**Rule:** If you can delete code and tests still pass with no behavior change, delete it.
+
+---
+
 ## Security Checklist
 
 Every implementation should verify:
