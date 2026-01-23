@@ -274,6 +274,8 @@ EXTERNAL_FILES=(
     "CLAUDE.md"
     "config.yaml"
     "docs/coding-standards.md"
+    ".gitignore"
+    ".mcp.json"
 )
 
 for file in "${EXTERNAL_FILES[@]}"; do

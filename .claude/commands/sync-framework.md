@@ -31,6 +31,8 @@
 | `CLAUDE.md` | Prompted if different |
 | `config.yaml` | Prompted if different |
 | `docs/coding-standards.md` | Prompted if different |
+| `.gitignore` | Prompted if different |
+| `.mcp.json` | Prompted if different |
 
 For prompted files, if you approve the update:
 - The existing file is backed up to `{filename}.old`
