@@ -157,8 +157,8 @@ class TestStartToDoneFlow:
     def test_complete_single_ticket_lifecycle(
         self, lifecycle_workflow: tuple[Path, WorkflowState], mock_gh_cli
     ):
-        """Given a pending ticket, when completed, then status becomes completed
-        and next ticket becomes available."""
+        """Given a pending ticket, when completed, then current_ticket is cleared
+        and completion info is returned."""
         state_file, state = lifecycle_workflow
 
         # Step 1: Get next ticket
@@ -173,64 +173,65 @@ class TestStartToDoneFlow:
             state_file=state_file,
         )
 
-        # Verify completion
+        # Verify completion result
         assert done_result["status"] == "completed"
         assert done_result["pr_number"] == "123"
-        assert done_result["progress"]["current"] == 1
-        assert done_result["progress"]["remaining"] == 2
+        assert done_result["total"] == 3  # Total tickets in workflow
 
-        # Step 3: Get next ticket - should be TASK-002 now
+        # Step 3: Verify current_ticket is cleared (v2 behavior)
         reloaded_state = load_workflow_state(state_file)
-        result = get_next_ticket(reloaded_state)
-        assert result.ticket is not None
-        assert result.ticket.id == "TASK-002"
+        assert reloaded_state.current_ticket is None
 
     def test_complete_all_tickets_in_order(
         self, lifecycle_workflow: tuple[Path, WorkflowState], mock_gh_cli
     ):
-        """Given tickets with dependencies, when completed in order,
-        then all tickets become completed."""
+        """Given tickets with dependencies, when mark_ticket_done is called,
+        then completion info is returned for each."""
         state_file, state = lifecycle_workflow
 
         # Complete TASK-001
-        mark_ticket_done("TASK-001", pr_number="100", state_file=state_file)
+        result1 = mark_ticket_done("TASK-001", pr_number="100", state_file=state_file)
+        assert result1["status"] == "completed"
+        assert result1["total"] == 3
 
         # Complete TASK-002
-        mark_ticket_done("TASK-002", pr_number="101", state_file=state_file)
+        result2 = mark_ticket_done("TASK-002", pr_number="101", state_file=state_file)
+        assert result2["status"] == "completed"
+        assert result2["total"] == 3
 
         # Complete TASK-003
-        done_result = mark_ticket_done("TASK-003", pr_number="102", state_file=state_file)
+        result3 = mark_ticket_done("TASK-003", pr_number="102", state_file=state_file)
+        assert result3["status"] == "completed"
+        assert result3["total"] == 3
 
-        assert done_result["all_done"]
-        assert done_result["progress"]["remaining"] == 0
-
-        # Verify final state
+        # Verify current_ticket is still cleared (v2 behavior)
         final_state = load_workflow_state(state_file)
-        result = get_next_ticket(final_state)
-        assert result.status == "complete"
-        assert result.completed == 3
+        assert final_state.current_ticket is None
 
-    def test_done_with_issue_number(
+    def test_done_clears_current_ticket(
         self, lifecycle_workflow: tuple[Path, WorkflowState], mock_gh_cli
     ):
-        """Given a ticket with associated issue, when completed,
-        then issue number is recorded in state."""
+        """Given a ticket being completed, when marked done,
+        then current_ticket is cleared in state."""
         state_file, state = lifecycle_workflow
+
+        # First set a current ticket
+        raw_state = json.loads(state_file.read_text())
+        raw_state["current_ticket"] = "TASK-001"
+        state_file.write_text(json.dumps(raw_state, indent=2))
 
         done_result = mark_ticket_done(
             ticket_id="TASK-001",
             pr_number="100",
-            issue_number=42,
             state_file=state_file,
         )
 
-        # Reload and check issue number recorded
-        final_state = load_workflow_state(state_file)
-        ticket = next(t for t in final_state.tickets if t.id == "TASK-001")
-        # Note: issue_number is not a Ticket attribute, check raw state
+        assert done_result["status"] == "completed"
+        assert done_result["ticket_id"] == "TASK-001"
+
+        # Verify current_ticket is cleared
         raw_state = json.loads(state_file.read_text())
-        ticket_data = next(t for t in raw_state["tickets"] if t["id"] == "TASK-001")
-        assert ticket_data["issue_number"] == 42
+        assert raw_state["current_ticket"] is None
 
 
 # ============================================================================
@@ -281,7 +282,7 @@ class TestBlockResetFlow:
         self, blocked_workflow: tuple[Path, WorkflowState], mock_gh_cli, tmp_path: Path
     ):
         """Given a reset ticket, when work completes successfully,
-        then ticket becomes completed."""
+        then current_ticket is cleared and ticket is removed from blocked."""
         state_file, state = blocked_workflow
 
         # Reset the blocked ticket
@@ -301,11 +302,12 @@ class TestBlockResetFlow:
         )
 
         assert done_result["status"] == "completed"
+        assert done_result["pr_number"] == "200"
+        assert done_result["total"] == 2
 
-        # Verify final state
+        # Verify current_ticket is cleared (v2 behavior)
         final_state = load_workflow_state(state_file)
-        ticket = next(t for t in final_state.tickets if t.id == "TASK-001")
-        assert ticket.status == "completed"
+        assert final_state.current_ticket is None
 
     def test_reset_with_state_cleanup(
         self, blocked_workflow: tuple[Path, WorkflowState], tmp_path: Path
@@ -504,12 +506,11 @@ class TestStatePersistence:
         # Complete first ticket
         mark_ticket_done("TASK-001", pr_number="100", state_file=state_file)
 
-        # Reload state multiple times and verify
+        # Reload state multiple times and verify current_ticket is cleared (v2 behavior)
         for _ in range(3):
             reloaded = load_workflow_state(state_file)
-            ticket = next(t for t in reloaded.tickets if t.id == "TASK-001")
-            assert ticket.status == "completed"
-            assert reloaded.completed_count == 1
+            # In v2, current_ticket is cleared when ticket is completed
+            assert reloaded.current_ticket is None
 
     def test_concurrent_state_updates(
         self, lifecycle_workflow: tuple[Path, WorkflowState], mock_gh_cli
@@ -518,42 +519,41 @@ class TestStatePersistence:
         then all updates are reflected."""
         state_file, state = lifecycle_workflow
 
-        # Simulate multiple updates
+        # First update: mark ticket done (clears current_ticket in v2)
         mark_ticket_done("TASK-001", pr_number="100", state_file=state_file)
 
-        # Reload and update again
+        # Verify current_ticket was cleared
         state2 = load_workflow_state(state_file)
+        assert state2.current_ticket is None
+
+        # Second update: manually set another ticket in progress
         state2.tickets[1].status = "in_progress"
         state2.current_ticket = "TASK-002"
         save_workflow_state(state2, state_file)
 
-        # Verify both changes persisted
+        # Verify the manual update persisted
         final_state = load_workflow_state(state_file)
-        assert final_state.tickets[0].status == "completed"
         assert final_state.tickets[1].status == "in_progress"
         assert final_state.current_ticket == "TASK-002"
 
-    def test_pr_and_issue_tracked_in_state(
+    def test_pr_tracked_in_return_value(
         self, lifecycle_workflow: tuple[Path, WorkflowState], mock_gh_cli
     ):
-        """Given PR and issue info provided, when ticket completed,
-        then both are tracked in state."""
+        """Given PR info provided, when ticket completed,
+        then PR number is included in return value."""
         state_file, state = lifecycle_workflow
 
-        mark_ticket_done(
+        result = mark_ticket_done(
             ticket_id="TASK-001",
             pr_number="150",
             issue_number=50,
             state_file=state_file,
         )
 
-        # Read raw state to check pr and issue
-        raw_state = json.loads(state_file.read_text())
-        ticket_data = next(t for t in raw_state["tickets"] if t["id"] == "TASK-001")
-
-        assert ticket_data["status"] == "completed"
-        assert ticket_data["pr"] == "150"
-        assert ticket_data["issue_number"] == 50
+        # In v2, PR number is in the return value (not stored in state)
+        assert result["status"] == "completed"
+        assert result["pr_number"] == "150"
+        assert result["ticket_id"] == "TASK-001"
 
 
 # ============================================================================
@@ -611,32 +611,29 @@ class TestErrorHandling:
 class TestProgressTracking:
     """Tests for progress tracking through the lifecycle."""
 
-    def test_progress_updates_correctly_during_completion(
+    def test_total_tickets_returned_during_completion(
         self, lifecycle_workflow: tuple[Path, WorkflowState], mock_gh_cli
     ):
-        """Given tickets are completed sequentially, when progress checked,
-        then counts update correctly."""
+        """Given tickets are completed sequentially, when completion checked,
+        then total ticket count is returned (v2 format)."""
         state_file, state = lifecycle_workflow
 
-        # Complete first ticket
+        # Complete first ticket - v2 returns total only
         result1 = mark_ticket_done("TASK-001", pr_number="100", state_file=state_file)
-        assert result1["progress"]["current"] == 1
-        assert result1["progress"]["total"] == 3
-        assert result1["progress"]["remaining"] == 2
-        assert result1["next_ticket"] == "TASK-002"
+        assert result1["status"] == "completed"
+        assert result1["total"] == 3
+        assert result1["remaining"] is None  # v2 doesn't track
+        assert result1["next_ticket"] is None  # v2 doesn't track
 
         # Complete second ticket
         result2 = mark_ticket_done("TASK-002", pr_number="101", state_file=state_file)
-        assert result2["progress"]["current"] == 2
-        assert result2["progress"]["remaining"] == 1
-        assert result2["next_ticket"] == "TASK-003"
+        assert result2["status"] == "completed"
+        assert result2["total"] == 3
 
         # Complete third ticket
         result3 = mark_ticket_done("TASK-003", pr_number="102", state_file=state_file)
-        assert result3["progress"]["current"] == 3
-        assert result3["progress"]["remaining"] == 0
-        assert result3["all_done"]
-        assert result3["next_ticket"] is None
+        assert result3["status"] == "completed"
+        assert result3["total"] == 3
 
     def test_blocked_count_updates_correctly(
         self, blocked_workflow: tuple[Path, WorkflowState]
