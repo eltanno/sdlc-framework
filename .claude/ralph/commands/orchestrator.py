@@ -510,7 +510,7 @@ def process_ticket(
             )
 
         # Invoke Claude
-        logger.info(f"Invoking Claude for {ticket_id} (attempt {current_attempt}/{config.max_attempts}, model={model})")
+        logger.info(f"Invoking Claude for {ticket_id} (attempt {current_attempt}/{config.max_attempts}, model={model}, complexity={complexity})")
 
         result = invoke_claude(
             prompt=prompt,
