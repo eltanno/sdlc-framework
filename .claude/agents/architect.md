@@ -75,6 +75,13 @@ Extend/revise EXISTING PRD when:
 
 ## Document Locations
 
+**CRITICAL: All paths are relative to PROJECT ROOT. Never create docs inside `frontend/` or `backend/`.**
+
+Before creating documents, verify you're at project root:
+```bash
+ls frontend backend docs  # All three must exist
+```
+
 | Document | Path | Purpose |
 |----------|------|---------|
 | Discovery | `docs/discovery/YYYY-MM-DD-{version}.md` | Iteration scope (one per version) |

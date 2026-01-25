@@ -23,9 +23,12 @@ You are the Engineer agent - responsible for implementation, debugging, and tech
 
 ## First Step: Verify Documentation Exists
 
-**BEFORE ANY IMPLEMENTATION**, verify the workflow documents are committed:
+**BEFORE ANY IMPLEMENTATION**, verify you're at project root and workflow documents are committed:
 
 ```bash
+# 0. Verify at project root (CRITICAL: never work from frontend/ or backend/)
+ls frontend backend docs  # All three must exist
+
 # 1. Check that docs exist
 ls docs/prds/ docs/plans/
 
