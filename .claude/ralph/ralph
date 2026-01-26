@@ -22,6 +22,28 @@ if ! python3 -c "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)" 
     exit 1
 fi
 
+# Check dependencies from requirements.txt
+MISSING_DEPS=""
+while IFS= read -r line || [[ -n "$line" ]]; do
+    # Skip comments and empty lines
+    [[ "$line" =~ ^#.*$ || -z "$line" ]] && continue
+    # Extract package name (strip version specifiers like >=, ==, etc.)
+    pkg=$(echo "$line" | sed 's/[<>=!].*//' | tr -d '[:space:]')
+    [[ -z "$pkg" ]] && continue
+    # Check if package is installed
+    if ! pip show "$pkg" >/dev/null 2>&1; then
+        MISSING_DEPS="$MISSING_DEPS $pkg"
+    fi
+done < "$SCRIPT_DIR/requirements.txt"
+
+if [ -n "$MISSING_DEPS" ]; then
+    echo "Missing required dependencies:$MISSING_DEPS" >&2
+    echo "" >&2
+    echo "Install with:" >&2
+    echo "  pip install -r $SCRIPT_DIR/requirements.txt" >&2
+    exit 1
+fi
+
 # Add the ralph directory to PYTHONPATH so imports like "from core.X" work
 export PYTHONPATH="$SCRIPT_DIR:$PYTHONPATH"
 
