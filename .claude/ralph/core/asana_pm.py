@@ -295,15 +295,7 @@ class AsanaPM:
             return self._tag_cache[cache_key]
 
         # Query workspace tags
-        endpoint = f"/workspaces/{self._workspace_id}/tags"
-        tags = self._get(endpoint)
-
-        # Handle case where tags is a list (from API response)
-        if isinstance(tags, list):
-            tags_list = tags
-        else:
-            # Fallback if response structure is different
-            tags_list = []
+        tags_list = self._get_all_tags()
 
         # Search for existing tag (case-insensitive)
         for tag in tags_list:
@@ -324,6 +316,73 @@ class AsanaPM:
         self._tag_cache[cache_key] = tag_gid
         logger.info(f"Tag '{name}' created with GID: {tag_gid}")
         return tag_gid
+
+    def _get_all_tags(self) -> list[dict[str, Any]]:
+        """Fetch all tags from the workspace with pagination.
+
+        Handles Asana's pagination to retrieve all tags even when the
+        workspace has many tags (which would otherwise cause a 400 error).
+
+        Returns:
+            List of tag objects with 'gid' and 'name' fields
+
+        Raises:
+            PMError: If API call fails
+        """
+        all_tags: list[dict[str, Any]] = []
+        offset: str | None = None
+        limit = 100  # Asana's max limit per request
+
+        while True:
+            # Build endpoint with pagination parameters
+            endpoint = f"/workspaces/{self._workspace_id}/tags?limit={limit}"
+            if offset:
+                endpoint += f"&offset={offset}"
+
+            # Make paginated request
+            url = f"{ASANA_API_BASE}{endpoint}"
+            last_error: Exception | None = None
+
+            for attempt in range(MAX_RETRIES):
+                try:
+                    with httpx.Client(timeout=REQUEST_TIMEOUT) as client:
+                        response = client.get(url, headers=self._get_headers())
+                        self._handle_response_error(response)
+                        response_json = response.json()
+
+                    # Extract tags from response
+                    tags = response_json.get("data", [])
+                    if isinstance(tags, list):
+                        all_tags.extend(tags)
+
+                    # Check for next page
+                    next_page = response_json.get("next_page")
+                    if next_page and next_page.get("offset"):
+                        offset = next_page.get("offset")
+                    else:
+                        # No more pages
+                        return all_tags
+
+                    break  # Success, continue to next page
+
+                except httpx.ConnectError as e:
+                    last_error = e
+                    logger.warning(f"Connection error (attempt {attempt + 1}/{MAX_RETRIES}): {e}")
+                except httpx.TimeoutException as e:
+                    last_error = e
+                    logger.warning(f"Timeout (attempt {attempt + 1}/{MAX_RETRIES}): {e}")
+
+                if attempt < MAX_RETRIES - 1:
+                    delay = RETRY_DELAY * (2 ** attempt)
+                    logger.info(f"Retrying in {delay}s...")
+                    time.sleep(delay)
+                else:
+                    # All retries exhausted
+                    if isinstance(last_error, httpx.ConnectError):
+                        raise PMError(f"Network connection error after {MAX_RETRIES} attempts: {last_error}")
+                    raise PMError(f"Request timeout after {MAX_RETRIES} attempts: {last_error}")
+
+        return all_tags
 
     # =========================================================================
     # Ticket ID Resolution
@@ -745,15 +804,7 @@ class AsanaPM:
             return self._tag_cache[cache_key]
 
         # Query workspace tags
-        endpoint = f"/workspaces/{self._workspace_id}/tags"
-        tags = self._get(endpoint)
-
-        # Handle case where tags is a list (from API response)
-        if isinstance(tags, list):
-            tags_list = tags
-        else:
-            tags_list = []
-
+        tags_list = self._get_all_tags()
         # Search for existing tag (case-insensitive)
         for tag in tags_list:
             tag_name = tag.get("name", "")
