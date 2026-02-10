@@ -200,7 +200,6 @@ def pm_workflow(tmp_path: Path, mock_pm: MockPMTool) -> tuple[Path, WorkflowStat
 
     # Create workflow state (hybrid schema for testing)
     state = WorkflowState(
-        version="2.0",
         prd_path=Path("docs/prds/test.md"),
         plan_path=Path("docs/plans/test.md"),
         tickets=tickets,  # Include tickets array for mark_ticket_done compatibility
@@ -245,7 +244,6 @@ def dependency_workflow(tmp_path: Path, mock_pm: MockPMTool) -> tuple[Path, Work
     )
 
     state = WorkflowState(
-        version="2.0",
         prd_path=Path("docs/prds/test.md"),
         plan_path=Path("docs/plans/test.md"),
         tickets=tickets,  # Include tickets array for mark_ticket_done compatibility
@@ -514,7 +512,6 @@ class TestParallelInstanceSimulation:
         )
 
         state = WorkflowState(
-            version="2.0",
             prd_path=Path("docs/prds/test.md"),
             plan_path=Path("docs/plans/test.md"),
             tickets=[],
@@ -745,7 +742,6 @@ class TestStateResetOnMismatch:
 
         # Create existing state with different tickets
         existing_state = WorkflowState(
-            version="2.0",
             prd_path=prd_file,
             plan_path=plan_file,
             tickets=[],
@@ -757,6 +753,7 @@ class TestStateResetOnMismatch:
                 source="github",
             ),
         )
+
         state_file = tmp_path / "workflow-state.json"
         save_workflow_state(existing_state, state_file)
 
@@ -805,7 +802,6 @@ class TestStateResetOnMismatch:
 
         # Create existing state with attempt counts
         existing_state = WorkflowState(
-            version="2.0",
             prd_path=prd_file,
             plan_path=plan_file,
             tickets=[],
@@ -817,6 +813,7 @@ class TestStateResetOnMismatch:
                 source="github",
             ),
         )
+
         state_file = tmp_path / "workflow-state.json"
         save_workflow_state(existing_state, state_file)
 
@@ -866,7 +863,6 @@ class TestPMToolErrorHandling:
         )
 
         state = WorkflowState(
-            version="2.0",
             prd_path=Path("docs/prds/test.md"),
             plan_path=Path("docs/plans/test.md"),
             tickets=[],
@@ -967,8 +963,8 @@ class TestLocalPMFallback:
             blocked={},
             source="local",
         )
+
         state = WorkflowState(
-            version="2.0",
             prd_path=Path("docs/prds/test.md"),
             plan_path=Path("docs/plans/test.md"),
             tickets=[],

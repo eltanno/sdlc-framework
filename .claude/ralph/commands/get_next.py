@@ -10,7 +10,7 @@ The get_next_ticket function returns a GetNextResult dataclass that contains:
 - Status information (ready, complete, waiting_on_dependencies, all_blocked, error)
 - Counts of tickets by status
 
-When a PM tool is provided (v2 schema), ticket status is queried from the PM tool
+When a PM tool is provided, ticket status is queried from the PM tool
 (e.g., GitHub Issues) rather than local state. This allows for:
 - Correct status when PM tool state differs from local state
 - Label-based concurrency control for parallel Ralph instances
@@ -26,7 +26,6 @@ from typing import Any
 
 from core.pm import PMTool, PMError, TicketInfo, TicketStatus
 from core.state import WorkflowState, Ticket
-
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +127,6 @@ def get_ticket_counts(tickets: list[Ticket]) -> dict[str, int]:
         "blocked": 0,
         "in_progress": 0,
     }
-
     for ticket in tickets:
         if ticket.status == "pending":
             counts["pending"] += 1
@@ -278,7 +276,7 @@ def get_next_ticket(
     3. Skip blocked tickets
     4. Return first eligible ticket by order in the list
 
-    When pm_tool is provided (v2 schema), ticket status is queried from the PM tool:
+    When pm_tool is provided, ticket status is queried from the PM tool:
     - Open tickets in PM tool are considered pending
     - Closed tickets in PM tool are considered completed
     - Tickets with blocked label are skipped
@@ -286,17 +284,17 @@ def get_next_ticket(
 
     Args:
         state: The current workflow state
-        pm_tool: Optional PM tool for querying ticket status (v2 schema)
+        pm_tool: Optional PM tool for querying ticket status
         ralph_label: This Ralph instance's label (e.g., "ralph-1") for concurrency control
 
     Returns:
         GetNextResult containing the next ticket and status information
     """
-    # If pm_tool is provided and we have ralph state (v2 schema), use PM tool
+    # If pm_tool is provided and we have ralph state, use PM tool
     if pm_tool is not None and state.ralph is not None:
         return _get_next_ticket_with_pm_tool(state, pm_tool, ralph_label)
 
-    # Otherwise, fall back to v1 behavior using local state
+    # Otherwise, fall back to local state
     return _get_next_ticket_from_local_state(state)
 
 
@@ -308,7 +306,7 @@ def _get_next_ticket_with_pm_tool(
     """Find the next eligible ticket using PM tool for status.
 
     Args:
-        state: The current workflow state (v2 schema with ralph field)
+        state: The current workflow state with ralph field
         pm_tool: PM tool for querying ticket status
         ralph_label: This Ralph instance's label for concurrency control
 
@@ -508,6 +506,7 @@ def _get_next_ticket_with_pm_tool(
             in_progress=0,
             skipped_for_deps=0,
         )
+
     if blocked_count == len(open_tickets) and blocked_count > 0:
         return GetNextResult(
             ticket=None,
@@ -566,12 +565,12 @@ def _get_next_ticket_with_pm_tool(
 
 
 def _get_next_ticket_from_local_state(state: WorkflowState) -> GetNextResult:
-    """Find the next eligible ticket using local state (v1 schema).
+    """Find the next eligible ticket using local state.
 
     This is the fallback behavior when no PM tool is provided.
 
     Args:
-        state: The current workflow state (v1 schema with tickets list)
+        state: The current workflow state with tickets list
 
     Returns:
         GetNextResult containing the next ticket and status information

@@ -13,9 +13,14 @@ not GitLab Issues.
 """
 
 import json
+import logging
 import re
 import subprocess
+import time
+import urllib.parse
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 
 class GitLabError(Exception):
@@ -145,7 +150,7 @@ def create_merge_request(
         MergeRequestResult with URL and number
 
     Raises:
-        GitLabError: If MR creation fails
+        GitLabError: if MR creation fails
     """
     args = ["mr", "create", "--title", title, "--description", body]
 
@@ -184,7 +189,8 @@ def get_merge_request(mr_number: int) -> dict:
     Raises:
         GitLabError: If MR not found or fetch fails
     """
-    args = ["mr", "view", str(mr_number), "--output", "json"]
+    # Use glab api for JSON output (glab mr view --output json not supported in older versions)
+    args = ["api", f"projects/:id/merge_requests/{mr_number}"]
 
     result = _run_glab_command(args)
     return json.loads(result.stdout)
@@ -206,13 +212,19 @@ def list_merge_requests(
     Raises:
         GitLabError: If listing fails
     """
-    args = ["mr", "list", "--output", "json"]
-
+    # Use glab api for JSON output (glab mr list --output json not supported in older versions)
+    # Build query parameters
+    params = []
     if head:
-        args.extend(["--source-branch", head])
-
+        params.append(f"source_branch={head}")
     if state:
-        args.extend(["--state", state])
+        params.append(f"state={state}")
+
+    endpoint = "projects/:id/merge_requests"
+    if params:
+        endpoint += "?" + "&".join(params)
+
+    args = ["api", endpoint]
 
     result = _run_glab_command(args)
     return json.loads(result.stdout)
@@ -222,29 +234,91 @@ def merge_merge_request(
     mr_number: int,
     strategy: str = "squash",
     delete_branch: bool = False,
+    max_retries: int = 3,
+    retry_delay: float = 5.0,
 ) -> None:
-    """Merge a merge request.
+    """Merge a merge request with retry logic for transient failures.
+
+    GitLab's API can return 405/422 errors when the MR state is still syncing
+    after a push or rebase. This function retries with exponential backoff
+    to handle these transient failures.
+
+    Uses the GitLab REST API directly instead of 'glab mr merge' because
+    the CLI command with --squash sets merge_when_pipeline_succeeds=true
+    which blocks merging when pipelines are in manual/pending state.
 
     Args:
         mr_number: MR number (iid) to merge
         strategy: Merge strategy ('merge', 'squash', 'rebase')
         delete_branch: Delete source branch after merge
+        max_retries: Maximum number of retry attempts (default: 3)
+        retry_delay: Initial delay between retries in seconds (default: 5.0)
 
     Raises:
-        GitLabError: If merge fails
+        GitLabError: If merge fails after all retries
     """
-    args = ["mr", "merge", str(mr_number), "--yes"]
+    # Use direct API call instead of 'glab mr merge' to avoid auto-merge behavior
+    # The CLI command sets merge_when_pipeline_succeeds=true which blocks on pipelines
+    endpoint = f"projects/:id/merge_requests/{mr_number}/merge"
+    args = ["api", "-X", "PUT", endpoint]
 
     if strategy == "squash":
-        args.append("--squash")
+        args.extend(["-f", "squash=true"])
     elif strategy == "rebase":
-        args.append("--rebase")
-    # "merge" is the default, no flag needed
+        # GitLab API uses merge_commit_message for rebase, but we just want to merge
+        # Rebase merge is handled by setting squash=false (default)
+        pass
+    # "merge" is the default, no additional flags needed
 
     if delete_branch:
-        args.append("--remove-source-branch")
+        args.extend(["-f", "should_remove_source_branch=true"])
 
-    _run_glab_command(args)
+    last_error = None
+    for attempt in range(max_retries):
+        try:
+            result = _run_glab_command(args)
+            # Verify the merge succeeded by checking the response
+            try:
+                response = json.loads(result.stdout)
+                if response.get("state") == "merged":
+                    return  # Success
+                # If state is not merged, treat as failure
+                raise GitLabError(
+                    f"MR !{mr_number} not merged. State: {response.get('state')}",
+                    command=["glab"] + args,
+                    stderr=f"detailed_merge_status: {response.get('detailed_merge_status')}",
+                )
+            except json.JSONDecodeError:
+                # If we can't parse the response but command succeeded, assume OK
+                return
+        except GitLabError as e:
+            last_error = e
+            error_str = str(e).lower()
+            stderr = getattr(e, "stderr", "").lower() if hasattr(e, "stderr") else ""
+
+            # Check if this is a retryable error (405/422 or "cannot be merged")
+            is_retryable = (
+                "405" in error_str
+                or "422" in error_str
+                or "method not allowed" in error_str
+                or "cannot be merged" in error_str
+                or "cannot be merged" in stderr
+            )
+
+            if is_retryable and attempt < max_retries - 1:
+                delay = retry_delay * (2**attempt)  # Exponential backoff
+                logger.warning(
+                    f"Merge attempt {attempt + 1}/{max_retries} failed for MR !{mr_number}. "
+                    f"Retrying in {delay:.1f}s: {e}"
+                )
+                time.sleep(delay)
+            else:
+                # Not retryable or out of retries
+                raise
+
+    # Should not reach here, but just in case
+    if last_error:
+        raise last_error
 
 
 def find_merged_mr(search_term: str) -> int | None:
@@ -256,15 +330,13 @@ def find_merged_mr(search_term: str) -> int | None:
     Returns:
         MR number (iid) if found, None otherwise
     """
+    # Use glab api for JSON output (glab mr list --output json not supported in older versions)
+    # URL encode the search term for the query parameter
+    encoded_search = urllib.parse.quote(search_term)
+
     args = [
-        "mr",
-        "list",
-        "--state",
-        "merged",
-        "--search",
-        search_term,
-        "--output",
-        "json",
+        "api",
+        f"projects/:id/merge_requests?state=merged&search={encoded_search}",
     ]
 
     result = _run_glab_command(args, check=False)

@@ -4,13 +4,13 @@
 
 # Project Management Tool
 pm:
-  tool: github                    # asana | trello | github (must be set before /ticket)
+  tool: github                        # asana | trello | github (must be set before /ticket)
 
 # Development Commands
 # This is the SDLC framework itself - mostly markdown/scripts, no compiled code
 dev:
-  runtime: node                    # node | bun | deno | python
-  package_manager: npm             # npm | bun | yarn | pnpm | uv
+  runtime: node                       # node | bun | deno | python
+  package_manager: npm                # npm | bun | yarn | pnpm | uv
   typecheck_command: "echo 'No typecheck - framework project'"
   lint_command: "echo 'No lint - framework project'"
   test_command: "echo 'No tests - framework project'"
@@ -23,22 +23,19 @@ git:
     feature: "feature/"
     bugfix: "bugfix/"
     hotfix: "hotfix/"
+  pr:
+    auto_merge: true                  # Auto-merge PRs when validation passes
+    delete_branch_after_merge: true   # Delete feature branch after PR merge
+    merge_method: squash              # merge | squash | rebase
 
 # Repository Provider
 repo:
-  type: github                     # github | gitlab
-
-# Pull Request / Merge Request Settings
-pr:
-  target_branch: main              # Branch to create PRs against (main, develop, etc.)
-  auto_merge: false                # Auto-merge PRs when validation passes
-  delete_branch_after_merge: true  # Delete feature branch after PR merge
-  merge_method: squash             # merge | squash | rebase
+  type: github                        # github | gitlab
 
 # Ticket Configuration
 tickets:
-  prefix: "SDLC"                   # Project code prefix for all tickets (e.g., SDLC-0001)
-  counter: 73                      # Current ticket count - auto-incremented when tickets created
+  prefix: "SDLC"                      # Project code prefix for all tickets (e.g., AIUI-0001)
+  counter: 73                         # Current ticket count - auto-incremented when tickets created
 
 # Ralph Orchestrator Settings (V2)
 ralph:
@@ -47,19 +44,21 @@ ralph:
   # Tickets with complexity > threshold use Opus (more capable)
   # Values: 1-5 (default: 2 means 1-2 use Sonnet, 3-5 use Opus)
   sonnet_threshold: 2
-  max_attempts: 3                  # Max attempts per ticket before marking blocked
+  max_attempts: 3                     # Max attempts per ticket before marking blocked
 
   # V2: State file settings
-  state_directory: "docs/state"    # Directory for engineer state and validation reports
-  keep_state_files: true           # Always keep state files (audit trail)
+  state_directory: "docs/state"       # Directory for engineer state and validation reports
+  keep_state_files: true              # Always keep state files (audit trail)
 
   # V2: Model and timeout settings
-  validator_model: "haiku"         # Model for validation analysis (sonnet | haiku)
-  engineer_timeout: 30             # Minutes for engineer invocation
-  validator_timeout: 10            # Minutes for validator invocation
+  validator_model: "sonnet"           # Model for validation analysis (sonnet | haiku | opus) - default: sonnet
+  review_model: "opus"                # Model for post-loop review in /execution-report (sonnet | haiku | opus) - default: opus
+  engineer_timeout: 30                # Minutes for engineer invocation
+  validator_timeout: 10               # Minutes for validator invocation
+  review_timeout: 5                   # Minutes for post-loop review
 
   # V2: Multi-instance concurrency control (label-based)
-  # For running multiple Ralph instances under same GitHub user
+  # For running multiple Ralph instances under same Github user
   # instance_label is now in .env (RALPH_LABEL) to prevent commit conflicts
-  instance_label_prefix: "ralph-"  # Prefix for all instance labels (used to skip other instances' tickets)
-  use_assignee: false              # Also assign issues to user (set false for multi-instance with same user)
+  instance_label_prefix: "ralph-"     # Prefix for all instance labels (used to skip other instances' tickets)
+  use_assignee: false                 # Also assign issues to user (set false for multi-instance with same user)

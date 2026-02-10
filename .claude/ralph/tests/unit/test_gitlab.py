@@ -114,8 +114,6 @@ class TestGitLabNotAuthenticated:
         assert "auth" in str(exc_info.value).lower()
 
 
-
-
 class TestCreateMergeRequest:
     """Tests for create_merge_request function."""
 
@@ -176,7 +174,7 @@ class TestCreateMergeRequest:
         assert mock_glab.call_args[0][0] == expected_cmd
 
     def test_create_merge_request_raises_on_no_commits(self, mock_glab: MagicMock):
-        """Given no commits to push, when creating MR, then error indicates nothing to push."""
+        """Given no commits to push, when creating MR, then error indicates nothing is wrong."""
         from core import gitlab
 
         mock_glab.return_value.returncode = 1
@@ -205,7 +203,8 @@ class TestGetMergeRequest:
         assert result["title"] == "Test MR"
         assert result["state"] == "opened"
 
-        expected_cmd = ["glab", "mr", "view", "123", "--output", "json"]
+        # Uses glab api for JSON output (glab mr view --output json not supported in older versions)
+        expected_cmd = ["glab", "api", "projects/:id/merge_requests/123"]
         mock_glab.assert_called_once()
         assert mock_glab.call_args[0][0] == expected_cmd
 
@@ -239,7 +238,8 @@ class TestListMergeRequests:
         assert result[0]["iid"] == 1
         assert result[0]["title"] == "Test MR"
 
-        expected_cmd = ["glab", "mr", "list", "--output", "json"]
+        # Uses glab api for JSON output (glab mr list --output json not supported in older versions)
+        expected_cmd = ["glab", "api", "projects/:id/merge_requests"]
         mock_glab.assert_called_once()
         assert mock_glab.call_args[0][0] == expected_cmd
 
@@ -264,7 +264,8 @@ class TestListMergeRequests:
         assert len(result) == 1
         assert result[0]["iid"] == 50
 
-        expected_cmd = ["glab", "mr", "list", "--output", "json", "--source-branch", "feature/test"]
+        # Uses glab api with query parameter for source branch
+        expected_cmd = ["glab", "api", "projects/:id/merge_requests?source_branch=feature/test"]
         mock_glab.assert_called_once()
         assert mock_glab.call_args[0][0] == expected_cmd
 
@@ -278,7 +279,8 @@ class TestListMergeRequests:
 
         assert result == []
 
-        expected_cmd = ["glab", "mr", "list", "--output", "json", "--state", "merged"]
+        # Uses glab api with query parameter for state
+        expected_cmd = ["glab", "api", "projects/:id/merge_requests?state=merged"]
         mock_glab.assert_called_once()
         assert mock_glab.call_args[0][0] == expected_cmd
 
@@ -287,38 +289,48 @@ class TestMergeMergeRequest:
     """Tests for merge_merge_request function."""
 
     def test_merge_merge_request_with_squash(self, mock_glab: MagicMock):
-        """Given mergeable MR, when merging with squash, then MR is merged."""
+        """Given mergeable MR, when merging with squash, then MR is merged via API."""
         from core import gitlab
+        import json
 
+        # API returns the merged MR object
         mock_glab.return_value.returncode = 0
+        mock_glab.return_value.stdout = json.dumps({"state": "merged", "iid": 123})
 
         gitlab.merge_merge_request(123, strategy="squash")
 
-        expected_cmd = ["glab", "mr", "merge", "123", "--yes", "--squash"]
+        # Should use API call instead of CLI command
+        expected_cmd = ["glab", "api", "-X", "PUT", "projects/:id/merge_requests/123/merge", "-f", "squash=true"]
         mock_glab.assert_called_once()
         assert mock_glab.call_args[0][0] == expected_cmd
 
     def test_merge_merge_request_with_merge_commit(self, mock_glab: MagicMock):
-        """Given mergeable MR, when merging with merge commit, then MR is merged."""
+        """Given mergeable MR, when merging with merge commit, then MR is merged via API."""
         from core import gitlab
+        import json
 
         mock_glab.return_value.returncode = 0
+        mock_glab.return_value.stdout = json.dumps({"state": "merged", "iid": 123})
 
         gitlab.merge_merge_request(123, strategy="merge")
 
-        expected_cmd = ["glab", "mr", "merge", "123", "--yes"]
+        # Default merge strategy - no squash flag
+        expected_cmd = ["glab", "api", "-X", "PUT", "projects/:id/merge_requests/123/merge"]
         mock_glab.assert_called_once()
         assert mock_glab.call_args[0][0] == expected_cmd
 
     def test_merge_merge_request_with_rebase(self, mock_glab: MagicMock):
-        """Given mergeable MR, when merging with rebase, then MR is merged."""
+        """Given mergeable MR, when merging with rebase, then MR is merged via API."""
         from core import gitlab
+        import json
 
         mock_glab.return_value.returncode = 0
+        mock_glab.return_value.stdout = json.dumps({"state": "merged", "iid": 123})
 
         gitlab.merge_merge_request(123, strategy="rebase")
 
-        expected_cmd = ["glab", "mr", "merge", "123", "--yes", "--rebase"]
+        # Rebase strategy - no squash flag (rebase is GitLab default when squash=false)
+        expected_cmd = ["glab", "api", "-X", "PUT", "projects/:id/merge_requests/123/merge"]
         mock_glab.assert_called_once()
         assert mock_glab.call_args[0][0] == expected_cmd
 
@@ -350,7 +362,8 @@ class TestFindMergedMr:
 
         assert result == 99
 
-        expected_cmd = ["glab", "mr", "list", "--state", "merged", "--search", "TASK-001", "--output", "json"]
+        # Uses glab api with query parameters (search term is URL-encoded)
+        expected_cmd = ["glab", "api", "projects/:id/merge_requests?state=merged&search=TASK-001"]
         mock_glab.assert_called_once()
         assert mock_glab.call_args[0][0] == expected_cmd
 

@@ -191,7 +191,7 @@ class TestStartTicket:
         with open(state_file) as f:
             state_after = json.load(f)
         assert state_after["current_ticket"] == state_before["current_ticket"]
-        ticket_before = next(t for t in state_before["tickets"] if t["id"] == "TASK-001")
+        ticket_before = next(t for t in state_after["tickets"] if t["id"] == "TASK-001")
         ticket_after = next(t for t in state_after["tickets"] if t["id"] == "TASK-001")
         assert ticket_after["status"] == ticket_before["status"]
         assert ticket_after["id"] == ticket_before["id"]
@@ -245,7 +245,6 @@ class TestStartTicket:
             ticket_data["block_reason"] = block_reason
 
         state_content = {
-            "version": "2.0",
             "prd_path": "docs/prds/test-prd.md",
             "plan_path": "docs/plans/test-plan.md",
             "tickets": [ticket_data],

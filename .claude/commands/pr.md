@@ -1,20 +1,20 @@
 # Pull Request / Merge Request Phase - Orchestrator Instructions
 
-> **⚠️ MANDATORY: READ THIS ENTIRE FILE BEFORE PROCEEDING.**
+> **⚠ MANDATORY: READ THIS ENTIRE FILE BEFORE PROCEEDING.**
 > **You must confirm you have read and understood all sections.**
 
 **You are the orchestrator. This is coordination - delegate to haiku or do directly.**
 
 ---
 
-## ⚡ FIRST ACTION (MANDATORY)
+## ⬇ FIRST ACTION (MANDATORY)
 
 **Before doing ANYTHING else, update the workflow state (if not in ralph mode):**
 
 ```bash
 current_phase=$(jq -r '.phase' workflow-state.json 2>/dev/null || echo "")
 if [ "$current_phase" != "ralph" ]; then
-    .claude/scripts/update-workflow-state.sh '.phase = "pr"'
+  .claude/scripts/update-workflow-state.sh '.phase = "pr"'
 fi
 ```
 
@@ -61,7 +61,7 @@ For local repos, PR phase = merge to main/master:
 ```bash
 # Get current branch and default branch
 CURRENT_BRANCH=$(git branch --show-current)
-DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || echo "master")
+DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@refs/remotes/origin/@@' || echo "master")
 
 # If on feature branch, merge to default branch
 if [[ "$CURRENT_BRANCH" != "$DEFAULT_BRANCH" && "$CURRENT_BRANCH" != "main" && "$CURRENT_BRANCH" != "master" ]]; then
@@ -73,14 +73,16 @@ fi
 
 **Return for local repos:**
 
-```
+---
+
 LOCAL MERGE COMPLETE
 
 Branch: [feature-branch] → [main/master]
 Commits: [N] commits merged
 
 Next: Run /validate
-```
+
+---
 
 Then skip to "Workflow State Update" section and mark PR complete.
 
@@ -122,13 +124,15 @@ If not pushed: Push first with `git push -u origin $(git branch --show-current)`
 
 This is simple enough for haiku or direct execution:
 
-```
+---
+
 Task({
   subagent_type: "general-purpose",
   model: "haiku",
   prompt: <see Agent Prompt below>
 })
-```
+
+---
 
 ## Agent Prompt
 
@@ -155,16 +159,16 @@ Read settings from `config.yaml`:
 # Repository type (github | gitlab)
 REPO_TYPE=$(grep -E "^\s*type:" config.yaml 2>/dev/null | grep -E "github|gitlab" | awk '{print $2}' || echo "github")
 
-# Target branch for PRs (main, develop, etc.)
-TARGET_BRANCH=$(grep -E "^\s*target_branch:" config.yaml 2>/dev/null | awk '{print $2}' || echo "main")
+# Default branch for PRs (main, develop, etc.) - under git section
+DEFAULT_BRANCH=$(grep -E "^\s*default_branch:" config.yaml 2>/dev/null | awk '{print $2}' || echo "main")
 
-# Auto-merge setting
+# Auto-merge setting (under git.pr section)
 AUTO_MERGE=$(grep -E "^\s*auto_merge:" config.yaml 2>/dev/null | awk '{print $2}' || echo "false")
 
-# Merge method (merge | squash | rebase)
+# Merge method (merge | squash | rebase) (under git.pr section)
 MERGE_METHOD=$(grep -E "^\s*merge_method:" config.yaml 2>/dev/null | awk '{print $2}' || echo "squash")
 
-# Delete branch after merge
+# Delete branch after merge (under git.pr section)
 DELETE_BRANCH=$(grep -E "^\s*delete_branch_after_merge:" config.yaml 2>/dev/null | awk '{print $2}' || echo "true")
 ```
 
@@ -180,7 +184,7 @@ BRANCH=$(git branch --show-current)
 TICKET_ID=$(echo $BRANCH | grep -oP 'TASK-\d+')
 
 # Get commit log for this branch
-git log $TARGET_BRANCH..$BRANCH --oneline
+git log $DEFAULT_BRANCH..$BRANCH --oneline
 
 # Find PRD with this ticket
 grep -l "$TICKET_ID" docs/prds/*.md 2>/dev/null || echo "No PRD found"
@@ -192,9 +196,9 @@ grep -l "$TICKET_ID" docs/prds/*.md 2>/dev/null || echo "No PRD found"
 
 ```bash
 gh pr create \
-  --base $TARGET_BRANCH \
-  --title "[$TICKET_ID] Description from ticket" \
-  --body "$(cat <<'EOF'
+    --base $DEFAULT_BRANCH \
+    --title "[$TICKET_ID] Description from ticket" \
+    --body "$(cat <<'EOF'
 ## Summary
 
 Brief description of what this PR does.
@@ -232,9 +236,9 @@ EOF
 
 ```bash
 glab mr create \
-  --target-branch $TARGET_BRANCH \
-  --title "[$TICKET_ID] Description from ticket" \
-  --description "$(cat <<'EOF'
+    --target-branch $DEFAULT_BRANCH \
+    --title "[$TICKET_ID] Description from ticket" \
+    --description "$(cat <<'EOF'
 ## Summary
 
 Brief description of what this MR does.
@@ -323,7 +327,8 @@ gh issue comment $ISSUE_NUMBER --body "Pull Request: $PR_URL"
 
 Return:
 
-```
+---
+
 PR/MR CREATED
 
 PR/MR: #[number] - [title]
@@ -332,15 +337,16 @@ URL: https://github.com/... or https://gitlab.com/...
 Branch: feature/TASK-XXX-description → main
 
 Linked:
-- Ticket: TASK-XXX (updated with PR/MR link) ✅ or ⚠️ (if update failed)
+- Ticket: TASK-XXX (updated with PR/MR link) ✅ or ⚠ (if update failed)
 - PRD: docs/prds/YYYY-MM-DD-feature.md
 
 Local Checks: ✅ Passed (typecheck, lint, tests, build)
 
 Next: Get review, then /validate
-```
 
-**Note:** If Asana/GitHub ticket update failed, show ⚠️ with warning message but still report PR as created successfully.
+---
+
+**Note:** If Asana/GitHub ticket update failed, show ⚠ with warning message but still report PR as created successfully.
 
 ---
 
@@ -359,7 +365,7 @@ Next: Get review, then /validate
 ```bash
 current_phase=$(jq -r '.phase' workflow-state.json 2>/dev/null || echo "")
 if [ "$current_phase" != "ralph" ]; then
-    .claude/scripts/update-workflow-state.sh '.completed = (.completed + ["pr"] | unique)'
+  .claude/scripts/update-workflow-state.sh '.completed = (.completed + ["pr"] | unique)'
 fi
 ```
 

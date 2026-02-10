@@ -3,7 +3,7 @@
 This module tests the ticket selection logic across multiple scenarios:
 - Empty queue handling
 - Dependency satisfaction logic
-- Blocked ticket handling
+- blocked ticket handling
 - All tickets complete scenarios
 
 These tests use temporary state files to simulate real workflows.
@@ -29,7 +29,6 @@ from commands.get_next import get_next_ticket
 # Fixtures
 # ============================================================================
 
-
 @pytest.fixture
 def empty_workflow(tmp_path: Path) -> tuple[Path, WorkflowState]:
     """Create an empty workflow with no tickets.
@@ -45,7 +44,6 @@ def empty_workflow(tmp_path: Path) -> tuple[Path, WorkflowState]:
         source="github",
     )
     state = WorkflowState(
-        version="2.0",
         prd_path=Path("docs/prds/test.md"),
         plan_path=Path("docs/plans/test.md"),
         tickets=[],
@@ -76,7 +74,6 @@ def simple_workflow(tmp_path: Path) -> tuple[Path, WorkflowState]:
         source="github",
     )
     state = WorkflowState(
-        version="2.0",
         prd_path=Path("docs/prds/test.md"),
         plan_path=Path("docs/plans/test.md"),
         tickets=tickets,
@@ -112,7 +109,6 @@ def dependency_workflow(tmp_path: Path) -> tuple[Path, WorkflowState]:
         source="github",
     )
     state = WorkflowState(
-        version="2.0",
         prd_path=Path("docs/prds/test.md"),
         plan_path=Path("docs/plans/test.md"),
         tickets=tickets,
@@ -144,7 +140,6 @@ def mixed_status_workflow(tmp_path: Path) -> tuple[Path, WorkflowState]:
         source="github",
     )
     state = WorkflowState(
-        version="2.0",
         prd_path=Path("docs/prds/test.md"),
         plan_path=Path("docs/plans/test.md"),
         tickets=tickets,
@@ -160,7 +155,6 @@ def mixed_status_workflow(tmp_path: Path) -> tuple[Path, WorkflowState]:
 # ============================================================================
 # Test Cases: Empty Queue
 # ============================================================================
-
 
 class TestEmptyQueue:
     """Tests for empty workflow handling."""
@@ -181,7 +175,6 @@ class TestEmptyQueue:
 # ============================================================================
 # Test Cases: Dependencies Satisfied
 # ============================================================================
-
 
 class TestDependenciesSatisfied:
     """Tests for ticket selection with satisfied dependencies."""
@@ -242,7 +235,6 @@ class TestDependenciesSatisfied:
 # Test Cases: Dependencies Blocked
 # ============================================================================
 
-
 class TestDependenciesBlocked:
     """Tests for ticket selection with blocked dependencies."""
 
@@ -285,7 +277,6 @@ class TestDependenciesBlocked:
 # Test Cases: All Tickets Complete
 # ============================================================================
 
-
 class TestAllComplete:
     """Tests for all tickets complete scenario."""
 
@@ -315,7 +306,6 @@ class TestAllComplete:
 # Test Cases: Blocked Tickets
 # ============================================================================
 
-
 class TestBlockedTickets:
     """Tests for blocked ticket handling."""
 
@@ -342,7 +332,6 @@ class TestBlockedTickets:
             Ticket(id="TASK-002", title="Blocked 2", status="blocked", dependencies=[]),
         ]
         state = WorkflowState(
-            version="1.0",
             prd_path=Path("docs/prds/test.md"),
             plan_path=Path("docs/plans/test.md"),
             tickets=tickets,
@@ -360,7 +349,6 @@ class TestBlockedTickets:
 # ============================================================================
 # Test Cases: In-Progress Resumption
 # ============================================================================
-
 
 class TestInProgressResumption:
     """Tests for resuming in-progress tickets."""
@@ -391,7 +379,6 @@ class TestInProgressResumption:
             Ticket(id="TASK-002", title="In progress", status="in_progress", dependencies=["TASK-001"]),
         ]
         state = WorkflowState(
-            version="1.0",
             prd_path=Path("docs/prds/test.md"),
             plan_path=Path("docs/plans/test.md"),
             tickets=tickets,
@@ -408,7 +395,6 @@ class TestInProgressResumption:
 # Test Cases: Edge Cases
 # ============================================================================
 
-
 class TestEdgeCases:
     """Tests for edge cases and boundary conditions."""
 
@@ -421,7 +407,6 @@ class TestEdgeCases:
             Ticket(id="TASK-002", title="Task 2", status="pending", dependencies=["TASK-001"]),
         ]
         state = WorkflowState(
-            version="1.0",
             prd_path=Path("docs/prds/test.md"),
             plan_path=Path("docs/plans/test.md"),
             tickets=tickets,
@@ -442,7 +427,6 @@ class TestEdgeCases:
             Ticket(id="TASK-002", title="Normal", status="pending", dependencies=[]),
         ]
         state = WorkflowState(
-            version="1.0",
             prd_path=Path("docs/prds/test.md"),
             plan_path=Path("docs/plans/test.md"),
             tickets=tickets,

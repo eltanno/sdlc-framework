@@ -32,8 +32,10 @@ from commands.orchestrator import (
     OrchestratorConfig,
     OrchestratorResult,
     EngineerResult,
+    ValidatorResult,
     VALIDATION_PASSED,
     VALIDATION_FAILED,
+    VALIDATION_CONFIRMED,
 )
 
 
@@ -49,7 +51,7 @@ def test_config(tmp_path: Path) -> Path:
     Returns:
         Path to the config file
     """
-    config_content = """
+    config_content = """\
 project:
   name: test-project
 
@@ -116,7 +118,6 @@ def orchestrator_workflow(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
         source="github",
     )
     state = WorkflowState(
-        version="2.0",
         prd_path=prd_file,
         plan_path=plan_file,
         tickets=tickets,
@@ -126,7 +127,7 @@ def orchestrator_workflow(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
     save_workflow_state(state, state_file)
 
     # Create Config
-    config_content = """
+    config_content = """\
 ralph:
   max_attempts: 2
   sonnet_threshold: 2
@@ -167,7 +168,6 @@ def single_ticket_workflow(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
         source="github",
     )
     state = WorkflowState(
-        version="2.0",
         prd_path=prd_file,
         plan_path=plan_file,
         tickets=tickets,
@@ -176,7 +176,7 @@ def single_ticket_workflow(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
     state_file = tmp_path / "workflow-state.json"
     save_workflow_state(state, state_file)
 
-    config_content = """
+    config_content = """\
 ralph:
   max_attempts: 3
 """
@@ -325,7 +325,6 @@ class TestComplexityFlowEndToEnd:
             blocked={},
         )
         state = WorkflowState(
-            version="2.0",
             prd_path=tmp_path / "prd.md",
             plan_path=tmp_path / "plan.md",
             tickets=[],
@@ -391,7 +390,6 @@ class TestComplexityFlowEndToEnd:
             blocked={},
         )
         state = WorkflowState(
-            version="2.0",
             prd_path=tmp_path / "prd.md",
             plan_path=tmp_path / "plan.md",
             tickets=[],
@@ -416,7 +414,7 @@ class TestEngineerResultParsing:
 
     def test_parse_validation_passed(self):
         """Given VALIDATION_PASSED output, when parsed, then status is correct."""
-        output = """
+        output = """\
 VALIDATION_PASSED
 
 Ticket: TASK-001
@@ -432,7 +430,7 @@ Commit: abc123def
 
     def test_parse_validation_failed(self):
         """Given VALIDATION_FAILED output, when parsed, then status is correct."""
-        output = """
+        output = """\
 VALIDATION_FAILED
 
 Ticket: TASK-002
@@ -500,16 +498,16 @@ class TestDryRunMode:
                 dry_run=True,
             )
 
-        # Verify Claude is not invoked
-        mock_invoke.assert_not_called()
+            # Verify Claude is not invoked
+            mock_invoke.assert_not_called()
 
-        # Verify dry run result contains correct metadata
-        assert result.status == "dry_run"
-        assert result.ticket_id == "TASK-001"
-        assert result.attempts == 0
+            # Verify dry run result contains correct metadata
+            assert result.status == "dry_run"
+            assert result.ticket_id == "TASK-001"
+            assert result.attempts == 0
 
-        # Verify it indicates what WOULD happen (preview behavior)
-        # In dry run, the function should return early without any state changes
+            # Verify it indicates what WOULD happen (preview behavior)
+            # In dry run, the function should return early without any state changes
 
 
 # ============================================================================
@@ -531,7 +529,6 @@ class TestHappyPath:
         state_dir = tmp_path / "test_state"
         state_dir.mkdir()
         config = OrchestratorConfig(state_directory=state_dir)
-
         ticket = Ticket(id="TASK-001", title="Test", status="pending", dependencies=[])
 
         # Mock Claude to return VALIDATION_PASSED
@@ -542,29 +539,37 @@ class TestHappyPath:
             commit="abc123",
         )
 
+        # Mock validator to confirm the work
+        mock_validator_result = ValidatorResult(
+            status=VALIDATION_CONFIRMED,
+            reason="All acceptance criteria verified",
+        )
+
         with patch("commands.orchestrator.invoke_claude", return_value=mock_result):
-            with patch("commands.orchestrator.pr_flow") as mock_pr:
-                mock_pr.return_value = MagicMock(pr_number=100)
-                with patch("commands.orchestrator.ticket_done") as mock_done:
-                    result = process_ticket(
-                        ticket=ticket,
-                        config=config,
-                        prd_path=prd_file,
-                        plan_path=plan_file,
-                        state_file=state_file,
-                        dry_run=False,
-                    )
+            with patch("commands.orchestrator.invoke_validator", return_value=mock_validator_result):
+                with patch("commands.orchestrator.pr_flow") as mock_pr:
+                    mock_pr.return_value = MagicMock(pr_number=100)
+                    with patch("commands.orchestrator.ticket_done") as mock_done:
+                        result = process_ticket(
+                            ticket=ticket,
+                            config=config,
+                            prd_path=prd_file,
+                            plan_path=plan_file,
+                            state_file=state_file,
+                            dry_run=False,
+                        )
 
         # Verify completion status
         assert result.status == "completed"
         assert result.attempts == 1
         assert result.pr_number == 100
 
-        # Verify pr_flow was called with correct ticket ID and commit message
+        # Verify pr_flow was called with correct ticket ID, commit message, and default branch
         mock_pr.assert_called_once_with(
             ticket_id="TASK-001",
             commit_message="[TASK-001] Implementation complete",
             dry_run=False,
+            default_branch="main",
         )
 
         # Verify ticket_done was called with correct ticket ID, PR number, and state file
@@ -612,18 +617,25 @@ class TestRetryFlow:
             commit="def456",
         )
 
+        # Mock validator to confirm on second attempt
+        mock_validator_result = ValidatorResult(
+            status=VALIDATION_CONFIRMED,
+            reason="All acceptance criteria verified",
+        )
+
         with patch("commands.orchestrator.invoke_claude", side_effect=[fail_result, pass_result]) as mock_invoke:
-            with patch("commands.orchestrator.pr_flow") as mock_pr:
-                mock_pr.return_value = MagicMock(pr_number=100)
-                with patch("commands.orchestrator.ticket_done"):
-                    result = process_ticket(
-                        ticket=ticket,
-                        config=config,
-                        prd_path=prd_file,
-                        plan_path=plan_file,
-                        state_file=state_file,
-                        dry_run=False,
-                    )
+            with patch("commands.orchestrator.invoke_validator", return_value=mock_validator_result):
+                with patch("commands.orchestrator.pr_flow") as mock_pr:
+                    mock_pr.return_value = MagicMock(pr_number=100)
+                    with patch("commands.orchestrator.ticket_done"):
+                        result = process_ticket(
+                            ticket=ticket,
+                            config=config,
+                            prd_path=prd_file,
+                            plan_path=plan_file,
+                            state_file=state_file,
+                            dry_run=False,
+                        )
 
         # Verify completion after retry
         assert result.status == "completed"
@@ -761,18 +773,25 @@ class TestTimeoutHandling:
             commit="abc123",
         )
 
+        # Mock validator to confirm on second attempt
+        mock_validator_result = ValidatorResult(
+            status=VALIDATION_CONFIRMED,
+            reason="All acceptance criteria verified",
+        )
+
         with patch("commands.orchestrator.invoke_claude", side_effect=[timeout_result, pass_result]) as mock_invoke:
-            with patch("commands.orchestrator.pr_flow") as mock_pr:
-                mock_pr.return_value = MagicMock(pr_number=100)
-                with patch("commands.orchestrator.ticket_done"):
-                    result = process_ticket(
-                        ticket=ticket,
-                        config=config,
-                        prd_path=prd_file,
-                        plan_path=plan_file,
-                        state_file=state_file,
-                        dry_run=False,
-                    )
+            with patch("commands.orchestrator.invoke_validator", return_value=mock_validator_result):
+                with patch("commands.orchestrator.pr_flow") as mock_pr:
+                    mock_pr.return_value = MagicMock(pr_number=100)
+                    with patch("commands.orchestrator.ticket_done"):
+                        result = process_ticket(
+                            ticket=ticket,
+                            config=config,
+                            prd_path=prd_file,
+                            plan_path=plan_file,
+                            state_file=state_file,
+                            dry_run=False,
+                        )
 
         # Verify retry happened after timeout
         assert result.status == "completed"
@@ -847,7 +866,6 @@ class TestDependencyWaiting:
 
         # Setup mock state
         mock_state = WorkflowState(
-            version="2.0",
             prd_path=prd_file,
             plan_path=plan_file,
             tickets=[],
@@ -860,7 +878,7 @@ class TestDependencyWaiting:
             MagicMock(ticket=None, has_more=False, status="complete"),
         ]
 
-        config_content = """
+        config_content = """\
 ralph:
   max_attempts: 3
 pm:
@@ -916,18 +934,25 @@ class TestStateFileIntegration:
             commit="abc123",
         )
 
+        # Mock validator to confirm the work
+        mock_validator_result = ValidatorResult(
+            status=VALIDATION_CONFIRMED,
+            reason="All acceptance criteria verified",
+        )
+
         with patch("commands.orchestrator.invoke_claude", return_value=pass_result):
-            with patch("commands.orchestrator.pr_flow") as mock_pr:
-                mock_pr.return_value = MagicMock(pr_number=100)
-                with patch("commands.orchestrator.ticket_done") as mock_done:
-                    process_ticket(
-                        ticket=ticket,
-                        config=config,
-                        prd_path=prd_file,
-                        plan_path=plan_file,
-                        state_file=state_file,
-                        dry_run=False,
-                    )
+            with patch("commands.orchestrator.invoke_validator", return_value=mock_validator_result):
+                with patch("commands.orchestrator.pr_flow") as mock_pr:
+                    mock_pr.return_value = MagicMock(pr_number=100)
+                    with patch("commands.orchestrator.ticket_done") as mock_done:
+                        process_ticket(
+                            ticket=ticket,
+                            config=config,
+                            prd_path=prd_file,
+                            plan_path=plan_file,
+                            state_file=state_file,
+                            dry_run=False,
+                        )
 
         # Verify ticket_done was called with correct arguments
         mock_done.assert_called_once()

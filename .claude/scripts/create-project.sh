@@ -15,9 +15,9 @@ NC='\033[0m'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------
 # Usage
-# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------
 
 usage() {
     echo "Usage: $0 <project-path> [options]"
@@ -39,9 +39,9 @@ usage() {
     echo "  $0 /path/to/project --no-git"
 }
 
-# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------
 # Parse arguments
-# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------
 
 PROJECT_PATH=""
 INIT_GIT=true
@@ -66,7 +66,7 @@ while [[ $# -gt 0 ]]; do
             REPO_TYPE="$2"
             shift 2
             ;;
-        -*)
+        *)
             echo -e "${RED}Error: Unknown option $1${NC}"
             usage
             exit 1
@@ -91,9 +91,9 @@ if [ -z "$PROJECT_PATH" ]; then
     exit 1
 fi
 
-# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------
 # Validate
-# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------
 
 # Expand path
 PROJECT_PATH="$(realpath -m "$PROJECT_PATH")"
@@ -104,22 +104,22 @@ if [ -e "$PROJECT_PATH" ]; then
     exit 1
 fi
 
-echo "=================================="
+echo "========================================="
 echo "SDLC Framework - New Project"
-echo "=================================="
+echo "========================================="
 echo ""
 echo "Project: $PROJECT_NAME"
 echo "Path: $PROJECT_PATH"
 echo ""
 
-# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------
 # Create project
-# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------
 
-echo -e "${BLUE}→${NC} Creating project directory..."
+echo -e "${BLUE}>${NC} Creating project directory..."
 mkdir -p "$PROJECT_PATH"
 
-echo -e "${BLUE}→${NC} Copying framework files..."
+echo -e "${BLUE}>${NC} Copying framework files..."
 
 # Copy framework files (exclude git, node_modules, project-specific content)
 # Note: --filter=':- .gitignore' respects .gitignore patterns
@@ -144,21 +144,21 @@ rsync -a \
 
 echo -e "${GREEN}✓${NC} Framework files copied"
 
-# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------
 # Configure
-# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------
 
 cd "$PROJECT_PATH"
 
 # Update PM tool if specified
 if [ -n "$PM_TOOL" ]; then
-    echo -e "${BLUE}→${NC} Setting PM tool to: $PM_TOOL"
+    echo -e "${BLUE}>${NC} Setting PM tool to: $PM_TOOL"
     sed -i "s/tool: asana/tool: $PM_TOOL/" config.yaml
 fi
 
 # Update repo type if specified
 if [ -n "$REPO_TYPE" ]; then
-    echo -e "${BLUE}→${NC} Setting repo type to: $REPO_TYPE"
+    echo -e "${BLUE}>${NC} Setting repo type to: $REPO_TYPE"
     sed -i "s/type: github/type: $REPO_TYPE/" config.yaml
 fi
 
@@ -168,12 +168,12 @@ if [ -f .env.example ]; then
     echo -e "${GREEN}✓${NC} Created .env from template"
 fi
 
-# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------
 # Initialize git
-# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------
 
 if [ "$INIT_GIT" = true ]; then
-    echo -e "${BLUE}→${NC} Initializing git repository..."
+    echo -e "${BLUE}>${NC} Initializing git repository..."
     git init -q
     git add .
     git commit -q -m "Initial commit: SDLC Framework
@@ -182,14 +182,14 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
     echo -e "${GREEN}✓${NC} Git repository initialized"
 fi
 
-# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------
 # Done
-# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------
 
 echo ""
-echo -e "${GREEN}=================================="
+echo -e "${GREEN}========================================="
 echo "Project created successfully!"
-echo "==================================${NC}"
+echo "=========================================${NC}"
 echo ""
 echo "Next steps:"
 echo ""
@@ -198,13 +198,13 @@ echo ""
 echo "  2. Edit config.yaml:"
 echo "     - pm.tool: Your PM tool (asana, trello, github, linear, none)"
 echo "     - repo.type: Your git provider (github, gitlab)"
-echo "     - pr.auto_merge: Set to true for automated merging"
+echo "     - git.pr.auto_merge: Set to true for automated merging"
 echo ""
 echo "  3. Edit .env with your API keys"
 echo ""
 echo "  4. Authenticate your git provider:"
 echo "     - GitHub: gh auth login"
-echo "     - GitLab: glab auth login"
+echo "     - Gitlab: glab auth login"
 echo ""
 echo "  5. Run ./claude-setup.sh to install dependencies (optional)"
 echo ""

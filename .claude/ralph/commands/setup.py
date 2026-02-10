@@ -29,9 +29,9 @@ from core.state import (
 logger = logging.getLogger(__name__)
 
 
-# ============================================================================
+# ================================================================
 # Dataclasses
-# ============================================================================
+# ================================================================
 
 
 @dataclass
@@ -74,9 +74,9 @@ class SetupResult:
     tickets_removed: list[str] | None = None
 
 
-# ============================================================================
+# ================================================================
 # Path Validation
-# ============================================================================
+# ================================================================
 
 
 def validate_paths(prd_path: Path, plan_path: Path) -> None:
@@ -95,9 +95,9 @@ def validate_paths(prd_path: Path, plan_path: Path) -> None:
         raise FileNotFoundError(f"Plan file not found: {plan_path}")
 
 
-# ============================================================================
+# ================================================================
 # Ticket Extraction
-# ============================================================================
+# ================================================================
 
 
 def extract_tickets_from_prd(prd_path: Path) -> list[str]:
@@ -122,6 +122,7 @@ def extract_tickets_from_prd(prd_path: Path) -> list[str]:
         r"^#{1,2}\s*Tickets\s*$",
         re.MULTILINE | re.IGNORECASE
     )
+
     match = tickets_section_pattern.search(content)
 
     if not match:
@@ -191,9 +192,9 @@ def extract_ticket_prefix(tickets: list[str]) -> str | None:
     return None
 
 
-# ============================================================================
+# ================================================================
 # Mismatch Detection and State Reset
-# ============================================================================
+# ================================================================
 
 
 def detect_ticket_mismatch(
@@ -273,9 +274,9 @@ def reset_state_from_prd(
     )
 
 
-# ============================================================================
+# ================================================================
 # Workflow State Initialization
-# ============================================================================
+# ================================================================
 
 
 def initialize_workflow_state(
@@ -286,7 +287,7 @@ def initialize_workflow_state(
     """Initialize workflow state from PRD and plan.
 
     Extracts tickets from PRD, parses dependencies and complexity from PRD
-    (or plan as fallback), and creates the initial workflow state file in v2 format.
+    (or plan as fallback), and creates the initial workflow state file.
 
     Args:
         prd_path: Path to the PRD document
@@ -312,7 +313,7 @@ def initialize_workflow_state(
     dependencies = {tid: meta.dependencies for tid, meta in ticket_metadata.items()}
     complexity = {tid: meta.complexity for tid, meta in ticket_metadata.items()}
 
-    # Create RalphState (v2 format) - status comes from PM tool
+    # Create RalphState - status comes from PM tool
     ralph = RalphState(
         source="unknown",  # Will be set by PM tool detection
         tickets=ticket_ids,
@@ -322,12 +323,11 @@ def initialize_workflow_state(
         blocked={},
     )
 
-    # Create WorkflowState in v2 format
+    # Create WorkflowState
     state = WorkflowState(
-        version="2.0",
         prd_path=prd_path,
         plan_path=plan_path,
-        tickets=[],  # v2 uses ralph.tickets, not this field
+        tickets=[],  # uses ralph.tickets, not this field
         ralph=ralph,
         current_ticket=None,
         completed_count=0,
@@ -340,9 +340,9 @@ def initialize_workflow_state(
     return state
 
 
-# ============================================================================
+# ================================================================
 # Main Setup Function
-# ============================================================================
+# ================================================================
 
 
 def run_setup(
@@ -362,7 +362,7 @@ def run_setup(
         plan_path: Path to the plan document
         state_file: Path where the state file should be created
         interactive: If True, prompt user to confirm state reset on mismatch.
-                    If False, warn and continue with PRD as source of truth.
+                     If False, warn and continue with PRD as source of truth.
 
     Returns:
         SetupResult with success status and metadata
@@ -391,18 +391,13 @@ def run_setup(
         try:
             existing_state = load_workflow_state(state_file)
 
-            # Get tickets from existing state (v2 format uses ralph.tickets)
-            if existing_state.ralph is not None:
-                state_tickets = existing_state.ralph.tickets
-                old_attempts = existing_state.ralph.attempts
-                old_blocked = existing_state.ralph.blocked
-                source = existing_state.ralph.source
-            else:
-                # v1 format fallback
-                state_tickets = [t.id for t in existing_state.tickets]
-                old_attempts = {t.id: t.attempts for t in existing_state.tickets if t.attempts > 0}
-                old_blocked = {t.id: t.block_reason for t in existing_state.tickets if t.block_reason}
-                source = "unknown"
+            # Get tickets from existing state
+            if existing_state.ralph is None:
+                raise ValueError("State file missing ralph section")
+            state_tickets = existing_state.ralph.tickets
+            old_attempts = existing_state.ralph.attempts
+            old_blocked = existing_state.ralph.blocked
+            source = existing_state.ralph.source
 
             # Detect mismatch
             mismatch_result = detect_ticket_mismatch(prd_tickets, state_tickets)
@@ -427,7 +422,7 @@ def run_setup(
                     if user_input != "y":
                         return SetupResult(
                             success=False,
-                            error="User aborted: state reset rejected",
+                            error="User aborted: State reset rejected",
                             mismatch_detected=True,
                             tickets_added=tickets_added,
                             tickets_removed=tickets_removed,
@@ -449,12 +444,11 @@ def run_setup(
                     source=source,
                 )
 
-                # Create new workflow state with v2 format
+                # Create new workflow state
                 state = WorkflowState(
-                    version="2.0",
                     prd_path=prd_path,
                     plan_path=plan_path,
-                    tickets=[],  # v2 uses ralph.tickets
+                    tickets=[],  # uses ralph.tickets
                     ralph=new_ralph,
                     current_ticket=None,
                     completed_count=0,
@@ -474,6 +468,7 @@ def run_setup(
                     tickets_added=tickets_added,
                     tickets_removed=tickets_removed,
                 )
+
             else:
                 # No mismatch - state matches PRD, just return success
                 ticket_prefix = extract_ticket_prefix(prd_tickets)
@@ -495,8 +490,8 @@ def run_setup(
     except Exception as e:
         return SetupResult(success=False, error=f"Failed to initialize state: {e}")
 
-    # Extract ticket metadata (v2 uses ralph.tickets)
-    ticket_ids = state.ralph.tickets if state.ralph else [t.id for t in state.tickets]
+    # Extract ticket metadata
+    ticket_ids = state.ralph.tickets if state.ralph else []
     ticket_prefix = extract_ticket_prefix(ticket_ids)
     ticket_count = len(ticket_ids)
 

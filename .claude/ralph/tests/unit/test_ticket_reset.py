@@ -27,7 +27,6 @@ class TestResetTicket:
 
         # Setup workflow state with blocked ticket
         state = {
-            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -64,7 +63,6 @@ class TestResetTicket:
         from core.state import load_workflow_state
 
         state = {
-            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -97,7 +95,6 @@ class TestResetTicket:
         from core.state import load_workflow_state
 
         state = {
-            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -130,7 +127,6 @@ class TestResetTicket:
         from commands.ticket_reset import reset_ticket, TicketResetError
 
         state = {
-            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -157,7 +153,6 @@ class TestResetTicket:
         from commands.ticket_reset import reset_ticket, TicketResetError
 
         state = {
-            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -198,7 +193,6 @@ class TestResetTicketWithCleanup:
 
         # Setup workflow state
         state = {
-            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -243,7 +237,6 @@ class TestResetTicketWithCleanup:
         from commands.ticket_reset import reset_ticket
 
         state = {
-            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -286,7 +279,6 @@ class TestResetTicketWithCleanup:
         from commands.ticket_reset import reset_ticket
 
         state = {
-            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -331,7 +323,6 @@ class TestResetTicketResult:
         from commands.ticket_reset import reset_ticket
 
         state = {
-            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -364,7 +355,6 @@ class TestResetTicketResult:
         from commands.ticket_reset import reset_ticket
 
         state = {
-            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -421,7 +411,7 @@ class TestResetTicketUpdatesBlockedCount:
             }
         ]
 
-        # Add another blocked ticket if testing count 2→1
+        # Add another blocked ticket if testing count 2>1
         if initial_count == 2:
             tickets.append({
                 "id": "TASK-002",
@@ -433,7 +423,6 @@ class TestResetTicketUpdatesBlockedCount:
             })
 
         state = {
-            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": tickets,

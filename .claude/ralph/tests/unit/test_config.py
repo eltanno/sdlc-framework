@@ -38,7 +38,7 @@ class TestLoadConfig:
         then all configuration values are accessible as typed attributes.
         """
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("""
+        config_file.write_text("""\
 ralph:
   instance_label_prefix: "ralph-"
   use_assignee: false
@@ -70,7 +70,7 @@ ralph:
         then a clear error message is raised with the file path and issue.
         """
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("""
+        config_file.write_text("""\
 ralph:
   instance_label_prefix: "ralph-"
   use_assignee: [invalid yaml
@@ -88,7 +88,7 @@ ralph:
         then the default value is used.
         """
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("""
+        config_file.write_text("""\
 ralph:
   use_assignee: true
 """)
@@ -104,7 +104,7 @@ ralph:
     def test_load_config_empty_ralph_section_uses_all_defaults(self, tmp_path: Path) -> None:
         """Given config has empty ralph section, all defaults are applied."""
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("""
+        config_file.write_text("""\
 ralph: {}
 """)
         config = load_config(config_file)
@@ -117,7 +117,7 @@ ralph: {}
     def test_load_config_missing_ralph_section_uses_defaults(self, tmp_path: Path) -> None:
         """Given config has no ralph section, defaults are applied."""
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("""
+        config_file.write_text("""\
 dev:
   runtime: node
 """)
@@ -135,7 +135,7 @@ class TestGetInstanceLabel:
         then the instance_label reflects the environment value.
         """
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("""
+        config_file.write_text("""\
 ralph:
   instance_label_prefix: "ralph-"
 """)
@@ -150,7 +150,7 @@ ralph:
         then default to {prefix}1.
         """
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("""
+        config_file.write_text("""\
 ralph:
   instance_label_prefix: "ralph-"
 """)
@@ -165,7 +165,7 @@ ralph:
         then raise error.
         """
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("""
+        config_file.write_text("""\
 ralph:
   instance_label_prefix: "ralph-"
 """)
@@ -180,7 +180,7 @@ ralph:
     def test_get_instance_label_with_custom_prefix(self, tmp_path: Path, monkeypatch) -> None:
         """Given custom prefix in config and matching env var, label is valid."""
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("""
+        config_file.write_text("""\
 ralph:
   instance_label_prefix: "worker-"
 """)
@@ -193,7 +193,7 @@ ralph:
     def test_get_instance_label_custom_prefix_default(self, tmp_path: Path, monkeypatch) -> None:
         """Given custom prefix, default label uses that prefix."""
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("""
+        config_file.write_text("""\
 ralph:
   instance_label_prefix: "ci-"
 """)
@@ -210,7 +210,7 @@ class TestGetInstanceLabelPrefix:
     def test_get_prefix_from_config(self, tmp_path: Path) -> None:
         """Given configured prefix, returns that prefix."""
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("""
+        config_file.write_text("""\
 ralph:
   instance_label_prefix: "my-prefix-"
 """)
@@ -222,7 +222,7 @@ ralph:
     def test_get_prefix_defaults_to_ralph(self, tmp_path: Path) -> None:
         """Given no prefix configured, defaults to 'ralph-'."""
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("""
+        config_file.write_text("""\
 ralph:
   use_assignee: true
 """)
@@ -242,7 +242,7 @@ ralph:
     def test_get_prefix_malformed_yaml_returns_default(self, tmp_path: Path) -> None:
         """Given malformed YAML config file, returns default prefix."""
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("""
+        config_file.write_text("""\
 ralph:
   instance_label_prefix: [invalid yaml
 """)
@@ -258,7 +258,7 @@ class TestGetUseAssignee:
     def test_get_use_assignee_false(self, tmp_path: Path) -> None:
         """Given use_assignee is false, returns False."""
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("""
+        config_file.write_text("""\
 ralph:
   use_assignee: false
 """)
@@ -270,7 +270,7 @@ ralph:
     def test_get_use_assignee_true(self, tmp_path: Path) -> None:
         """Given use_assignee is true, returns True."""
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("""
+        config_file.write_text("""\
 ralph:
   use_assignee: true
 """)
@@ -282,7 +282,7 @@ ralph:
     def test_get_use_assignee_defaults_to_true(self, tmp_path: Path) -> None:
         """Given use_assignee not configured, defaults to True."""
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("""
+        config_file.write_text("""\
 ralph:
   instance_label_prefix: "ralph-"
 """)
@@ -302,7 +302,7 @@ ralph:
     def test_get_use_assignee_malformed_yaml_returns_default(self, tmp_path: Path) -> None:
         """Given malformed YAML config file, returns default True."""
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("""
+        config_file.write_text("""\
 ralph:
   use_assignee: [invalid yaml
 """)
@@ -346,7 +346,7 @@ class TestConfigDataclass:
     def test_config_has_ralph_section(self, tmp_path: Path) -> None:
         """Config has ralph section with expected attributes."""
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("""
+        config_file.write_text("""\
 ralph:
   instance_label_prefix: "test-"
   use_assignee: false
@@ -357,6 +357,7 @@ ralph:
   validator_model: "sonnet"
   engineer_timeout: 60
   validator_timeout: 15
+  review_model: "opus"
 """)
         config = load_config(config_file)
 
@@ -369,6 +370,74 @@ ralph:
         assert config.ralph.validator_model == "sonnet"
         assert config.ralph.engineer_timeout == 60
         assert config.ralph.validator_timeout == 15
+        assert config.ralph.review_model == "opus"
+
+    def test_validator_model_defaults_to_sonnet(self, tmp_path: Path) -> None:
+        """Given validator_model is not specified, when config loads,
+        then validator_model defaults to 'sonnet'.
+        """
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""\
+ralph:
+  instance_label_prefix: "ralph-"
+""")
+        config = load_config(config_file)
+
+        assert config.ralph.validator_model == "sonnet"
+
+    def test_review_model_defaults_to_opus(self, tmp_path: Path) -> None:
+        """Given review_model is not specified, when config loads,
+        then review_model defaults to 'opus'.
+        """
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""\
+ralph:
+  instance_label_prefix: "ralph-"
+""")
+        config = load_config(config_file)
+
+        assert config.ralph.review_model == "opus"
+
+    def test_review_model_accepts_model_name_strings(self, tmp_path: Path) -> None:
+        """Given review_model is defined in config, when config loads,
+        then review_model accepts model name strings (sonnet, haiku, opus).
+        """
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""\
+ralph:
+  review_model: "sonnet"
+""")
+        config = load_config(config_file)
+
+        assert config.ralph.review_model == "sonnet"
+
+    def test_review_model_can_be_set_to_haiku(self, tmp_path: Path) -> None:
+        """Given review_model is 'haiku', when config loads,
+        then review_model is set to 'haiku'.
+        """
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""\
+ralph:
+  review_model: "haiku"
+""")
+        config = load_config(config_file)
+
+        assert config.ralph.review_model == "haiku"
+
+    def test_config_has_review_model_attribute(self, tmp_path: Path) -> None:
+        """Given config is loaded with review_model set, when accessing the attribute,
+        then it should be accessible with documentation for post-loop batch review.
+        """
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""\
+ralph:
+  review_model: "opus"
+""")
+        config = load_config(config_file)
+
+        # Verify attribute exists and has expected value
+        assert hasattr(config.ralph, 'review_model')
+        assert config.ralph.review_model == "opus"
 
 
 class TestGetPmToolType:
@@ -385,7 +454,7 @@ class TestGetPmToolType:
     def test_get_pm_tool_type_missing_pm_section_raises_error(self, tmp_path: Path) -> None:
         """Given config has no pm section, when getting PM tool type, then raises ConfigError."""
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("""
+        config_file.write_text("""\
 ralph:
   instance_label_prefix: "ralph-"
 """)
@@ -398,7 +467,7 @@ ralph:
     def test_get_pm_tool_type_missing_tool_key_raises_error(self, tmp_path: Path) -> None:
         """Given pm section exists but tool key missing, when getting PM tool type, then raises ConfigError."""
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("""
+        config_file.write_text("""\
 pm:
   other_setting: value
 """)
@@ -410,7 +479,7 @@ pm:
     def test_get_pm_tool_type_invalid_value_raises_error(self, tmp_path: Path) -> None:
         """Given pm.tool has invalid value, when getting PM tool type, then raises ConfigError."""
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("""
+        config_file.write_text("""\
 pm:
   tool: jira
 """)
@@ -433,7 +502,7 @@ pm:
     def test_get_pm_tool_type_empty_string_raises_error(self, tmp_path: Path) -> None:
         """Given pm.tool is empty string, when getting PM tool type, then raises ConfigError."""
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("""
+        config_file.write_text("""\
 pm:
   tool: ""
 """)
@@ -449,7 +518,7 @@ class TestGetRepoToolType:
     def test_get_repo_tool_type_github_returns_github(self, tmp_path: Path) -> None:
         """Given repo.type is 'github', when getting repo tool type, then returns 'github'."""
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("""
+        config_file.write_text("""\
 repo:
   type: github
 """)
@@ -460,7 +529,7 @@ repo:
     def test_get_repo_tool_type_gitlab_returns_gitlab(self, tmp_path: Path) -> None:
         """Given repo.type is 'gitlab', when getting repo tool type, then returns 'gitlab'."""
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("""
+        config_file.write_text("""\
 repo:
   type: gitlab
 """)
@@ -471,7 +540,7 @@ repo:
     def test_get_repo_tool_type_missing_repo_section_returns_github_default(self, tmp_path: Path) -> None:
         """Given config has no repo section, when getting repo tool type, then returns 'github' (default)."""
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("""
+        config_file.write_text("""\
 ralph:
   instance_label_prefix: "ralph-"
 """)
@@ -480,9 +549,9 @@ ralph:
         assert result == "github"
 
     def test_get_repo_tool_type_missing_type_key_returns_github_default(self, tmp_path: Path) -> None:
-        """Given repo section exists but type key missing, when getting repo tool type, then returns 'github' (default)."""
+        """Given repo section exists but type key missing, when getting repo tool type, then returns "github" (default)."""
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("""
+        config_file.write_text("""\
 repo:
   other_setting: value
 """)
@@ -493,7 +562,7 @@ repo:
     def test_get_repo_tool_type_invalid_value_raises_error(self, tmp_path: Path) -> None:
         """Given repo.type has invalid value, when getting repo tool type, then raises ConfigError."""
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("""
+        config_file.write_text("""\
 repo:
   type: bitbucket
 """)
@@ -516,7 +585,7 @@ repo:
     def test_get_repo_tool_type_empty_string_returns_github_default(self, tmp_path: Path) -> None:
         """Given repo.type is empty string, when getting repo tool type, then returns 'github' (default)."""
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("""
+        config_file.write_text("""\
 repo:
   type: ""
 """)
@@ -527,7 +596,7 @@ repo:
     def test_get_repo_tool_type_malformed_yaml_raises_error(self, tmp_path: Path) -> None:
         """Given config file has malformed YAML, when getting repo tool type, then raises ConfigError."""
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("""
+        config_file.write_text("""\
 repo:
   type: [invalid yaml
 """)
@@ -536,3 +605,4 @@ repo:
 
         error_msg = str(exc_info.value).lower()
         assert "yaml" in error_msg or "parse" in error_msg
+

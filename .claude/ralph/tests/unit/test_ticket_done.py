@@ -1,12 +1,10 @@
 """Unit tests for commands/ticket_done.py - Mark ticket as complete.
 
-Tests cover v2 format ONLY (real production format):
-- tickets: [] (empty array)
+State Format:
 - ralph.tickets: ["TASK-001", ...] (list of IDs)
 - ralph.blocked: {"TASK-001": "reason"} (blocked tickets - cleared on done)
-
-Status comes from PM tool, not state file.
-PM tools receive ticket_id directly (e.g., "SDLC-0070"), not issue numbers.
+- Status comes from PM tool, not state file
+- PM tools receive ticket_id directly (e.g., "SDLC-0070"), not issue numbers
 """
 
 import json
@@ -16,7 +14,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
-def create_v2_state(
+def create_state(
     tickets: list[str],
     current_ticket: str | None = None,
     blocked: dict[str, str] | None = None,
@@ -24,15 +22,11 @@ def create_v2_state(
     attempts: dict[str, int] | None = None,
     source: str = "asana",
 ) -> dict:
-    """Create a valid v2 format state dictionary.
-
-    This is the ONLY format used in production. v1 format is gone.
-    """
+    """Create a valid state dictionary for testing."""
     return {
-        "version": "2.0",
         "prd_path": "docs/prds/test.md",
         "plan_path": "docs/plans/test.md",
-        "tickets": [],  # Always empty in v2 - IDs are in ralph.tickets
+        "tickets": [],
         "current_ticket": current_ticket,
         "completed_count": 0,
         "blocked_count": 0,
@@ -46,14 +40,14 @@ def create_v2_state(
     }
 
 
-class TestMarkTicketDoneV2:
-    """Tests for mark_ticket_done with v2 format."""
+class TestMarkTicketDone:
+    """Tests for mark_ticket_done."""
 
     def test_mark_ticket_done_updates_state(self, tmp_path: Path):
-        """Given a valid v2 state, mark_ticket_done updates the state file."""
+        """Given a valid state, mark_ticket_done updates the state file."""
         from commands.ticket_done import mark_ticket_done
 
-        state = create_v2_state(
+        state = create_state(
             tickets=["TASK-001", "TASK-002", "TASK-003"],
             current_ticket="TASK-001",
         )
@@ -69,7 +63,7 @@ class TestMarkTicketDoneV2:
         """Given current_ticket is completed ticket, mark_ticket_done clears it."""
         from commands.ticket_done import mark_ticket_done
 
-        state = create_v2_state(
+        state = create_state(
             tickets=["TASK-001", "TASK-002"],
             current_ticket="TASK-001",
         )
@@ -85,7 +79,7 @@ class TestMarkTicketDoneV2:
         """Given pr_number, mark_ticket_done includes it in result."""
         from commands.ticket_done import mark_ticket_done
 
-        state = create_v2_state(
+        state = create_state(
             tickets=["TASK-001"],
             current_ticket="TASK-001",
         )
@@ -100,7 +94,7 @@ class TestMarkTicketDoneV2:
         """Given ticket was blocked, mark_ticket_done removes it from blocked."""
         from commands.ticket_done import mark_ticket_done
 
-        state = create_v2_state(
+        state = create_state(
             tickets=["TASK-001", "TASK-002"],
             current_ticket="TASK-001",
             blocked={"TASK-001": "was blocked for testing"},
@@ -114,10 +108,10 @@ class TestMarkTicketDoneV2:
         assert "TASK-001" not in updated["ralph"]["blocked"]
 
     def test_mark_ticket_done_returns_total_count(self, tmp_path: Path):
-        """Given v2 state, mark_ticket_done returns total ticket count."""
+        """Given state, mark_ticket_done returns total ticket count."""
         from commands.ticket_done import mark_ticket_done
 
-        state = create_v2_state(
+        state = create_state(
             tickets=["TASK-001", "TASK-002", "TASK-003"],
             current_ticket="TASK-001",
         )
@@ -128,11 +122,11 @@ class TestMarkTicketDoneV2:
 
         assert result["total"] == 3
 
-    def test_mark_ticket_done_remaining_is_none_in_v2(self, tmp_path: Path):
-        """Given v2 state, remaining is None (can't know without PM query)."""
+    def test_mark_ticket_done_remaining_is_none(self, tmp_path: Path):
+        """Given state, remaining is None (can't know without PM query)."""
         from commands.ticket_done import mark_ticket_done
 
-        state = create_v2_state(
+        state = create_state(
             tickets=["TASK-001", "TASK-002"],
             current_ticket="TASK-001",
         )
@@ -147,7 +141,7 @@ class TestMarkTicketDoneV2:
         """Given ticket not in ralph.tickets, mark_ticket_done raises ValueError."""
         from commands.ticket_done import mark_ticket_done
 
-        state = create_v2_state(tickets=["TASK-001"])
+        state = create_state(tickets=["TASK-001"])
         state_file = tmp_path / "workflow-state.json"
         state_file.write_text(json.dumps(state))
 
@@ -164,14 +158,14 @@ class TestMarkTicketDoneV2:
             mark_ticket_done("TASK-001", state_file=missing_file)
 
 
-class TestTicketDoneV2PMTool:
-    """Tests for ticket_done PM tool integration with v2 format."""
+class TestTicketDonePMTool:
+    """Tests for ticket_done PM tool integration."""
 
     def test_ticket_done_calls_pm_tool_with_ticket_id(self, tmp_path: Path):
         """Given pm_tool, ticket_done passes ticket_id (not issue_number)."""
         from commands.ticket_done import ticket_done
 
-        state = create_v2_state(
+        state = create_state(
             tickets=["SDLC-0067", "SDLC-0068", "SDLC-0069", "SDLC-0070"],
             current_ticket="SDLC-0070",
         )
@@ -198,7 +192,7 @@ class TestTicketDoneV2PMTool:
         """Given pm_tool and ralph_label, label is removed before closing."""
         from commands.ticket_done import ticket_done
 
-        state = create_v2_state(
+        state = create_state(
             tickets=["TASK-001"],
             current_ticket="TASK-001",
         )
@@ -225,7 +219,7 @@ class TestTicketDoneV2PMTool:
         """Given no ralph_label, ticket_done skips remove_label call."""
         from commands.ticket_done import ticket_done
 
-        state = create_v2_state(
+        state = create_state(
             tickets=["TASK-001"],
             current_ticket="TASK-001",
         )
@@ -249,7 +243,7 @@ class TestTicketDoneV2PMTool:
         """Given ticket already closed in PM, ticket_done succeeds (idempotent)."""
         from commands.ticket_done import ticket_done
 
-        state = create_v2_state(
+        state = create_state(
             tickets=["TASK-001"],
             current_ticket="TASK-001",
         )
@@ -269,14 +263,14 @@ class TestTicketDoneV2PMTool:
         mock_pm.close_ticket.assert_called_once_with("TASK-001")
 
 
-class TestTicketDoneV2GitHub:
+class TestTicketDoneGitHub:
     """Tests for GitHub CLI fallback (when no pm_tool provided)."""
 
     def test_ticket_done_closes_github_issue(self, tmp_path: Path):
         """Given GitHub config, ticket_done closes issue via gh CLI."""
         from commands.ticket_done import ticket_done
 
-        state = create_v2_state(
+        state = create_state(
             tickets=["TASK-001"],
             current_ticket="TASK-001",
         )
@@ -302,7 +296,7 @@ class TestTicketDoneV2GitHub:
         """Given instance_label in config, ticket_done removes it."""
         from commands.ticket_done import ticket_done
 
-        state = create_v2_state(
+        state = create_state(
             tickets=["TASK-001"],
             current_ticket="TASK-001",
         )
@@ -310,7 +304,7 @@ class TestTicketDoneV2GitHub:
         state_file.write_text(json.dumps(state))
 
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("""
+        config_file.write_text("""\
 pm:
   tool: github
 ralph:
@@ -334,7 +328,7 @@ ralph:
         """Given pm.tool is not github, ticket_done skips GitHub ops."""
         from commands.ticket_done import ticket_done
 
-        state = create_v2_state(
+        state = create_state(
             tickets=["TASK-001"],
             current_ticket="TASK-001",
         )
@@ -360,7 +354,6 @@ class TestFindIssueByTicketId:
     def test_find_issue_returns_number_when_found(self):
         """Given matching issue exists, find_issue_by_ticket_id returns number."""
         from commands.ticket_done import find_issue_by_ticket_id
-
         with patch("commands.ticket_done.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
                 returncode=0,
@@ -369,7 +362,8 @@ class TestFindIssueByTicketId:
                 ]),
                 stderr=""
             )
-            result = find_issue_by_ticket_id("TASK-001")
+
+        result = find_issue_by_ticket_id("TASK-001")
 
         assert result == 42
 
@@ -381,11 +375,11 @@ class TestFindIssueByTicketId:
             mock_run.return_value = MagicMock(
                 returncode=0,
                 stdout=json.dumps([
-                    {"number": 1, "title": "Unrelated issue"}
+                    {"number": 1, "title": "Unrelated Issue"}
                 ]),
                 stderr=""
             )
-            result = find_issue_by_ticket_id("TASK-001")
+        result = find_issue_by_ticket_id("TASK-001")
 
         assert result is None
 

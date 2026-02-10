@@ -28,11 +28,12 @@ logger = logging.getLogger(__name__)
 
 from commands.get_next import get_next_ticket
 from commands.mark_blocked import mark_blocked
-from commands.pr_flow import pr_flow, PrFlowError
+from commands.pr_flow import pr_flow, PrFlowError, MergeError
 from commands.ticket_done import ticket_done
 from core.config import get_pm_tool_type, ConfigError
 from core.pm import PMTool, GitHubPM, LocalPM
 from core.asana_pm import AsanaPM
+from core.git import stage_files
 from core.state import (
     Ticket,
     load_workflow_state,
@@ -59,6 +60,43 @@ DEFAULT_MAX_WAIT_RETRIES = 60  # 60 * 30s = 30 minutes
 
 
 # ============================================================================
+# Helper Functions
+# ============================================================================
+
+
+def stage_summary_files(ticket_id: str, state_directory: str | Path) -> None:
+    """Stage summary files so they get included in the next commit.
+
+    This is called before pr_flow so the summary files are included
+    in the PR's commit rather than being left uncommitted.
+
+    Args:
+        ticket_id: The ticket ID (e.g., "AIUI-0024")
+        state_directory: Directory containing state files (e.g., "docs/state")
+    """
+    try:
+        summary_dir = Path(state_directory) / ticket_id
+        summary_json = summary_dir / "summary.json"
+        summary_md = summary_dir / "summary.md"
+
+        files_to_stage = []
+        if summary_json.exists():
+            files_to_stage.append(str(summary_json))
+        if summary_md.exists():
+            files_to_stage.append(str(summary_md))
+
+        if not files_to_stage:
+            logger.debug(f"No summary files to stage for {ticket_id}")
+            return
+
+        stage_files(files_to_stage)
+        logger.debug(f"Staged summary files for {ticket_id}: {files_to_stage}")
+    except Exception as e:
+        # Don't fail the ticket over staging issues
+        logger.warning(f"Failed to stage summary files for {ticket_id}: {e}")
+
+
+# ============================================================================
 # Data Classes
 # ============================================================================
 
@@ -71,7 +109,7 @@ class OrchestratorConfig:
         max_attempts: Maximum retry attempts per ticket before marking blocked
         sonnet_threshold: Complexity threshold for model selection (1-threshold use sonnet)
         state_directory: Directory for engineer state files
-        validator_model: Model to use for validation analysis
+        validator_model: Model to use for validation analysis (default: "sonnet")
         engineer_timeout: Timeout in minutes for engineer invocation
         validator_timeout: Timeout in minutes for validator invocation
         instance_label: Label for this ralph instance (from RALPH_LABEL env)
@@ -86,7 +124,7 @@ class OrchestratorConfig:
     max_attempts: int = DEFAULT_MAX_ATTEMPTS
     sonnet_threshold: int = DEFAULT_SONNET_THRESHOLD
     state_directory: Path = field(default_factory=lambda: Path("docs/state"))
-    validator_model: str = "haiku"
+    validator_model: str = "sonnet"
     engineer_timeout: int = DEFAULT_ENGINEER_TIMEOUT
     validator_timeout: int = DEFAULT_VALIDATOR_TIMEOUT
     instance_label: str = ""
@@ -161,6 +199,25 @@ class OrchestratorResult:
     end_time: datetime | None = None
 
 
+@dataclass
+class ValidatorResult:
+    """Result from parsing validator agent output.
+
+    AIUI-0052: Implements result structure for the validation agent.
+
+    Attributes:
+        status: Result status (validation_confirmed, validation_rejected, timeout, dry_run, unknown)
+        ticket_id: Ticket ID from output
+        reason: Rejection reason if validation_rejected
+        raw_output: Raw output from Claude validator
+    """
+
+    status: str
+    ticket_id: str | None = None
+    reason: str | None = None
+    raw_output: str = ""
+
+
 # ============================================================================
 # Configuration Loading
 # ============================================================================
@@ -213,7 +270,7 @@ def load_config(
         max_attempts=ralph_config.get("max_attempts", DEFAULT_MAX_ATTEMPTS),
         sonnet_threshold=ralph_config.get("sonnet_threshold", DEFAULT_SONNET_THRESHOLD),
         state_directory=Path(ralph_config.get("state_directory", "docs/state")),
-        validator_model=ralph_config.get("validator_model", "haiku"),
+        validator_model=ralph_config.get("validator_model", "sonnet"),
         engineer_timeout=ralph_config.get("engineer_timeout", DEFAULT_ENGINEER_TIMEOUT),
         validator_timeout=ralph_config.get("validator_timeout", DEFAULT_VALIDATOR_TIMEOUT),
         instance_label=instance_label,
@@ -349,6 +406,158 @@ def parse_engineer_result(output: str, is_timeout: bool = False) -> EngineerResu
 
 
 # ============================================================================
+# Validator Result Constants
+# ============================================================================
+
+VALIDATION_CONFIRMED = "validation_confirmed"
+VALIDATION_REJECTED = "validation_rejected"
+
+
+# ============================================================================
+# Validator Result Parsing
+# ============================================================================
+
+
+def parse_validator_result(output: str, is_timeout: bool = False) -> ValidatorResult:
+    """Parse validator agent output to extract result.
+
+    AIUI-0052: Implements parsing for validation agent responses.
+
+    Args:
+        output: Raw output from Claude validator agent
+        is_timeout: Whether the invocation timed out
+
+    Returns:
+        ValidatorResult with parsed fields
+    """
+    if is_timeout:
+        return ValidatorResult(status="timeout", raw_output=output)
+
+    # Check for validation markers
+    if "VALIDATION_CONFIRMED" in output:
+        status = VALIDATION_CONFIRMED
+    elif "VALIDATION_REJECTED" in output:
+        status = VALIDATION_REJECTED
+    else:
+        return ValidatorResult(status="unknown", raw_output=output)
+
+    # Parse ticket ID
+    ticket_match = re.search(r"Ticket:\s*(\S+)", output)
+    ticket_id = ticket_match.group(1) if ticket_match else None
+
+    # Parse reason (for rejected results)
+    reason = None
+    if status == VALIDATION_REJECTED:
+        reason_match = re.search(r"Reason:\s*(.+?)(?:\n|$)", output, re.IGNORECASE)
+        if reason_match:
+            reason = reason_match.group(1).strip()
+
+    return ValidatorResult(
+        status=status,
+        ticket_id=ticket_id,
+        reason=reason,
+        raw_output=output,
+    )
+
+
+# ============================================================================
+# Validator Invocation
+# ============================================================================
+
+
+def invoke_validator(
+    prompt: str,
+    timeout_minutes: int = 10,
+    model: str = "sonnet",
+    dry_run: bool = False,
+) -> ValidatorResult:
+    """Invoke Claude CLI for validation work.
+
+    AIUI-0052: Implements the validation agent invocation.
+
+    Calls the Claude CLI with the validator_model from config and handles
+    timeout appropriately. The validator agent verifies engineer work
+    against original PRD/plan acceptance criteria.
+
+    Args:
+        prompt: The validation prompt to send to Claude
+        timeout_minutes: Timeout in minutes (default: 10)
+        model: Model to use for validation (default: sonnet)
+        dry_run: If True, don't actually invoke Claude
+
+    Returns:
+        ValidatorResult with parsed output containing:
+        - status: validation_confirmed, validation_rejected, timeout, dry_run, or unknown
+        - ticket_id: The ticket being validated
+        - reason: Rejection reason if validation_rejected
+        - raw_output: Full output from Claude
+
+    Raises:
+        RuntimeError: If Claude CLI is not found in PATH
+    """
+    if dry_run:
+        return ValidatorResult(
+            status="dry_run",
+            raw_output="[DRY RUN] Would invoke Claude validator",
+        )
+
+    # Build command - uses same structure as invoke_claude but without
+    # the engineer agent (validators use default agent with tools for reading)
+    cmd = [
+        "claude",
+        "-p",
+        prompt,
+        "--model",
+        model,
+        "--allowedTools",
+        "Bash,Read,Glob,Grep,Write",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+    ]
+
+    try:
+        # Run with timeout
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout_minutes * 60,
+        )
+
+        output = result.stdout + result.stderr
+
+        # Parse result from stream-json output
+        # Look for {"type":"result"} or {"type": "result"} JSON line
+        result_text = ""
+        for line in output.splitlines():
+            if '"type"' in line and '"result"' in line:
+                try:
+                    data = json.loads(line)
+                    if data.get("type") == "result":
+                        result_text = data.get("result", "")
+                        break
+                except json.JSONDecodeError:
+                    continue
+
+        # If no result JSON found, use full output
+        if not result_text:
+            result_text = output
+
+        return parse_validator_result(result_text)
+
+    except subprocess.TimeoutExpired:
+        return ValidatorResult(
+            status="timeout",
+            raw_output="Validator invocation timed out",
+        )
+    except FileNotFoundError:
+        raise RuntimeError(
+            "Claude CLI not found. Please ensure it is installed and in PATH."
+        )
+
+
+# ============================================================================
 # Claude Invocation
 # ============================================================================
 
@@ -407,14 +616,15 @@ def invoke_claude(
         output = result.stdout + result.stderr
 
         # Parse result from stream-json output
-        # Look for {"type":"result"} JSON line
+        # Look for {"type":"result"} or {"type": "result"} JSON line
         result_text = ""
         for line in output.splitlines():
-            if '"type":"result"' in line:
+            if '"type"' in line and '"result"' in line:
                 try:
                     data = json.loads(line)
-                    result_text = data.get("result", "")
-                    break
+                    if data.get("type") == "result":
+                        result_text = data.get("result", "")
+                        break
                 except json.JSONDecodeError:
                     continue
 
@@ -499,6 +709,7 @@ def process_ticket(
                 prd_path=prd_path,
                 plan_path=plan_path,
                 max_attempts=config.max_attempts,
+                default_branch=config.default_branch,
             )
         else:
             prompt = _build_resume_prompt(
@@ -511,7 +722,6 @@ def process_ticket(
 
         # Invoke Claude
         logger.info(f"Invoking Claude for {ticket_id} (attempt {current_attempt}/{config.max_attempts}, model={model}, complexity={complexity})")
-
         result = invoke_claude(
             prompt=prompt,
             timeout_minutes=config.engineer_timeout,
@@ -523,12 +733,61 @@ def process_ticket(
         logger.info(f"Claude returned: {result.status} for {ticket_id}")
 
         if result.status == VALIDATION_PASSED:
-            # Success! Run PR flow
+            # AIUI-0055: Invoke validation agent after engineer reports VALIDATION_PASSED
+            # The validator verifies work against original PRD/plan acceptance criteria
+            logger.info(f"Engineer passed for {ticket_id}, invoking validator...")
+
+            # Build validator prompt with paths to PRD, plan, and state
+            validator_prompt = build_validator_prompt(
+                ticket_id=ticket_id,
+                prd_path=prd_path,
+                plan_path=plan_path,
+                state_dir=config.state_directory,
+                attempt=current_attempt,
+            )
+
+            # Invoke validator with configured model and timeout
+            validator_result = invoke_validator(
+                prompt=validator_prompt,
+                timeout_minutes=config.validator_timeout,
+                model=config.validator_model,
+                dry_run=dry_run,
+            )
+
+            logger.info(f"Validator returned: {validator_result.status} for {ticket_id}")
+
+            # Check validator result
+            if validator_result.status != VALIDATION_CONFIRMED:
+                # AIUI-0055: Validator rejected or returned unexpected status
+                # Do NOT proceed to pr_flow - increment attempt and retry
+                logger.warning(
+                    f"Validator rejected {ticket_id}: {validator_result.reason or 'No reason given'}"
+                )
+                current_attempt += 1
+                continue
+
+            # Validator confirmed - proceed with PR flow
+            logger.info(f"Validator confirmed {ticket_id}, proceeding to PR flow")
+
+            # Write summary BEFORE pr_flow so it gets included in the PR
+            write_summary(
+                ticket_id=ticket_id,
+                status="SUCCESS",
+                total_attempts=current_attempt,
+                pr_number=None,  # PR not created yet
+                base_dir=config.state_directory,
+            )
+
+            # Stage summary files so pr_flow includes them in its commit
+            stage_summary_files(ticket_id, config.state_directory)
+
+            # Run PR flow (will include staged summary files)
             try:
                 pr_result = pr_flow(
                     ticket_id=ticket_id,
                     commit_message=f"[{ticket_id}] Implementation complete",
                     dry_run=dry_run,
+                    default_branch=config.default_branch,
                 )
 
                 # Mark ticket done
@@ -538,15 +797,6 @@ def process_ticket(
                     state_file=state_file,
                     pm_tool=pm_tool,
                     ralph_label=ralph_label,
-                )
-
-                # Write success summary
-                write_summary(
-                    ticket_id=ticket_id,
-                    status="SUCCESS",
-                    total_attempts=current_attempt,
-                    pr_number=str(pr_result.pr_number) if pr_result.pr_number else None,
-                    base_dir=config.state_directory,
                 )
 
                 duration = time.time() - start_time
@@ -559,11 +809,41 @@ def process_ticket(
                     duration_seconds=duration,
                 )
 
-            except PrFlowError as e:
-                # PR flow failed, but validation passed - still close the ticket
-                # The work is done, just couldn't create PR (maybe nothing to commit)
+            except MergeError as e:
+                # Merge failed - this is a real failure, don't close the ticket
+                # The PR was created but couldn't be merged (conflicts, API issues, etc.)
                 duration = time.time() - start_time
-                logger.info(f"Ticket {ticket_id} completed with PR flow error in {_format_duration(duration)}")
+                logger.error(f"Ticket {ticket_id} merge failed after {_format_duration(duration)}: {e}")
+
+                # Mark as blocked so it can be retried or manually fixed
+                mark_blocked(
+                    ticket_id=ticket_id,
+                    reason=f"Merge failed: {e}",
+                    pm_tool=pm_tool,
+                    ralph_label=ralph_label,
+                )
+
+                write_summary(
+                    ticket_id=ticket_id,
+                    status="BLOCKED",
+                    total_attempts=current_attempt,
+                    pr_number=None,
+                    base_dir=config.state_directory,
+                )
+
+                return TicketResult(
+                    ticket_id=ticket_id,
+                    status="blocked",
+                    attempts=current_attempt,
+                    block_reason=f"Merge failed: {e}",
+                    duration_seconds=duration,
+                )
+
+            except PrFlowError as e:
+                # Other PR flow errors (e.g., nothing to commit, branch issues)
+                # Validation passed, so the work is done - close the ticket
+                duration = time.time() - start_time
+                logger.info(f"Ticket {ticket_id} completed with PR flow note in {_format_duration(duration)}: {e}")
 
                 # Still mark ticket done in PM tool
                 ticket_done(
@@ -582,11 +862,14 @@ def process_ticket(
                     base_dir=config.state_directory,
                 )
 
+                # Note: Summary files left uncommitted in this edge case
+                # (detached HEAD prevents pushing, no PR to include them)
+
                 return TicketResult(
                     ticket_id=ticket_id,
                     status="completed",
                     attempts=current_attempt,
-                    block_reason=f"PR flow error: {e}",
+                    block_reason=f"PR flow note: {e}",
                     duration_seconds=duration,
                 )
 
@@ -611,6 +894,9 @@ def process_ticket(
                 pr_number=None,
                 base_dir=config.state_directory,
             )
+
+            # Note: Summary files left uncommitted in this edge case
+            # (detached HEAD prevents pushing, no PR to include them)
 
             return TicketResult(
                 ticket_id=ticket_id,
@@ -681,6 +967,7 @@ def _build_initial_prompt(
     prd_path: Path,
     plan_path: Path,
     max_attempts: int,
+    default_branch: str = "main",
 ) -> str:
     """Build initial implementation prompt for first attempt.
 
@@ -689,6 +976,7 @@ def _build_initial_prompt(
         prd_path: Path to PRD document
         plan_path: Path to plan document
         max_attempts: Maximum attempts allowed
+        default_branch: Default git branch from config
 
     Returns:
         Formatted prompt string
@@ -699,7 +987,7 @@ def _build_initial_prompt(
 
 **Ticket:** {ticket_id}
 **Attempt:** 1 of {max_attempts}
-**Branch:** Create `feature/{ticket_id}-implementation`
+**Branch:** Create "feature/{ticket_id}-implementation"
 
 ## Required Reading
 
@@ -714,8 +1002,8 @@ Implement this ticket using Test-Driven Development:
 ### Step 1: Create Feature Branch
 
 ```bash
-git fetch origin main
-git checkout -b feature/{ticket_id}-implementation origin/main
+git fetch origin {default_branch}
+git checkout -b feature/{ticket_id}-implementation origin/{default_branch}
 ```
 
 ### Step 2: TDD Implementation
@@ -784,7 +1072,7 @@ def _build_resume_prompt(
 
 **Ticket:** {ticket_id}
 **Attempt:** {attempt} of {max_attempts}
-**Branch:** `{branch}` (already exists - checkout and continue)
+**Branch:** {branch} (already exists - checkout and continue)
 
 ## Previous Attempt
 
@@ -819,6 +1107,215 @@ Branch: {branch}
 Commit: <sha>
 State file: docs/state/{ticket_id}/attempt-{attempt}/engineer-state.md
 ```
+"""
+
+
+def check_validation_file_exists(
+    ticket_id: str,
+    attempt: int,
+    state_dir: Path,
+) -> bool:
+    """Check if validation.md file exists for a ticket attempt.
+
+    AIUI-0056: Implements validation file existence check.
+
+    Args:
+        ticket_id: The ticket identifier (e.g., "AIUI-0056")
+        attempt: Current attempt number
+        state_dir: Base directory for state files
+
+    Returns:
+        True if validation.md exists, False otherwise
+    """
+    validation_file = state_dir / ticket_id / f"attempt-{attempt}" / "validation.md"
+    return validation_file.exists()
+
+
+def write_fallback_validation_report(
+    ticket_id: str,
+    attempt: int,
+    status: str,
+    message: str,
+    state_dir: Path,
+) -> Path:
+    """Write fallback validation report when validator doesn't write one.
+
+    AIUI-0056: Implements fallback validation report writing.
+
+    If the validator agent completes but doesn't write validation.md,
+    this function creates a minimal validation report as fallback.
+
+    Args:
+        ticket_id: The ticket identifier
+        attempt: Current attempt number
+        status: Validation status (validation_confirmed, validation_rejected, etc.)
+        message: Message to include in the report
+        state_dir: Base directory for state files
+
+    Returns:
+        Path to the created validation.md file
+    """
+    from datetime import datetime
+    from core.state import ensure_state_dir
+
+    # Ensure directory exists
+    attempt_dir = ensure_state_dir(ticket_id, attempt, state_dir)
+    validation_file = attempt_dir / "validation.md"
+
+    # Create fallback validation report
+    content = f"""# Validation Report: {ticket_id}
+
+**Attempt:** {attempt}
+**Timestamp:** {datetime.now().isoformat()}
+**Status:** {status}
+
+---
+
+## Note
+
+{message}
+
+This is a fallback validation report created because the validator agent
+did not write a validation.md file.
+
+---
+
+## Validator Result
+
+**Status:** {status.replace('_', ' ').upper()}
+
+The validator completed execution but did not produce a detailed validation report.
+Check the validator agent output for more details.
+"""
+
+    validation_file.write_text(content)
+    return validation_file
+
+
+def build_validator_prompt(
+    ticket_id: str,
+    prd_path: Path,
+    plan_path: Path,
+    state_dir: Path,
+    attempt: int,
+) -> str:
+    """Build validation prompt for the validator agent.
+
+    Constructs a prompt that instructs the validator to verify engineer work
+    against ORIGINAL acceptance criteria from PRD/plan (not the engineer's
+    interpretation). Includes bypass language detection and dependency
+    verification instructions.
+
+    This function implements:
+    - FR-2: Validator Reads Original Acceptance Criteria
+    - FR-3: Validator Verifies Dependencies Merged
+    - FR-4: Validator Flags Bypass Language
+    - FR-5: Validator Output to State Directory
+
+    Args:
+        ticket_id: The ticket identifier (e.g., "AIUI-0051")
+        prd_path: Path to PRD document containing acceptance criteria
+        plan_path: Path to plan document containing technical approach
+        state_dir: Base directory for state files (e.g., "docs/state")
+        attempt: Current attempt number
+
+    Returns:
+        Formatted prompt string for the validation agent
+    """
+    state_path = state_dir / ticket_id / f"attempt-{attempt}"
+    engineer_state_file = state_path / "engineer-state.md"
+    validation_output = state_path / "validation.md"
+
+    return f"""# Validation Agent Task: Verify {ticket_id}
+
+## Your Role
+
+You are a validation agent. Your job is to verify the engineer's work against
+ORIGINAL acceptance criteria from the PRD and plan - NOT the engineer's
+interpretation of what they think they did.
+
+**IMPORTANT:** The PRD and plan contain the REAL acceptance criteria. The engineer
+state file shows what the engineer CLAIMS they did. If there is a mismatch between
+what was required and what was delivered, you must flag it.
+
+Do NOT trust the engineer's state file for criteria definition. Compare actual
+implementation against original PRD/plan requirements.
+
+## Required Reading
+
+1. **PRD:** `{prd_path}` - Find the ORIGINAL acceptance criteria for {ticket_id}
+2. **Plan:** `{plan_path}` - Find the technical approach and dependencies for {ticket_id}
+3. **Engineer state:** `{engineer_state_file}` - See what the engineer claims they did
+
+## Verification Steps
+
+### Step 1: Verify Acceptance Criteria
+
+For each acceptance criterion in the PRD/plan for {ticket_id}:
+1. Read the original criterion from PRD/plan
+2. Check if it is actually met in the implementation
+3. Note any discrepancies or partial implementations
+
+### Step 2: Verify Dependencies Are Merged
+
+If the ticket has dependencies listed in the plan:
+1. Run `git log develop --oneline | grep {{dependency-id}}` for each dependency
+2. Verify each dependency has a merge commit on develop
+3. If any dependency is NOT merged, this is a validation failure
+
+### Step 3: Scan for Bypass Language
+
+Scan the engineer's state file for bypass language patterns that may indicate
+the engineer redefined success criteria:
+
+- "not merged but acceptable" or similar
+- "doesn't block" or "doesn't apply"
+- "out of scope" justifications that contradict PRD requirements
+- Any language that reframes or downgrades acceptance criteria
+
+If bypass language is detected, flag it and require explicit justification.
+
+### Step 4: Flag Criteria Mismatches
+
+If the engineer redefined what "success" means in their state file (different
+from the original PRD/plan criteria), this must be flagged as a concern.
+
+## Output Requirements
+
+Write your validation findings to: `{validation_output}`
+
+Your validation file should include:
+- Each acceptance criterion checked
+- Pass/fail status for each criterion
+- Any bypass language detected
+- Any concerns or flags raised
+- Dependency merge verification results
+
+## Final Decision
+
+After completing verification, return ONE of:
+
+**If all criteria met and no concerns:**
+```
+VALIDATION_CONFIRMED
+
+Ticket: {ticket_id}
+All acceptance criteria verified against original PRD/plan.
+```
+
+**If criteria not met or concerns require review:**
+```
+VALIDATION_REJECTED
+
+Ticket: {ticket_id}
+Reason: [specific reason - criteria not met, bypass detected, dependencies not merged, etc.]
+```
+
+Do NOT return VALIDATION_CONFIRMED if:
+- Any original acceptance criterion is not met
+- Dependencies are not merged to develop
+- Bypass language is detected without valid justification
+- The engineer's interpretation differs significantly from PRD requirements
 """
 
 

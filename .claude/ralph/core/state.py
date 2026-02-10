@@ -38,10 +38,9 @@ DEFAULT_STATE_DIRECTORY = Path("docs/state")
 # Dataclasses
 # ============================================================================
 
-
 @dataclass
 class Ticket:
-    """Represents a ticket in the workflow (v1 schema).
+    """Represents a ticket in the workflow.
 
     Attributes:
         id: Unique ticket identifier (e.g., "TASK-001")
@@ -70,9 +69,9 @@ class Ticket:
 
 @dataclass
 class RalphState:
-    """Represents Ralph's supplemental state data (v2 schema).
+    """Represents Ralph's supplemental state data.
 
-    V2 schema stores only supplemental data - ticket status comes from the PM tool.
+    Stores supplemental data - ticket status comes from the PM tool.
     This dataclass tracks:
     - Which tickets exist (IDs only, not full objects)
     - Dependencies between tickets
@@ -132,22 +131,16 @@ class RalphState:
 class WorkflowState:
     """Represents the overall workflow state.
 
-    Supports both v1 and v2 schemas:
-    - v1: Uses tickets list with full Ticket objects (including status)
-    - v2: Uses ralph field with RalphState (status from PM tool)
-
     Attributes:
-        version: State file format version ("1.0" or "2.0")
         prd_path: Path to the PRD document
         plan_path: Path to the plan document
-        tickets: List of tickets in the workflow (v1 schema, kept for backward compat)
+        tickets: List of tickets in the workflow
         current_ticket: ID of the currently active ticket (or None)
         completed_count: Number of completed tickets
         blocked_count: Number of blocked tickets
-        ralph: Ralph's supplemental state data (v2 schema, None for v1)
+        ralph: Ralph's supplemental state data
     """
 
-    version: str
     prd_path: Path
     plan_path: Path
     tickets: list[Ticket]
@@ -159,7 +152,6 @@ class WorkflowState:
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         result = {
-            "version": self.version,
             "prd_path": str(self.prd_path),
             "plan_path": str(self.plan_path),
             "tickets": [t.to_dict() for t in self.tickets],
@@ -167,7 +159,7 @@ class WorkflowState:
             "completed_count": self.completed_count,
             "blocked_count": self.blocked_count,
         }
-        # Include ralph field only if present (v2 schema)
+        # Include ralph field only if present
         if self.ralph is not None:
             result["ralph"] = self.ralph.to_dict()
         return result
@@ -219,13 +211,13 @@ def get_ticket_state_dir(ticket_id: str, base_dir: Path | None = None) -> Path:
     """
     if base_dir is None:
         base_dir = DEFAULT_STATE_DIRECTORY
+
     return base_dir / ticket_id
 
 
 # ============================================================================
 # Attempt Management
 # ============================================================================
-
 
 def get_latest_attempt(ticket_id: str, base_dir: Path | None = None) -> int:
     """Get the latest attempt number for a ticket.
@@ -352,7 +344,6 @@ def get_previous_validation(
 # ============================================================================
 # State File Writing
 # ============================================================================
-
 
 def _atomic_write(path: Path, content: str) -> None:
     """Write content to a file atomically.
@@ -588,7 +579,7 @@ def generate_engineer_state_md(state_data: dict[str, Any]) -> str:
 
     # Format lists
     work_list = "\n".join(f"- {item}" for item in work_completed) or "- No work items recorded"
-    files_list = "\n".join(f"- `{item}`" for item in files_modified) or "- No files recorded"
+    files_list = "\n".join(f"- {item}" for item in files_modified) or "- No files recorded"
     issues_list = "\n".join(f"- {item}" for item in known_issues) or "- No known issues"
     steps_list = "\n".join(f"{i+1}. {item}" for i, item in enumerate(next_steps)) or "- No next steps specified"
 
@@ -609,8 +600,8 @@ def generate_engineer_state_md(state_data: dict[str, Any]) -> str:
 **Attempt:** {attempt}
 **Timestamp:** {timestamp}
 **Status:** {status}
-**Branch:** `{branch}`
-**Last Commit:** `{last_commit}`
+**Branch:** {branch}
+**Last Commit:** {last_commit}
 
 ---
 
@@ -859,7 +850,8 @@ def generate_summary_md(summary_data: dict[str, Any]) -> str:
         mins = duration // 60
         secs = duration % 60
 
-        usage_section = f"""---
+        usage_section = f"""
+---
 
 ## Usage Metrics
 
@@ -869,15 +861,15 @@ def generate_summary_md(summary_data: dict[str, Any]) -> str:
 | Complexity | {complexity} |
 | Invocations | {invocations} |
 | Duration | {mins}m {secs}s |
-| Input Tokens | {input_tokens} |
-| Output Tokens | {output_tokens} |
-| Cache Read | {cache_read} |
-| **Cost** | ${cost:.4f} |
+| Input Tokens | {input_tokens:,} |
+| Output Tokens | {output_tokens:,} |
+| Cache Read | {cache_read:,} |
+| Estimated Cost | ${cost:.4f} |
 """
 
     return f"""# Ticket Summary: {ticket_id}
 
-**Final Status:** {final_status}
+**Status:** {final_status}
 **Total Attempts:** {total_attempts}
 **Completed:** {completed}
 
@@ -918,84 +910,6 @@ def generate_summary_md(summary_data: dict[str, Any]) -> str:
 
 
 # ============================================================================
-# V1 to V2 Migration
-# ============================================================================
-
-
-def migrate_v1_to_v2(v1_data: dict[str, Any]) -> dict[str, Any]:
-    """Migrate v1 state format to v2.
-
-    V1 stores full ticket objects with status in a "tickets" list.
-    V2 stores supplemental data in a "ralph" object (status comes from PM tool).
-
-    Args:
-        v1_data: Dictionary in v1 format
-
-    Returns:
-        Dictionary in v2 format
-    """
-    tickets = v1_data.get("tickets", [])
-
-    # Extract ticket IDs
-    ticket_ids = [t["id"] for t in tickets]
-
-    # Extract dependencies (only for tickets that have non-empty dependencies)
-    dependencies: dict[str, list[str]] = {}
-    for t in tickets:
-        deps = t.get("dependencies", [])
-        if deps:
-            dependencies[t["id"]] = deps
-
-    # Extract attempt counts (only for non-zero attempts)
-    attempts: dict[str, int] = {}
-    for t in tickets:
-        attempt_count = t.get("attempts", 0)
-        if attempt_count > 0:
-            attempts[t["id"]] = attempt_count
-
-    # Extract blocked reasons
-    blocked: dict[str, str] = {}
-    for t in tickets:
-        if t.get("status") == "blocked":
-            reason = t.get("block_reason") or "Blocked (migrated from v1)"
-            blocked[t["id"]] = reason
-
-    return {
-        "version": "2.0",
-        "prd_path": v1_data.get("prd_path", ""),
-        "plan_path": v1_data.get("plan_path", ""),
-        "tickets": [],  # v2 doesn't use tickets list
-        "ralph": {
-            "tickets": ticket_ids,
-            "dependencies": dependencies,
-            "attempts": attempts,
-            "blocked": blocked,
-            "source": "unknown",  # Can't determine source from v1
-        },
-    }
-
-
-def _is_v1_state(data: dict[str, Any]) -> bool:
-    """Check if state data is in v1 format.
-
-    V1 is detected when:
-    - version is "1.0" or missing
-    - AND ralph section is missing
-
-    Args:
-        data: State data dictionary
-
-    Returns:
-        True if v1 format, False otherwise
-    """
-    version = data.get("version", "1.0")
-    has_ralph = "ralph" in data
-
-    # v1 format: version 1.0 (or missing) and no ralph section
-    return version == "1.0" and not has_ralph
-
-
-# ============================================================================
 # Workflow State Management
 # ============================================================================
 
@@ -1003,15 +917,11 @@ def _is_v1_state(data: dict[str, Any]) -> bool:
 def load_workflow_state(state_file: Path) -> WorkflowState:
     """Load workflow state from a JSON file.
 
-    Supports both v1 and v2 schemas. V1 files are auto-migrated to v2:
-    - v1: Full ticket objects with status stored locally
-    - v2: ralph section with ticket IDs only, status from PM tool
-
     Args:
         state_file: Path to the state file
 
     Returns:
-        WorkflowState object (always in v2 format)
+        WorkflowState object
 
     Raises:
         FileNotFoundError: If the state file doesn't exist
@@ -1025,18 +935,7 @@ def load_workflow_state(state_file: Path) -> WorkflowState:
     except json.JSONDecodeError as e:
         raise ValueError(f"Invalid JSON in state file: {e}")
 
-    # Auto-migrate v1 to v2
-    if _is_v1_state(data):
-        print(
-            f"Migrating state file from v1.0 to v2.0: {state_file}",
-            file=sys.stderr,
-        )
-        data = migrate_v1_to_v2(data)
-        # Persist migration to disk so it only happens once
-        content = json.dumps(data, indent=2)
-        _atomic_write(state_file, content)
-
-    # Parse tickets (v1 schema - may be empty for v2)
+    # Parse tickets
     tickets = [
         Ticket(
             id=t["id"],
@@ -1049,12 +948,11 @@ def load_workflow_state(state_file: Path) -> WorkflowState:
         for t in data.get("tickets", [])
     ]
 
-    # Parse ralph section (v2 schema - should always exist after migration)
+    # Parse ralph section
     ralph_data = data.get("ralph")
     ralph = RalphState.from_dict(ralph_data) if ralph_data is not None else None
 
     return WorkflowState(
-        version=data.get("version", "2.0"),
         prd_path=Path(data["prd_path"]),
         plan_path=Path(data["plan_path"]),
         tickets=tickets,
@@ -1143,7 +1041,7 @@ def build_prompt(
 
     # Process all substitutions
     for key, value in substitutions.items():
-        placeholder = f"{{{key}}}"
+        placeholder = f"{{{{{key}}}}}"
         content = content.replace(placeholder, value)
 
     # Try to read config.yaml for auto-substitution
@@ -1165,13 +1063,13 @@ def build_prompt(
 
                 for key, value in config_subs.items():
                     if value:
-                        placeholder = f"{{{key}}}"
+                        placeholder = f"{{{{{key}}}}}"
                         content = content.replace(placeholder, value)
             except Exception:
                 pass  # Ignore config loading errors
 
     # Warn about unsubstituted placeholders
-    remaining = re.findall(r"\{[A-Z_]+\}", content)
+    remaining = re.findall(r"\{\{[A-Z_]+\}\}", content)
     if remaining:
         print("WARNING: Unsubstituted placeholders remain:", file=sys.stderr)
         for placeholder in set(remaining):

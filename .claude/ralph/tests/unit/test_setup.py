@@ -78,7 +78,7 @@ class TestExtractTicketsFromPRD:
     ) -> None:
         """Given a PRD with markdown-linked ticket IDs, when extracted, then all IDs are returned."""
         prd_path = tmp_path / "prd.md"
-        prd_path.write_text("""
+        prd_path.write_text("""\
 # PRD: Feature
 
 ## Tickets
@@ -99,7 +99,7 @@ class TestExtractTicketsFromPRD:
     ) -> None:
         """Given a PRD with plain ticket IDs (no links), when extracted, then all IDs are returned."""
         prd_path = tmp_path / "prd.md"
-        prd_path.write_text("""
+        prd_path.write_text("""\
 # PRD: Feature
 
 ## Tickets
@@ -119,7 +119,7 @@ class TestExtractTicketsFromPRD:
     ) -> None:
         """Given a PRD with no ticket IDs, when extracted, then empty list is returned."""
         prd_path = tmp_path / "prd.md"
-        prd_path.write_text("""
+        prd_path.write_text("""\
 # PRD: Feature
 
 Just some text without any ticket IDs.
@@ -132,7 +132,7 @@ Just some text without any ticket IDs.
     def test_extract_tickets_from_prd_preserves_order(self, tmp_path: Path) -> None:
         """Given a PRD with tickets in specific order, when extracted, then order is preserved."""
         prd_path = tmp_path / "prd.md"
-        prd_path.write_text("""
+        prd_path.write_text("""\
 # PRD: Feature
 
 ## Tickets
@@ -152,7 +152,7 @@ Just some text without any ticket IDs.
     def test_extract_tickets_from_prd_removes_duplicates(self, tmp_path: Path) -> None:
         """Given a PRD with duplicate ticket IDs, when extracted, then duplicates are removed."""
         prd_path = tmp_path / "prd.md"
-        prd_path.write_text("""
+        prd_path.write_text("""\
 # PRD: Feature
 
 ## Tickets
@@ -215,7 +215,7 @@ class TestInitializeWorkflowState:
         plan_path = tmp_path / "plan.md"
         state_file = tmp_path / "workflow-state.json"
 
-        prd_path.write_text("""
+        prd_path.write_text("""\
 ## Tickets
 
 | ID | Title |
@@ -223,7 +223,7 @@ class TestInitializeWorkflowState:
 | [TASK-001](url) | First |
 | [TASK-002](url) | Second |
 """)
-        plan_path.write_text("""
+        plan_path.write_text("""\
 | ID | Title | Dependencies |
 |----|-------|--------------|
 | TASK-001 | First | - |
@@ -240,7 +240,7 @@ class TestInitializeWorkflowState:
         plan_path = tmp_path / "plan.md"
         state_file = tmp_path / "workflow-state.json"
 
-        prd_path.write_text("""
+        prd_path.write_text("""\
 ## Tickets
 
 | ID | Title |
@@ -248,7 +248,7 @@ class TestInitializeWorkflowState:
 | [TASK-001](url) | First |
 | [TASK-002](url) | Second |
 """)
-        plan_path.write_text("""
+        plan_path.write_text("""\
 | ID | Title | Dependencies |
 |----|-------|--------------|
 | TASK-001 | First | - |
@@ -258,19 +258,18 @@ class TestInitializeWorkflowState:
         setup.initialize_workflow_state(prd_path, plan_path, state_file)
 
         data = json.loads(state_file.read_text())
-        # v2 format uses ralph.tickets
         ticket_ids = data["ralph"]["tickets"]
         assert "TASK-001" in ticket_ids
         assert "TASK-002" in ticket_ids
 
-    def test_initialize_state_creates_v2_format(self, tmp_path: Path) -> None:
-        """Given tickets, when initializing, then state is v2 format."""
+    def test_initialize_state_creates_ralph_format(self, tmp_path: Path) -> None:
+        """Given tickets, when initializing, then state has ralph section."""
         prd_path = tmp_path / "prd.md"
         plan_path = tmp_path / "plan.md"
         state_file = tmp_path / "workflow-state.json"
 
         prd_path.write_text("## Tickets\n\n| ID | Title |\n|----|-------|\n| [TASK-001](url) | First |")
-        plan_path.write_text("""
+        plan_path.write_text("""\
 | ID | Title | Dependencies |
 |----|-------|--------------|
 | TASK-001 | First | - |
@@ -279,8 +278,7 @@ class TestInitializeWorkflowState:
         setup.initialize_workflow_state(prd_path, plan_path, state_file)
 
         data = json.loads(state_file.read_text())
-        # v2 format has ralph section, version 2.0, and empty tickets array
-        assert data["version"] == "2.0"
+        # Has ralph section and empty tickets array
         assert "ralph" in data
         assert data["tickets"] == []
 
@@ -290,7 +288,7 @@ class TestInitializeWorkflowState:
         plan_path = tmp_path / "plan.md"
         state_file = tmp_path / "workflow-state.json"
 
-        prd_path.write_text("""
+        prd_path.write_text("""\
 ## Tickets
 
 | ID | Title |
@@ -298,7 +296,7 @@ class TestInitializeWorkflowState:
 | [TASK-001](url) | First |
 | [TASK-002](url) | Second |
 """)
-        plan_path.write_text("""
+        plan_path.write_text("""\
 | ID | Title | Dependencies |
 |----|-------|--------------|
 | TASK-001 | First | - |
@@ -308,7 +306,6 @@ class TestInitializeWorkflowState:
         setup.initialize_workflow_state(prd_path, plan_path, state_file)
 
         data = json.loads(state_file.read_text())
-        # v2 format uses ralph.dependencies
         deps = data["ralph"]["dependencies"]
         assert deps.get("TASK-001", []) == []
         assert deps.get("TASK-002", []) == ["TASK-001"]
@@ -320,7 +317,7 @@ class TestInitializeWorkflowState:
         state_file = tmp_path / "workflow-state.json"
 
         prd_path.write_text("## Tickets\n\n| ID | Title |\n|----|-------|\n| [TASK-001](url) | First |")
-        plan_path.write_text("| ID | Title | Dependencies |\n|----|-------|--------------|")
+        plan_path.write_text("| ID | Title | Dependencies |\n|----|-------|--------------|\n")
 
         setup.initialize_workflow_state(prd_path, plan_path, state_file)
 
@@ -338,7 +335,7 @@ class TestRunSetup:
         plan_path = tmp_path / "plan.md"
         state_file = tmp_path / "workflow-state.json"
 
-        prd_path.write_text("""
+        prd_path.write_text("""\
 ## Tickets
 
 | ID | Title |
@@ -346,7 +343,7 @@ class TestRunSetup:
 | [TASK-001](url) | First |
 | [TASK-002](url) | Second |
 """)
-        plan_path.write_text("""
+        plan_path.write_text("""\
 | ID | Title | Dependencies |
 |----|-------|--------------|
 | TASK-001 | First | - |
@@ -589,7 +586,7 @@ class TestSetupWithExistingState:
         state_file = tmp_path / "workflow-state.json"
 
         # Create PRD with tickets A, B, C
-        prd_path.write_text("""
+        prd_path.write_text("""\
 ## Tickets
 
 | ID | Title |
@@ -598,7 +595,7 @@ class TestSetupWithExistingState:
 | [SDLC-0002](url) | Second |
 | [SDLC-0003](url) | Third |
 """)
-        plan_path.write_text("""
+        plan_path.write_text("""\
 | ID | Title | Dependencies |
 |----|-------|--------------|
 | SDLC-0001 | First | - |
@@ -615,7 +612,6 @@ class TestSetupWithExistingState:
             source="github",
         )
         existing_state = WorkflowState(
-            version="2.0",
             prd_path=prd_path,
             plan_path=plan_path,
             tickets=[],
@@ -642,7 +638,7 @@ class TestSetupWithExistingState:
         state_file = tmp_path / "workflow-state.json"
 
         # Create PRD with new tickets
-        prd_path.write_text("""
+        prd_path.write_text("""\
 ## Tickets
 
 | ID | Title |
@@ -650,7 +646,7 @@ class TestSetupWithExistingState:
 | [SDLC-0001](url) | First |
 | [SDLC-0002](url) | Second |
 """)
-        plan_path.write_text("| ID | Title | Dependencies |\n|----|-------|--------------|")
+        plan_path.write_text("| ID | Title | Dependencies |\n|----|-------|--------------|\n")
 
         # Create existing state with different tickets
         existing_ralph = RalphState(
@@ -661,7 +657,6 @@ class TestSetupWithExistingState:
             source="github",
         )
         existing_state = WorkflowState(
-            version="2.0",
             prd_path=prd_path,
             plan_path=plan_path,
             tickets=[],
@@ -697,7 +692,7 @@ class TestSetupWithExistingState:
 
         # Create PRD
         prd_path.write_text("## Tickets\n\n| ID | Title |\n|----|-------|\n| [SDLC-0001](url) | First |")
-        plan_path.write_text("| ID | Title | Dependencies |\n|----|-------|--------------|")
+        plan_path.write_text("| ID | Title | Dependencies |\n|----|-------|--------------|\n")
 
         # Create existing state with different tickets
         existing_ralph = RalphState(
@@ -708,7 +703,6 @@ class TestSetupWithExistingState:
             source="github",
         )
         existing_state = WorkflowState(
-            version="2.0",
             prd_path=prd_path,
             plan_path=plan_path,
             tickets=[],
@@ -740,7 +734,7 @@ class TestSetupWithExistingState:
 
         # Create PRD
         prd_path.write_text("## Tickets\n\n| ID | Title |\n|----|-------|\n| [SDLC-0001](url) | First |")
-        plan_path.write_text("| ID | Title | Dependencies |\n|----|-------|--------------|")
+        plan_path.write_text("| ID | Title | Dependencies |\n|----|-------|--------------|\n")
 
         # Create existing state with different tickets
         existing_ralph = RalphState(
@@ -751,7 +745,6 @@ class TestSetupWithExistingState:
             source="github",
         )
         existing_state = WorkflowState(
-            version="2.0",
             prd_path=prd_path,
             plan_path=plan_path,
             tickets=[],
@@ -778,7 +771,7 @@ class TestSetupWithExistingState:
 
         # Create PRD
         prd_path.write_text("## Tickets\n\n| ID | Title |\n|----|-------|\n| [SDLC-0001](url) | First |")
-        plan_path.write_text("| ID | Title | Dependencies |\n|----|-------|--------------|")
+        plan_path.write_text("| ID | Title | Dependencies |\n|----|-------|--------------|\n")
 
         # Create existing state with SAME tickets
         existing_ralph = RalphState(
@@ -789,7 +782,6 @@ class TestSetupWithExistingState:
             source="github",
         )
         existing_state = WorkflowState(
-            version="2.0",
             prd_path=prd_path,
             plan_path=plan_path,
             tickets=[],

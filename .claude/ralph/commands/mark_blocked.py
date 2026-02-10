@@ -68,24 +68,14 @@ def mark_blocked(
     from core.state import (
         load_workflow_state,
         save_workflow_state,
-        get_ticket_by_id,
     )
 
     # Load workflow state
     state = load_workflow_state(state_file)
 
-    # Check for v2 format (has ralph section with tickets)
-    is_v2 = state.ralph is not None and state.ralph.tickets
-
-    if is_v2:
-        # v2 format: tickets are IDs in ralph.tickets
-        if ticket_id not in state.ralph.tickets:
-            raise ValueError(f"Ticket {ticket_id} not found in state file")
-    else:
-        # v1 format: find ticket in tickets array
-        ticket = get_ticket_by_id(state, ticket_id)
-        if ticket is None:
-            raise ValueError(f"Ticket {ticket_id} not found in state file")
+    # Verify ticket exists in ralph state
+    if state.ralph is None or ticket_id not in state.ralph.tickets:
+        raise ValueError(f"Ticket {ticket_id} not found in state file")
 
     # Look up GitHub issue if not provided (only when not using pm_tool)
     found_issue = issue_number
@@ -103,16 +93,8 @@ def mark_blocked(
             # Fall back to direct subprocess calls
             _update_github_issue(found_issue, reason)
 
-    # Update ticket status based on format
-    if is_v2:
-        # v2: store blocked reason in ralph.blocked dict
-        state.ralph.blocked[ticket_id] = reason
-    else:
-        # v1: update ticket object directly
-        ticket.status = "blocked"
-        ticket.block_reason = reason
-        # Update workflow counts (v1 only)
-        state.blocked_count += 1
+    # Store blocked reason in ralph.blocked dict
+    state.ralph.blocked[ticket_id] = reason
 
     # Clear current ticket if it's the one being blocked
     if state.current_ticket == ticket_id:

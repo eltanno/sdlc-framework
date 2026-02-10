@@ -75,7 +75,7 @@ def tmp_config(tmp_path: Path) -> Path:
     Returns:
         Path to the temporary config file
     """
-    config_content = """
+    config_content = """\
 # Test configuration
 project:
   name: test-project
@@ -93,7 +93,7 @@ dev:
 
 @pytest.fixture
 def tmp_state(tmp_path: Path) -> Path:
-    """Create a temporary state file in v2 format.
+    """Create a temporary state file.
 
     Args:
         tmp_path: pytest's temporary directory fixture
@@ -102,7 +102,6 @@ def tmp_state(tmp_path: Path) -> Path:
         Path to the temporary state file
     """
     state_content: dict[str, Any] = {
-        "version": "2.0",
         "prd_path": "docs/prds/test-prd.md",
         "plan_path": "docs/plans/test-plan.md",
         "tickets": [

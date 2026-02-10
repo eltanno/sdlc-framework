@@ -25,7 +25,6 @@ from typing import Any, Optional, Union
 
 import yaml
 
-
 # Valid PM tool types
 VALID_PM_TOOLS: frozenset[str] = frozenset({"github", "trello", "asana", "linear", "none"})
 
@@ -84,9 +83,11 @@ class RalphConfig:
         max_attempts: Maximum retry attempts per ticket (default: 3).
         state_directory: Directory for state files (default: "docs/state").
         keep_state_files: Whether to keep state files for audit (default: True).
-        validator_model: Model for validation analysis (default: "haiku").
+        validator_model: Model for validation analysis (default: "sonnet").
         engineer_timeout: Timeout in minutes for engineer (default: 30).
         validator_timeout: Timeout in minutes for validator (default: 10).
+        review_model: Model for post-loop batch review in /execution-report (default: "opus").
+            Opus is justified as final safety net for batch-level review.
     """
 
     instance_label_prefix: str = "ralph-"
@@ -95,9 +96,10 @@ class RalphConfig:
     max_attempts: int = 3
     state_directory: str = "docs/state"
     keep_state_files: bool = True
-    validator_model: str = "haiku"
+    validator_model: str = "sonnet"
     engineer_timeout: int = 30
     validator_timeout: int = 10
+    review_model: str = "opus"
 
 
 @dataclass
@@ -177,9 +179,10 @@ def _parse_config(data: dict[str, Any]) -> Config:
         max_attempts=ralph_data.get("max_attempts", 3),
         state_directory=ralph_data.get("state_directory", "docs/state"),
         keep_state_files=ralph_data.get("keep_state_files", True),
-        validator_model=ralph_data.get("validator_model", "haiku"),
+        validator_model=ralph_data.get("validator_model", "sonnet"),
         engineer_timeout=ralph_data.get("engineer_timeout", 30),
         validator_timeout=ralph_data.get("validator_timeout", 10),
+        review_model=ralph_data.get("review_model", "opus"),
     )
 
     # Parse validation settings from dev section
@@ -262,7 +265,7 @@ def get_instance_label(config_path: Union[str, Path]) -> str:
     pattern = f"^{re.escape(prefix)}[0-9]+$"
     if not re.match(pattern, label):
         raise ConfigError(
-            f"RALPH_LABEL must match pattern '{prefix}<number>' "
+            f"RALPH_LABEL must match pattern '{prefix}{{number}}' "
             f"(e.g., {prefix}1, {prefix}2), got: '{label}'"
         )
 

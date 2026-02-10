@@ -56,89 +56,34 @@ def mark_ticket_done(
     # Load current state
     state = json.loads(state_file.read_text())
 
-    # Check for v2 format (has ralph section)
-    if "ralph" in state and state["ralph"]:
-        ralph = state["ralph"]
-        tickets = ralph.get("tickets", [])
+    ralph = state.get("ralph")
+    if not ralph:
+        raise ValueError("State file missing ralph section")
 
-        if ticket_id not in tickets:
-            raise ValueError(f"Ticket '{ticket_id}' not found in state file")
-
-        # In v2, status comes from PM tool, not state file
-        # Just remove from blocked if it was blocked
-        if ticket_id in ralph.get("blocked", {}):
-            del ralph["blocked"][ticket_id]
-
-        # Clear current ticket
-        state["current_ticket"] = None
-
-        # Save updated state
-        state_file.write_text(json.dumps(state, indent=2))
-
-        # Calculate progress (in v2, we don't track completed in state)
-        total = len(tickets)
-
-        return {
-            "ticket_id": ticket_id,
-            "status": "completed",
-            "pr_number": pr_number,
-            "total": total,
-            "remaining": None,  # Can't know without PM tool query
-            "next_ticket": None,
-        }
-
-    # v1 format: Find the ticket in tickets array
-    ticket = None
-    ticket_index = -1
-    for i, t in enumerate(state.get("tickets", [])):
-        if t["id"] == ticket_id:
-            ticket = t
-            ticket_index = i
-            break
-
-    if ticket is None:
+    tickets = ralph.get("tickets", [])
+    if ticket_id not in tickets:
         raise ValueError(f"Ticket '{ticket_id}' not found in state file")
 
-    # Update ticket status
-    state["tickets"][ticket_index]["status"] = "completed"
-    if pr_number:
-        state["tickets"][ticket_index]["pr"] = pr_number
-    if issue_number:
-        state["tickets"][ticket_index]["issue_number"] = issue_number
-
-    # Update counters
-    completed_count = sum(1 for t in state["tickets"] if t.get("status") == "completed")
-    state["completed_count"] = completed_count
+    # Remove from blocked if it was blocked
+    if ticket_id in ralph.get("blocked", {}):
+        del ralph["blocked"][ticket_id]
 
     # Clear current ticket
     state["current_ticket"] = None
 
-    # Calculate progress
-    total = len(state["tickets"])
-    remaining = total - completed_count
-
-    # Find next pending ticket
-    next_ticket = None
-    for t in state["tickets"]:
-        if t.get("status") == "pending":
-            next_ticket = t["id"]
-            break
-
     # Save updated state
     state_file.write_text(json.dumps(state, indent=2))
+
+    # Calculate progress
+    total = len(tickets)
 
     return {
         "ticket_id": ticket_id,
         "status": "completed",
         "pr_number": pr_number,
-        "issue_number": issue_number,
-        "progress": {
-            "current": completed_count,
-            "total": total,
-            "remaining": remaining,
-        },
-        "next_ticket": next_ticket,
-        "all_done": remaining == 0,
+        "total": total,
+        "remaining": None,  # Can't know without PM tool query
+        "next_ticket": None,
     }
 
 

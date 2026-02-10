@@ -20,16 +20,15 @@ from core.pm import PMTool, TicketInfo, TicketStatus, PMError
 from core.state import WorkflowState, RalphState, Ticket
 
 
-# =============================================================================
+# ============================================================================
 # Test Fixtures
-# =============================================================================
+# ============================================================================
 
 
 @pytest.fixture
 def simple_workflow() -> WorkflowState:
     """Create a simple workflow with tickets that have no dependencies."""
     return WorkflowState(
-        version="1.0",
         prd_path="docs/prds/test.md",
         plan_path="docs/plans/test.md",
         tickets=[
@@ -59,7 +58,6 @@ def simple_workflow() -> WorkflowState:
 def workflow_with_deps() -> WorkflowState:
     """Create a workflow with dependencies."""
     return WorkflowState(
-        version="1.0",
         prd_path="docs/prds/test.md",
         plan_path="docs/plans/test.md",
         tickets=[
@@ -89,7 +87,6 @@ def workflow_with_deps() -> WorkflowState:
 def workflow_with_completed() -> WorkflowState:
     """Create a workflow with some completed tickets."""
     return WorkflowState(
-        version="1.0",
         prd_path="docs/prds/test.md",
         plan_path="docs/plans/test.md",
         tickets=[
@@ -120,7 +117,6 @@ def workflow_with_completed() -> WorkflowState:
 def workflow_with_blocked() -> WorkflowState:
     """Create a workflow with blocked tickets."""
     return WorkflowState(
-        version="1.0",
         prd_path="docs/prds/test.md",
         plan_path="docs/plans/test.md",
         tickets=[
@@ -152,7 +148,6 @@ def workflow_with_blocked() -> WorkflowState:
 def workflow_in_progress() -> WorkflowState:
     """Create a workflow with a ticket in progress."""
     return WorkflowState(
-        version="1.0",
         prd_path="docs/prds/test.md",
         plan_path="docs/plans/test.md",
         tickets=[
@@ -177,7 +172,6 @@ def workflow_in_progress() -> WorkflowState:
 def all_completed_workflow() -> WorkflowState:
     """Create a workflow with all tickets completed."""
     return WorkflowState(
-        version="1.0",
         prd_path="docs/prds/test.md",
         plan_path="docs/plans/test.md",
         tickets=[
@@ -202,16 +196,15 @@ def all_completed_workflow() -> WorkflowState:
 def empty_workflow() -> WorkflowState:
     """Create an empty workflow with no tickets."""
     return WorkflowState(
-        version="1.0",
         prd_path="docs/prds/test.md",
         plan_path="docs/plans/test.md",
         tickets=[],
     )
 
 
-# =============================================================================
+# ============================================================================
 # Tests: get_next_ticket - Basic Functionality
-# =============================================================================
+# ============================================================================
 
 
 class TestGetNextTicketBasic:
@@ -250,9 +243,9 @@ class TestGetNextTicketBasic:
         assert result.has_more is False
 
 
-# =============================================================================
+# ============================================================================
 # Tests: get_next_ticket - Dependency Handling
-# =============================================================================
+# ============================================================================
 
 
 class TestGetNextTicketDependencies:
@@ -294,9 +287,9 @@ class TestGetNextTicketDependencies:
         assert result.skipped_for_deps == 2
 
 
-# =============================================================================
+# ============================================================================
 # Tests: get_next_ticket - Blocked Tickets
-# =============================================================================
+# ============================================================================
 
 
 class TestGetNextTicketBlocked:
@@ -328,9 +321,9 @@ class TestGetNextTicketBlocked:
         assert result.skipped_for_deps >= 1
 
 
-# =============================================================================
+# ============================================================================
 # Tests: get_next_ticket - In Progress Handling
-# =============================================================================
+# ============================================================================
 
 
 class TestGetNextTicketInProgress:
@@ -348,9 +341,9 @@ class TestGetNextTicketInProgress:
         assert result.status == "ready"
 
 
-# =============================================================================
+# ============================================================================
 # Tests: get_next_ticket - Status Information
-# =============================================================================
+# ============================================================================
 
 
 class TestGetNextTicketStatus:
@@ -393,9 +386,9 @@ class TestGetNextTicketStatus:
         assert result.skipped_for_deps == 1
 
 
-# =============================================================================
+# ============================================================================
 # Tests: is_ticket_eligible - Helper Function
-# =============================================================================
+# ============================================================================
 
 
 class TestIsTicketEligible:
@@ -487,9 +480,9 @@ class TestIsTicketEligible:
         assert is_ticket_eligible(ticket, completed_ids) is False
 
 
-# =============================================================================
+# ============================================================================
 # Tests: get_ticket_counts - Helper Function
-# =============================================================================
+# ============================================================================
 
 
 class TestGetTicketCounts:
@@ -527,9 +520,9 @@ class TestGetTicketCounts:
         assert counts["pending"] == 2
 
 
-# =============================================================================
+# ============================================================================
 # Tests: Edge Cases
-# =============================================================================
+# ============================================================================
 
 
 class TestEdgeCases:
@@ -538,7 +531,6 @@ class TestEdgeCases:
     def test_all_tickets_blocked(self) -> None:
         """When all tickets are blocked, return appropriate status."""
         workflow = WorkflowState(
-            version="1.0",
             prd_path="docs/prds/test.md",
             plan_path="docs/plans/test.md",
             tickets=[
@@ -569,7 +561,6 @@ class TestEdgeCases:
     def test_all_tickets_waiting_on_deps(self) -> None:
         """When all tickets are waiting on dependencies, return appropriate status."""
         workflow = WorkflowState(
-            version="1.0",
             prd_path="docs/prds/test.md",
             plan_path="docs/plans/test.md",
             tickets=[
@@ -609,7 +600,6 @@ class TestEdgeCases:
     def test_mixed_completed_and_blocked_no_pending(self) -> None:
         """When all tickets are either completed or blocked, return complete."""
         workflow = WorkflowState(
-            version="1.0",
             prd_path="docs/prds/test.md",
             plan_path="docs/plans/test.md",
             tickets=[
@@ -643,9 +633,9 @@ class TestEdgeCases:
         assert result.pending == 0
 
 
-# =============================================================================
+# ============================================================================
 # Tests: get_next_ticket - PM Tool Integration
-# =============================================================================
+# ============================================================================
 
 
 def create_mock_pm_tool() -> Mock:
@@ -663,7 +653,6 @@ class TestGetNextTicketWithPMTool:
     def test_accepts_pm_tool_parameter(self) -> None:
         """get_next_ticket should accept an optional pm_tool parameter."""
         workflow = WorkflowState(
-            version="2.0",
             prd_path="docs/prds/test.md",
             plan_path="docs/plans/test.md",
             tickets=[],
@@ -690,7 +679,6 @@ class TestGetNextTicketWithPMTool:
     def test_queries_pm_tool_for_open_tickets(self) -> None:
         """Given tickets in ralph.tickets, when pm_tool provided, then query PM tool for open tickets."""
         workflow = WorkflowState(
-            version="2.0",
             prd_path="docs/prds/test.md",
             plan_path="docs/plans/test.md",
             tickets=[],
@@ -718,7 +706,6 @@ class TestGetNextTicketWithPMTool:
     def test_open_issue_reported_as_pending(self) -> None:
         """Given a ticket exists in GitHub Issues as open, when get_next_ticket runs, then it reports as pending."""
         workflow = WorkflowState(
-            version="2.0",
             prd_path="docs/prds/test.md",
             plan_path="docs/plans/test.md",
             tickets=[],
@@ -749,7 +736,6 @@ class TestGetNextTicketWithPMTool:
         (not in open_tickets) satisfy the dependency requirement.
         """
         workflow = WorkflowState(
-            version="2.0",
             prd_path="docs/prds/test.md",
             plan_path="docs/plans/test.md",
             tickets=[],
@@ -779,7 +765,6 @@ class TestGetNextTicketWithPMTool:
     def test_skips_blocked_tickets(self) -> None:
         """Given a ticket has blocked label in GitHub, when get_next_ticket runs, then it skips the ticket."""
         workflow = WorkflowState(
-            version="2.0",
             prd_path="docs/prds/test.md",
             plan_path="docs/plans/test.md",
             tickets=[],
@@ -807,7 +792,6 @@ class TestGetNextTicketWithPMTool:
     def test_pm_tool_error_reports_clear_error(self) -> None:
         """Given GitHub API calls fail, when getting next ticket, then report clear error."""
         workflow = WorkflowState(
-            version="2.0",
             prd_path="docs/prds/test.md",
             plan_path="docs/plans/test.md",
             tickets=[],
@@ -831,7 +815,6 @@ class TestGetNextTicketWithPMTool:
     def test_dependency_not_met_when_dep_is_open(self) -> None:
         """Given ticket A depends on B and B is open, then A is not eligible."""
         workflow = WorkflowState(
-            version="2.0",
             prd_path="docs/prds/test.md",
             plan_path="docs/plans/test.md",
             tickets=[],
@@ -862,7 +845,6 @@ class TestGetNextTicketWithPMTool:
     def test_skips_tickets_claimed_by_other_instances(self) -> None:
         """Given a ticket has ralph-* label from another instance, skip that ticket."""
         workflow = WorkflowState(
-            version="2.0",
             prd_path="docs/prds/test.md",
             plan_path="docs/plans/test.md",
             tickets=[],
@@ -909,7 +891,6 @@ class TestGetNextTicketWithPMTool:
     def test_resumes_own_in_progress_ticket_first(self) -> None:
         """Given a ticket has this instance's label, resume it first."""
         workflow = WorkflowState(
-            version="2.0",
             prd_path="docs/prds/test.md",
             plan_path="docs/plans/test.md",
             tickets=[],
@@ -939,7 +920,6 @@ class TestGetNextTicketWithPMTool:
     def test_all_tickets_complete_when_none_open(self) -> None:
         """Given no tickets are open in PM tool, return complete status."""
         workflow = WorkflowState(
-            version="2.0",
             prd_path="docs/prds/test.md",
             plan_path="docs/plans/test.md",
             tickets=[],
@@ -960,10 +940,8 @@ class TestGetNextTicketWithPMTool:
         assert result.status == "complete"
 
     def test_falls_back_to_local_state_without_pm_tool(self) -> None:
-        """Given no pm_tool provided, fall back to v1 behavior using local state."""
-        # This tests backward compatibility
+        """Given no pm_tool provided, fall back to local state."""
         workflow = WorkflowState(
-            version="1.0",
             prd_path="docs/prds/test.md",
             plan_path="docs/plans/test.md",
             tickets=[
@@ -978,9 +956,9 @@ class TestGetNextTicketWithPMTool:
         assert result.ticket.id == "TASK-001"
 
 
-# =============================================================================
+# ============================================================================
 # Tests: Label-Based Ticket Claiming with Race Detection
-# =============================================================================
+# ============================================================================
 
 
 class TestClaimTicketWithRaceDetection:
@@ -1156,7 +1134,6 @@ class TestGetNextTicketClaimIntegration:
     def test_get_next_claims_ticket_before_returning(self) -> None:
         """Given an unclaimed ticket, when get_next_ticket returns it, then it should be claimed."""
         workflow = WorkflowState(
-            version="2.0",
             prd_path="docs/prds/test.md",
             plan_path="docs/plans/test.md",
             tickets=[],
@@ -1185,7 +1162,6 @@ class TestGetNextTicketClaimIntegration:
     def test_get_next_retries_on_race_condition(self) -> None:
         """Given race condition on first ticket, when claiming, then try next ticket."""
         workflow = WorkflowState(
-            version="2.0",
             prd_path="docs/prds/test.md",
             plan_path="docs/plans/test.md",
             tickets=[],
@@ -1229,7 +1205,6 @@ class TestGetNextTicketClaimIntegration:
     def test_get_next_returns_none_when_all_races_lost(self) -> None:
         """Given all ticket claims lost to race conditions, when get_next runs, then return no ticket."""
         workflow = WorkflowState(
-            version="2.0",
             prd_path="docs/prds/test.md",
             plan_path="docs/plans/test.md",
             tickets=[],
@@ -1270,9 +1245,9 @@ class TestGetNextTicketClaimIntegration:
         assert result.status == "waiting_on_claims"
 
 
-# =============================================================================
+# ============================================================================
 # Tests: SDLC-0045 - Dependency Checking via PM Tool
-# =============================================================================
+# ============================================================================
 
 
 class TestDependencyCheckingViaPMTool:
@@ -1285,11 +1260,10 @@ class TestDependencyCheckingViaPMTool:
     def test_dependency_open_in_github_blocks_ticket(self) -> None:
         """Given ticket A depends on B, when B is open in GitHub, then A is not eligible.
 
-        AC: Given ticket A depends on ticket B, when B is open in GitHub Issues,
+        AC: Given A depends on ticket B, when B is open in GitHub Issues,
         then A is not eligible for work.
         """
         workflow = WorkflowState(
-            version="2.0",
             prd_path="docs/prds/test.md",
             plan_path="docs/plans/test.md",
             tickets=[],
@@ -1323,11 +1297,10 @@ class TestDependencyCheckingViaPMTool:
     def test_dependency_closed_in_github_satisfies_requirement(self) -> None:
         """Given ticket A depends on B, when B is closed in GitHub, then A is eligible.
 
-        AC: Given ticket A depends on ticket B, when B is closed in GitHub Issues,
+        AC: Given A depends on ticket B, when B is closed in GitHub Issues,
         then A is eligible for work.
         """
         workflow = WorkflowState(
-            version="2.0",
             prd_path="docs/prds/test.md",
             plan_path="docs/plans/test.md",
             tickets=[],
@@ -1365,7 +1338,6 @@ class TestDependencyCheckingViaPMTool:
         import logging
 
         workflow = WorkflowState(
-            version="2.0",
             prd_path="docs/prds/test.md",
             plan_path="docs/plans/test.md",
             tickets=[],
@@ -1416,7 +1388,6 @@ class TestDependencyCheckingViaPMTool:
         AC: Given multiple dependencies, when any is not closed, then ticket is not eligible.
         """
         workflow = WorkflowState(
-            version="2.0",
             prd_path="docs/prds/test.md",
             plan_path="docs/plans/test.md",
             tickets=[],
@@ -1453,7 +1424,6 @@ class TestDependencyCheckingViaPMTool:
     def test_multiple_dependencies_all_closed_allows_ticket(self) -> None:
         """Given multiple dependencies all closed, then ticket is eligible."""
         workflow = WorkflowState(
-            version="2.0",
             prd_path="docs/prds/test.md",
             plan_path="docs/plans/test.md",
             tickets=[],
@@ -1490,7 +1460,6 @@ class TestDependencyCheckingViaPMTool:
         it's truly closed (CLOSED status), not just assume from the list.
         """
         workflow = WorkflowState(
-            version="2.0",
             prd_path="docs/prds/test.md",
             plan_path="docs/plans/test.md",
             tickets=[],

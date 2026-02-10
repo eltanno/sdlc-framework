@@ -1,20 +1,20 @@
 # Validation Phase - Orchestrator Instructions
 
-> **⚠️ MANDATORY: READ THIS ENTIRE FILE BEFORE PROCEEDING.**
+> **⚠ MANDATORY: READ THIS ENTIRE FILE BEFORE PROCEEDING.**
 > **You must confirm you have read and understood all sections.**
 
 **You are the orchestrator. Delegate validation checks to the `engineer` agent.**
 
 ---
 
-## ⚡ FIRST ACTION (MANDATORY)
+## ⬇ FIRST ACTION (MANDATORY)
 
 **Before doing ANYTHING else, update the workflow state (if not in ralph mode):**
 
 ```bash
 current_phase=$(jq -r '.phase' workflow-state.json 2>/dev/null || echo "")
 if [ "$current_phase" != "ralph" ]; then
-    .claude/scripts/update-workflow-state.sh '.phase = "validate"'
+  .claude/scripts/update-workflow-state.sh '.phase = "validate"'
 fi
 ```
 
@@ -33,7 +33,7 @@ REPO_TYPE=$(grep -E "^\s*type:" config.yaml 2>/dev/null | grep -E "github|gitlab
 
 # Check PR/MR status
 if [ "$REPO_TYPE" = "gitlab" ]; then
-  glab mr list --state=open
+  glab mr list --state-open
 else
   gh pr status
 fi
@@ -43,13 +43,24 @@ If no PR/MR exists: "No open PR/MR found. Please run `/pr` first."
 
 ## Delegation
 
+**Read validator model from config.yaml:**
+
+```bash
+# Get validator model from config.yaml (defaults to sonnet)
+VALIDATOR_MODEL=$(grep -E "^\s*validator_model:" config.yaml 2>/dev/null | awk '{print $2}' | tr -d '"' || echo "sonnet")
 ```
+
+Use the model specified in config.yaml:
+
+---
+
 Task({
   subagent_type: "engineer",
-  model: "haiku",  // Validation is verification, haiku is sufficient
+  model: $VALIDATOR_MODEL,  // Read from config.yaml validator_model setting
   prompt: <see Agent Prompt below>
 })
-```
+
+---
 
 ## Agent Prompt
 
@@ -72,7 +83,7 @@ Perform comprehensive validation before merge. Verify all checks pass and accept
 
 ### 1. Code Quality Checks
 
-```bash
+````bash
 # Run full test suite
 npm test
 
@@ -87,7 +98,7 @@ grep -r "console.log" src/ --include="*.ts" --include="*.js" | grep -v test
 
 # Check for TODOs without tickets
 grep -r "TODO" src/ --include="*.ts" --include="*.js" | grep -v "TODO(TASK-"
-```
+````
 
 ### 2. PR/MR Status Checks
 
@@ -122,7 +133,7 @@ git log HEAD..origin/main --oneline
 Find the PRD and verify each acceptance criterion:
 
 | Criterion | Status | Verification |
-|-----------|--------|--------------|
+|-----------|--------|-------------|
 | Given X, when Y, then Z | PASS/FAIL | How verified |
 
 ### 5. Documentation Check
@@ -135,7 +146,8 @@ Find the PRD and verify each acceptance criterion:
 
 Return:
 
-```
+---
+
 VALIDATION REPORT
 
 PR: #[number]
@@ -166,7 +178,8 @@ Branch: feature/TASK-XXX → main
 Next Steps:
 - If ready: Merge PR, update ticket to Done
 - If issues: Fix and re-validate
-```
+
+---
 
 ---
 
@@ -204,15 +217,15 @@ REPO_TYPE=$(grep -E "^\s*type:" config.yaml 2>/dev/null | grep -E "github|gitlab
 # Build merge flags based on config
 MERGE_FLAGS=""
 if [ "$MERGE_METHOD" = "squash" ]; then
-  MERGE_FLAGS="--squash"
+    MERGE_FLAGS="--squash"
 elif [ "$MERGE_METHOD" = "rebase" ]; then
-  MERGE_FLAGS="--rebase"
+    MERGE_FLAGS="--rebase"
 else
-  MERGE_FLAGS="--merge"
+    MERGE_FLAGS="--merge"
 fi
 
 if [ "$DELETE_BRANCH" = "true" ]; then
-  MERGE_FLAGS="$MERGE_FLAGS --delete-branch"
+    MERGE_FLAGS="$MERGE_FLAGS --delete-branch"
 fi
 
 gh pr merge $MERGE_FLAGS
@@ -223,13 +236,13 @@ gh pr merge $MERGE_FLAGS
 # Build merge flags based on config
 MERGE_FLAGS=""
 if [ "$MERGE_METHOD" = "squash" ]; then
-  MERGE_FLAGS="--squash"
+    MERGE_FLAGS="--squash"
 elif [ "$MERGE_METHOD" = "rebase" ]; then
-  MERGE_FLAGS="--rebase"
+    MERGE_FLAGS="--rebase"
 fi
 
 if [ "$DELETE_BRANCH" = "true" ]; then
-  MERGE_FLAGS="$MERGE_FLAGS --remove-source-branch"
+    MERGE_FLAGS="$MERGE_FLAGS --remove-source-branch"
 fi
 
 glab mr merge $MERGE_FLAGS
@@ -255,7 +268,7 @@ glab mr merge $MERGE_FLAGS
 ```bash
 current_phase=$(jq -r '.phase' workflow-state.json 2>/dev/null || echo "")
 if [ "$current_phase" != "ralph" ]; then
-    .claude/scripts/update-workflow-state.sh '.completed = (.completed + ["validate"] | unique)'
+  .claude/scripts/update-workflow-state.sh '.completed = (.completed + ["validate"] | unique)'
 fi
 ```
 

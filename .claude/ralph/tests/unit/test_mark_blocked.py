@@ -1,11 +1,9 @@
 """Unit tests for commands/mark_blocked.py - Mark ticket as blocked.
 
-Tests cover v2 format ONLY (real production format):
-- tickets: [] (empty array)
+State format:
 - ralph.tickets: ["TASK-001", ...] (list of IDs)
 - ralph.blocked: {"TASK-001": "reason"} (blocked tickets)
-
-Status comes from PM tool, not state file.
+- Status comes from PM tool, not state file
 """
 
 import json
@@ -15,7 +13,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
-def create_v2_state(
+def create_state(
     tickets: list[str],
     current_ticket: str | None = None,
     blocked: dict[str, str] | None = None,
@@ -23,15 +21,11 @@ def create_v2_state(
     attempts: dict[str, int] | None = None,
     source: str = "asana",
 ) -> dict:
-    """Create a valid v2 format state dictionary.
-
-    This is the ONLY format used in production. v1 format is gone.
-    """
+    """Create a valid state dictionary for testing."""
     return {
-        "version": "2.0",
         "prd_path": "docs/prds/test.md",
         "plan_path": "docs/plans/test.md",
-        "tickets": [],  # Always empty in v2 - IDs are in ralph.tickets
+        "tickets": [],
         "current_ticket": current_ticket,
         "completed_count": 0,
         "blocked_count": 0,
@@ -45,17 +39,18 @@ def create_v2_state(
     }
 
 
-class TestMarkBlockedV2Basic:
-    """Basic tests for mark_blocked with v2 format."""
+class TestMarkBlockedBasic:
+    """Basic tests for mark_blocked."""
 
     def test_mark_blocked_returns_result(self, tmp_path: Path):
         """Given a valid ticket, mark_blocked returns a result dict."""
         from commands.mark_blocked import mark_blocked
 
-        state = create_v2_state(
+        state = create_state(
             tickets=["TASK-001", "TASK-002"],
             current_ticket="TASK-001",
         )
+
         state_file = tmp_path / "workflow-state.json"
         state_file.write_text(json.dumps(state))
 
@@ -92,7 +87,7 @@ class TestMarkBlockedV2Basic:
         """Given empty reason, mark_blocked uses a default reason."""
         from commands.mark_blocked import mark_blocked
 
-        state = create_v2_state(tickets=["TASK-001"], current_ticket="TASK-001")
+        state = create_state(tickets=["TASK-001"], current_ticket="TASK-001")
         state_file = tmp_path / "workflow-state.json"
         state_file.write_text(json.dumps(state))
 
@@ -128,7 +123,7 @@ class TestMarkBlockedV2Basic:
         """Given ticket not in ralph.tickets, mark_blocked raises ValueError."""
         from commands.mark_blocked import mark_blocked
 
-        state = create_v2_state(tickets=["TASK-001"])
+        state = create_state(tickets=["TASK-001"])
         state_file = tmp_path / "workflow-state.json"
         state_file.write_text(json.dumps(state))
 
@@ -142,17 +137,18 @@ class TestMarkBlockedV2Basic:
                 )
 
 
-class TestMarkBlockedV2StateUpdate:
-    """Tests for v2 state updates when marking blocked."""
+class TestMarkBlockedStateUpdate:
+    """Tests for state updates when marking blocked."""
 
     def test_mark_blocked_adds_to_ralph_blocked(self, tmp_path: Path):
         """Given a ticket, mark_blocked adds it to ralph.blocked with reason."""
         from commands.mark_blocked import mark_blocked
 
-        state = create_v2_state(
+        state = create_state(
             tickets=["TASK-001", "TASK-002"],
             current_ticket="TASK-001",
         )
+
         state_file = tmp_path / "workflow-state.json"
         state_file.write_text(json.dumps(state))
 
@@ -172,10 +168,11 @@ class TestMarkBlockedV2StateUpdate:
         """Given current_ticket is blocked ticket, mark_blocked clears it."""
         from commands.mark_blocked import mark_blocked
 
-        state = create_v2_state(
+        state = create_state(
             tickets=["TASK-001", "TASK-002"],
             current_ticket="TASK-001",
         )
+
         state_file = tmp_path / "workflow-state.json"
         state_file.write_text(json.dumps(state))
 
@@ -191,10 +188,10 @@ class TestMarkBlockedV2StateUpdate:
         assert updated["current_ticket"] is None
 
     def test_mark_blocked_does_not_increment_blocked_count(self, tmp_path: Path):
-        """Given v2 format, blocked_count stays 0 (we use ralph.blocked instead)."""
+        """Given ralph format, blocked_count stays 0 (we use ralph.blocked instead)."""
         from commands.mark_blocked import mark_blocked
 
-        state = create_v2_state(tickets=["TASK-001"], current_ticket="TASK-001")
+        state = create_state(tickets=["TASK-001"], current_ticket="TASK-001")
         state_file = tmp_path / "workflow-state.json"
         state_file.write_text(json.dumps(state))
 
@@ -211,17 +208,18 @@ class TestMarkBlockedV2StateUpdate:
         assert "TASK-001" in updated["ralph"]["blocked"]
 
 
-class TestMarkBlockedV2PMTool:
-    """Tests for PM tool integration with v2 format."""
+class TestMarkBlockedPMTool:
+    """Tests for PM tool integration."""
 
     def test_mark_blocked_calls_pm_tool_add_blocked_label(self, tmp_path: Path):
         """Given pm_tool, mark_blocked calls add_blocked_label with reason."""
         from commands.mark_blocked import mark_blocked
 
-        state = create_v2_state(
+        state = create_state(
             tickets=["SDLC-0070"],
             current_ticket="SDLC-0070",
         )
+
         state_file = tmp_path / "workflow-state.json"
         state_file.write_text(json.dumps(state))
 
@@ -248,10 +246,11 @@ class TestMarkBlockedV2PMTool:
         """Given pm_tool and ralph_label, mark_blocked removes the label."""
         from commands.mark_blocked import mark_blocked
 
-        state = create_v2_state(
+        state = create_state(
             tickets=["SDLC-0070"],
             current_ticket="SDLC-0070",
         )
+
         state_file = tmp_path / "workflow-state.json"
         state_file.write_text(json.dumps(state))
 
@@ -279,10 +278,11 @@ class TestMarkBlockedV2PMTool:
         """Given pm_tool but no ralph_label, mark_blocked skips remove_label."""
         from commands.mark_blocked import mark_blocked
 
-        state = create_v2_state(
+        state = create_state(
             tickets=["TASK-001"],
             current_ticket="TASK-001",
         )
+
         state_file = tmp_path / "workflow-state.json"
         state_file.write_text(json.dumps(state))
 
@@ -309,10 +309,11 @@ class TestMarkBlockedV2PMTool:
         """Given pm_tool, mark_blocked does not use subprocess for GitHub ops."""
         from commands.mark_blocked import mark_blocked
 
-        state = create_v2_state(
+        state = create_state(
             tickets=["TASK-001"],
             current_ticket="TASK-001",
         )
+
         state_file = tmp_path / "workflow-state.json"
         state_file.write_text(json.dumps(state))
 
@@ -342,10 +343,11 @@ class TestMarkBlockedV2PMTool:
         """Given pm_tool.add_blocked_label fails, state is still updated."""
         from commands.mark_blocked import mark_blocked
 
-        state = create_v2_state(
+        state = create_state(
             tickets=["TASK-001"],
             current_ticket="TASK-001",
         )
+
         state_file = tmp_path / "workflow-state.json"
         state_file.write_text(json.dumps(state))
 
@@ -365,17 +367,18 @@ class TestMarkBlockedV2PMTool:
         assert "TASK-001" in updated["ralph"]["blocked"]
 
 
-class TestMarkBlockedV2GitHub:
+class TestMarkBlockedGitHub:
     """Tests for GitHub CLI fallback (when no pm_tool provided)."""
 
     def test_mark_blocked_looks_up_issue_without_pm_tool(self, tmp_path: Path):
         """Given no pm_tool, mark_blocked looks up issue via gh CLI."""
         from commands.mark_blocked import mark_blocked
 
-        state = create_v2_state(
+        state = create_state(
             tickets=["TASK-001"],
             current_ticket="TASK-001",
         )
+
         state_file = tmp_path / "workflow-state.json"
         state_file.write_text(json.dumps(state))
 
@@ -383,8 +386,9 @@ class TestMarkBlockedV2GitHub:
             mock_run.return_value = MagicMock(
                 returncode=0,
                 stdout=json.dumps([{"number": 42, "title": "[TASK-001] Test"}]),
-                stderr=""
+                stderr="",
             )
+
             result = mark_blocked(
                 ticket_id="TASK-001",
                 reason="Test",
@@ -397,10 +401,11 @@ class TestMarkBlockedV2GitHub:
         """Given GitHub config, mark_blocked adds blocked label via gh CLI."""
         from commands.mark_blocked import mark_blocked
 
-        state = create_v2_state(
+        state = create_state(
             tickets=["TASK-001"],
             current_ticket="TASK-001",
         )
+
         state_file = tmp_path / "workflow-state.json"
         state_file.write_text(json.dumps(state))
 
@@ -426,10 +431,11 @@ class TestMarkBlockedV2GitHub:
         """Given no matching GitHub issue, mark_blocked still updates state."""
         from commands.mark_blocked import mark_blocked
 
-        state = create_v2_state(
+        state = create_state(
             tickets=["TASK-001"],
             current_ticket="TASK-001",
         )
+
         state_file = tmp_path / "workflow-state.json"
         state_file.write_text(json.dumps(state))
 
@@ -449,10 +455,11 @@ class TestMarkBlockedV2GitHub:
         """Given gh CLI fails, mark_blocked still updates state."""
         from commands.mark_blocked import mark_blocked
 
-        state = create_v2_state(
+        state = create_state(
             tickets=["TASK-001"],
             current_ticket="TASK-001",
         )
+
         state_file = tmp_path / "workflow-state.json"
         state_file.write_text(json.dumps(state))
 
@@ -460,6 +467,7 @@ class TestMarkBlockedV2GitHub:
             mock_run.return_value = MagicMock(
                 returncode=1, stdout="", stderr="not authenticated"
             )
+
             mark_blocked(
                 ticket_id="TASK-001",
                 reason="Test",

@@ -1,0 +1,29 @@
+{
+  "ticket_id": "TASK-001",
+  "final_status": "BLOCKED",
+  "total_attempts": 3,
+  "completed": "2026-01-23T21:53:05.106318",
+  "outcome": "Ticket blocked after 3 attempt(s). Manual intervention required.",
+  "attempt_history": [
+    {
+      "attempt": 1,
+      "status": "unknown",
+      "key_issues": "No state file"
+    },
+    {
+      "attempt": 2,
+      "status": "unknown",
+      "key_issues": "No state file"
+    },
+    {
+      "attempt": 3,
+      "status": "unknown",
+      "key_issues": "No state file"
+    }
+  ],
+  "branch": "feature/TASK-001-implementation",
+  "last_commit": "N/A",
+  "pr_number": "None (blocked)",
+  "files_changed": [],
+  "lessons_learned": []
+}

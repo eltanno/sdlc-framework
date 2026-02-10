@@ -1,13 +1,13 @@
 # Execution Report
 
-> **⚠️ MANDATORY: READ THIS ENTIRE FILE BEFORE PROCEEDING.**
+> **⚠ MANDATORY: READ THIS ENTIRE FILE BEFORE PROCEEDING.**
 > **You must confirm you have read and understood all sections.**
 
 **Document what was implemented versus what was planned.**
 
 ---
 
-## ⚡ FIRST ACTION (MANDATORY)
+## ⬇ FIRST ACTION (MANDATORY)
 
 **Before doing ANYTHING else, update the workflow state:**
 
@@ -45,7 +45,7 @@ This creates a record for the `/system-review` process improvement phase.
 Identify:
 - The plan that was followed (`docs/plans/YYYY-MM-DD-*.md`)
 - The commits made (`git log --oneline` since branch creation)
-- The files changed (`git diff --stat main...HEAD`)
+- The files changed (`git diff --stat main..HEAD`)
 
 ### Step 1b: Check PM Tool for Ticket Status
 
@@ -133,6 +133,63 @@ npm test 2>&1 || pytest -v 2>&1
 npm run build 2>&1
 ```
 
+### Step 4b: Run Automated Scripted Checks (For Ralph Batches)
+
+**If this execution report is for a Ralph batch execution**, run the automated scripted checks before proceeding to manual review.
+
+The scripted checks framework validates:
+1. **Merge commits** - All tickets have merge commits in git history
+2. **Orphaned branches** - No unmerged feature branches remain
+3. **Bypass language** - No bypass language patterns in state files
+4. **State files exist** - State directories created for all tickets
+5. **Validation files exist** - Validation.md files present for all tickets
+
+**Run scripted checks via Python:**
+
+```python
+import sys
+sys.path.insert(0, '/workspaces/ai-app-builder/.claude/ralph')
+
+from pathlib import Path
+from commands.scripted_checks import run_execution_report_checks
+
+# Get ticket IDs from workflow-state.json or PRD
+ticket_ids = ["AIUI-0049", "AIUI-0050", ...]  # List all tickets in batch
+
+# Run scripted checks + agent review
+result = run_execution_report_checks(
+    ticket_ids=ticket_ids,
+    state_dir=Path("docs/state"),
+    review_model="opus",   # From config.yaml ralph.review_model
+    review_timeout_minutes=5,  # From config.yaml ralph.review_timeout
+    dry_run=False,
+)
+
+# Check results
+if not result.scripted_checks_passed:
+    print("SCRIPTED CHECKS FAILED!")
+    print(result.scripted_checks_summary)
+    print("\nAgent review NOT invoked - fix failures first")
+else:
+    print("SCRIPTED CHECKS PASSED:")
+    print(result.scripted_checks_summary)
+    print("\nAGENT REVIEW COMPLETED:")
+    print(f"Status: {result.agent_review_status}")
+    print(result.agent_review_findings)
+```
+
+**Read config values:**
+
+```bash
+# Get review_model from config.yaml (defaults to opus)
+REVIEW_MODEL=$(grep -E "^\s*review_model:" config.yaml 2>/dev/null | awk '{print $2}' | tr -d '"' || echo "opus")
+
+# Get review_timeout from config.yaml (defaults to 5)
+REVIEW_TIMEOUT=$(grep -E "^\s*review_timeout:" config.yaml 2>/dev/null | awk '{print $2}' || echo "5")
+```
+
+**Include scripted check results in the execution report** under a new "Automated Validation" section.
+
 ### Step 5: Note Divergences
 
 Where did implementation differ from plan?
@@ -143,7 +200,7 @@ Where did implementation differ from plan?
 
 Create `docs/execution-reports/YYYY-MM-DD-{feature-slug}.md`:
 
-```markdown
+````markdown
 # Execution Report: {Feature Name}
 
 **Date:** YYYY-MM-DD
@@ -176,7 +233,7 @@ Create `docs/execution-reports/YYYY-MM-DD-{feature-slug}.md`:
 
 | Ticket | Issue | Reason |
 |--------|-------|--------|
-| [AUCT-XXXX] | [#NN] | [Reason from comment/label] |
+| [AUCI-XXXX] | [#NN] | [Reason from comment/label] |
 
 ---
 
@@ -192,7 +249,7 @@ Create `docs/execution-reports/YYYY-MM-DD-{feature-slug}.md`:
 ### Modified Tasks
 
 | Task | Original Plan | Actual Implementation | Reason |
-|------|--------------|----------------------|--------|
+|------|---------------|----------------------|--------|
 | [Task] | [what plan said] | [what was done] | [why] |
 
 ### Skipped Tasks
@@ -205,9 +262,13 @@ Create `docs/execution-reports/YYYY-MM-DD-{feature-slug}.md`:
 
 ## Files Changed
 
+---
+
 ```
-[output of git diff --stat main...HEAD]
+[output of git diff --stat main..HEAD]
 ```
+
+---
 
 ### Key Changes
 
@@ -219,23 +280,50 @@ Create `docs/execution-reports/YYYY-MM-DD-{feature-slug}.md`:
 ## Validation Results
 
 ### Linting
+
+---
 ```
 [output of lint command]
 ```
+---
+
 **Status:** PASS / FAIL
 
 ### Tests
+
 ```
 [output of test command]
 ```
+
 **Status:** PASS / FAIL
 **Coverage:** [X]%
 
 ### Build
+
 ```
 [output of build command]
 ```
+
 **Status:** PASS / FAIL
+
+### Automated Validation (Ralph Batches Only)
+
+**Scripted Checks:**
+
+| Check | Status | Details |
+|-------|--------|---------|
+| Merge Commits | PASS/FAIL | [N] tickets verified |
+| Orphaned Branches | PASS/FAIL | [N] branches checked |
+| Bypass Language | PASS/FAIL | [N] state files scanned |
+| State Files Exist | PASS/FAIL | [N] directories verified |
+| Validation Files | PASS/FAIL | [N] validation.md files found |
+
+**Overall:** PASS / FAIL
+**Duration:** [X.XX] seconds
+
+**Agent Review:** (only runs if scripted checks pass)
+- Status: APPROVED / CONCERNS / NOT_RUN
+- Findings: [summary of agent review findings]
 
 ---
 
@@ -258,13 +346,13 @@ Create `docs/execution-reports/YYYY-MM-DD-{feature-slug}.md`:
 ### Intentional Divergences
 
 | What Changed | Why | Category |
-|--------------|-----|----------|
+|-------------|-----|----------|
 | [Change] | [Reason] | Optimization / Better Pattern / Requirement Change |
 
 ### Unintentional Divergences
 
 | What Changed | Why | Should Plan Have Covered? |
-|--------------|-----|--------------------------|
+|-------------|-----|--------------------------|
 | [Change] | [Reason] | Yes / No - [explanation] |
 
 ---
@@ -304,7 +392,7 @@ Create `docs/execution-reports/YYYY-MM-DD-{feature-slug}.md`:
 - [ ] Build succeeds
 - [ ] Documentation updated
 - [ ] PR ready to create
-```
+````
 
 ## After Execution Report
 

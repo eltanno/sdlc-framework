@@ -11,7 +11,6 @@ import json
 import re
 from pathlib import Path
 
-
 from commands.status import (
     StatusResult,
     get_workflow_status,
@@ -35,7 +34,6 @@ class TestGetWorkflowStatus:
     def test_returns_ticket_counts_by_status(self, tmp_path: Path) -> None:
         """Given an active workflow, should return ticket counts by status."""
         state_data = {
-            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -65,7 +63,6 @@ class TestGetWorkflowStatus:
     def test_returns_current_ticket_when_in_progress(self, tmp_path: Path) -> None:
         """Given a ticket is in progress, should return current ticket info."""
         state_data = {
-            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -88,7 +85,6 @@ class TestGetWorkflowStatus:
     def test_returns_total_ticket_count(self, tmp_path: Path) -> None:
         """Given an active workflow, should return total ticket count."""
         state_data = {
-            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -110,7 +106,6 @@ class TestGetWorkflowStatus:
     def test_returns_blocked_tickets_with_reasons(self, tmp_path: Path) -> None:
         """Given blocked tickets exist, should return them with reasons."""
         state_data = {
-            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -136,7 +131,6 @@ class TestGetWorkflowStatus:
     def test_returns_prd_and_plan_paths(self, tmp_path: Path) -> None:
         """Given an active workflow, should return PRD and plan paths."""
         state_data = {
-            "version": "2.0",
             "prd_path": "docs/prds/feature-x.md",
             "plan_path": "docs/plans/feature-x.md",
             "tickets": [
@@ -174,7 +168,7 @@ class TestFormatStatusDisplay:
 
         # Should show a clear "no workflow" message as the primary content
         # Verify it's not just buried in output but is the main message
-        assert re.search(r"(no\s+(active\s+)?workflow|not\s+initialized)", output, re.IGNORECASE)
+        assert re.search(r"(no|not)\s*(active\s*)?workflow[\s\S]*initialized", output, re.IGNORECASE)
         # Should NOT show ticket counts or other workflow details
         assert not re.search(r"(completed|in.progress|pending|blocked):\s*\d+", output, re.IGNORECASE)
 
@@ -199,12 +193,12 @@ class TestFormatStatusDisplay:
 
         # Verify each status label is associated with correct count
         # Use regex to ensure counts appear with their labels, not just anywhere
-        assert re.search(r"completed[:\s]+5", output, re.IGNORECASE)
-        assert re.search(r"in.progress[:\s]+1", output, re.IGNORECASE)
-        assert re.search(r"pending[:\s]+10", output, re.IGNORECASE)
-        assert re.search(r"blocked[:\s]+2", output, re.IGNORECASE)
+        assert re.search(r"completed[\s]+5", output, re.IGNORECASE)
+        assert re.search(r"in.progress[\s]+1", output, re.IGNORECASE)
+        assert re.search(r"pending[\s]+10", output, re.IGNORECASE)
+        assert re.search(r"blocked[\s]+2", output, re.IGNORECASE)
         # Verify total is displayed (as "Progress: X/18" or similar)
-        assert re.search(r"(total|progress|all)[:\s]+\d+/18", output, re.IGNORECASE)
+        assert re.search(r"(total|progress|all)[\s]+\d+/18", output, re.IGNORECASE)
 
     def test_highlights_current_ticket_when_in_progress(self) -> None:
         """Given a ticket is in progress, should highlight it."""
@@ -226,15 +220,15 @@ class TestFormatStatusDisplay:
 
         # Verify current ticket section exists
         # Format is "Current Ticket:" header followed by ID/Title/Attempts
-        assert re.search(r"current\s+ticket", output, re.IGNORECASE)
+        assert re.search(r"current\s*ticket", output, re.IGNORECASE)
         # Verify title and ID are in current ticket section (extract section between headers)
-        current_section = re.search(r"current\s+ticket:.*?(ticket\s+status:|={5,}|$)", output, re.IGNORECASE | re.DOTALL)
+        current_section = re.search(r"current\s*ticket.*?(ticket\s*status:|--{5,}|$)", output, re.IGNORECASE | re.DOTALL)
         assert current_section is not None
         section_text = current_section.group(0)
         assert "TASK-042" in section_text
         assert "Implement authentication" in section_text
         # Verify attempts is displayed in the same section
-        assert re.search(r"attempts?[:\s]+1", section_text, re.IGNORECASE)
+        assert re.search(r"attempts?[\s]+1", section_text, re.IGNORECASE)
 
     def test_displays_blocked_tickets_with_reasons(self) -> None:
         """Given blocked tickets exist, should display them with reasons."""
@@ -256,10 +250,10 @@ class TestFormatStatusDisplay:
         # Verify each blocked ticket is associated with its reason
         # TASK-001 should be near its reason (same line or adjacent lines)
         assert re.search(r"TASK-001[^\n]{0,100}Waiting for API access", output, re.IGNORECASE) or \
-               re.search(r"Waiting for API access[^\n]{0,100}TASK-001", output, re.IGNORECASE)
+            re.search(r"Waiting for API access[^\n]{0,100}TASK-001", output, re.IGNORECASE)
         # TASK-002 should be near its reason
         assert re.search(r"TASK-002[^\n]{0,100}Dependency not resolved", output, re.IGNORECASE) or \
-               re.search(r"Dependency not resolved[^\n]{0,100}TASK-002", output, re.IGNORECASE)
+            re.search(r"Dependency not resolved[^\n]{0,100}TASK-002", output, re.IGNORECASE)
         # Verify there's a blocked tickets section
         assert re.search(r"blocked", output, re.IGNORECASE)
 
@@ -322,7 +316,6 @@ class TestEdgeCases:
     def test_handles_empty_tickets_list(self, tmp_path: Path) -> None:
         """Given workflow with no tickets, should return empty counts."""
         state_data = {
-            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [],
@@ -359,7 +352,6 @@ class TestEdgeCases:
     def test_handles_blocked_ticket_without_reason(self, tmp_path: Path) -> None:
         """Given blocked ticket without reason, should provide a default."""
         state_data = {
-            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [
@@ -382,7 +374,6 @@ class TestEdgeCases:
     def test_handles_current_ticket_not_in_tickets_list(self, tmp_path: Path) -> None:
         """Given current_ticket ID that doesn't match any ticket, should return None."""
         state_data = {
-            "version": "2.0",
             "prd_path": "docs/prds/test.md",
             "plan_path": "docs/plans/test.md",
             "tickets": [

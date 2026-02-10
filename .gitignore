@@ -2,6 +2,8 @@
 node_modules/
 .pnp/
 .pnp.js
+.venv/
+__pycache__/
 
 # Build outputs
 dist/
@@ -39,21 +41,6 @@ yarn-error.log*
 coverage/
 .nyc_output/
 
-# Python
-**/__pycache__/
-**/__pycache__/**
-*.py[cod]
-*$py.class
-*.so
-.Python
-.coverage
-.coverage.*
-htmlcov/
-**/.pytest_cache/
-*.egg-info/
-**/venv/
-**/.venv/
-
 # Misc
 *.tgz
 *.tar.gz
@@ -61,12 +48,101 @@ htmlcov/
 tmp/
 temp/
 
-# Claude Code
+# Claude Code local settings (contains secrets/tokens)
 .claude/settings.local.json
 
 # Project-specific
 # Add project-specific ignores below
 workflow-state.json
 
-# Ralph testing artifacts
-.claude/ralph/docs/
+### LEGACY .gitignore CONTENTS - MAY BE DELETED AFTER REVIEW ###
+
+# Database files
+*.db
+pgdata/
+backend/data/
+
+# Dependencies
+node_modules
+.venv/
+scripts/venv/
+
+# Security - blocked by GitLab
+*.pem
+*.key
+
+# Logs (centralized)
+/logs/
+backend/logs/
+
+# Environment files
+backend/.env
+.env
+.env.local
+.env.*.local
+.env.claude.ps1
+
+# Claude Code local settings
+.claude.old/settings.local.json
+.claude.old/.claude.json
+.claude.old/.claude.json.backup
+.claude.old/debug/
+.claude.old/file-history/
+.claude.old/history.jsonl
+.claude.old/plans/
+.claude.old/plugins/
+.claude.old/projects/
+.claude.old/shell-snapshots/
+.claude.old/stats-cache.json
+.claude.old/todos/
+scripts/claude-debug.sh
+/tmp
+
+# Local backups
+\!backup/
+
+# Test artifacts (Playwright and other test output)
+frontend/test/playwright-report/
+frontend/test/playwright-results/
+frontend/test-results/
+/test-results/
+**/test-results/
+**/.last-run.json
+
+# Claude skills environment files
+.claude.old/skills/**/.env
+.claude.old/skills/*/.env
+
+# VSCode WSL/Windows alternate data streams
+*:[0-9a-fA-F]*
+
+# IDE & Editor files
+.vscode/
+.idea/
+.vs/
+*.swp
+*.swo
+*~
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Python cache
+**/__pycache__/
+*.pyc
+*.pyo
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Test coverage
+coverage/
+.coverage
+.pytest_cache/
+
+# NPM debug logs
+npm-debug.log*
+yarn-error.log*
