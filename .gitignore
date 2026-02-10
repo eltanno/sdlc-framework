@@ -55,6 +55,9 @@ temp/
 # Add project-specific ignores below
 workflow-state.json
 
+# Ralph runtime state (generated during orchestration runs)
+.claude/ralph/docs/
+
 ### LEGACY .gitignore CONTENTS - MAY BE DELETED AFTER REVIEW ###
 
 # Database files
