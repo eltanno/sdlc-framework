@@ -363,7 +363,7 @@ class TestFindIssueByTicketId:
                 stderr=""
             )
 
-        result = find_issue_by_ticket_id("TASK-001")
+            result = find_issue_by_ticket_id("TASK-001")
 
         assert result == 42
 

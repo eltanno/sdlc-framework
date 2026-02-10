@@ -259,10 +259,11 @@ All 3 tickets in the batch were implemented correctly.
 ## Concerns
 None identified.
 """
+        escaped_output = review_output.replace("\n", "\\n")
         with patch("commands.scripted_checks.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
                 returncode=0,
-                stdout=f'{{"type":"result","result":"{review_output.replace(chr(10), "\\n")}"}}',
+                stdout=f'{{"type":"result","result":"{escaped_output}"}}',
                 stderr="",
             )
 
@@ -287,10 +288,11 @@ Potential issues identified in the batch.
 1. AIUI-0002 may conflict with AIUI-0001 changes
 2. Inconsistent error handling patterns detected
 """
+        escaped_output = review_output.replace("\n", "\\n")
         with patch("commands.scripted_checks.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
                 returncode=0,
-                stdout=f'{{"type":"result","result":"{review_output.replace(chr(10), "\\n")}"}}',
+                stdout=f'{{"type":"result","result":"{escaped_output}"}}',
                 stderr="",
             )
 
@@ -312,10 +314,11 @@ Potential issues identified in the batch.
 ## Findings
 All tickets implemented correctly with consistent patterns.
 """
+        escaped_output = review_output.replace("\n", "\\n")
         with patch("commands.scripted_checks.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
                 returncode=0,
-                stdout=f'{{"type":"result","result":"{review_output.replace(chr(10), "\\n")}"}}',
+                stdout=f'{{"type":"result","result":"{escaped_output}"}}',
                 stderr="",
             )
 

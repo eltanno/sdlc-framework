@@ -148,10 +148,12 @@ class WorkflowState:
     completed_count: int = 0
     blocked_count: int = 0
     ralph: RalphState | None = None
+    version: str = "2.0"
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         result = {
+            "version": self.version,
             "prd_path": str(self.prd_path),
             "plan_path": str(self.plan_path),
             "tickets": [t.to_dict() for t in self.tickets],
@@ -960,6 +962,7 @@ def load_workflow_state(state_file: Path) -> WorkflowState:
         completed_count=data.get("completed_count", 0),
         blocked_count=data.get("blocked_count", 0),
         ralph=ralph,
+        version=data.get("version", "2.0"),
     )
 
 
@@ -1041,7 +1044,7 @@ def build_prompt(
 
     # Process all substitutions
     for key, value in substitutions.items():
-        placeholder = f"{{{{{key}}}}}"
+        placeholder = f"{{{key}}}"
         content = content.replace(placeholder, value)
 
     # Try to read config.yaml for auto-substitution
@@ -1063,13 +1066,13 @@ def build_prompt(
 
                 for key, value in config_subs.items():
                     if value:
-                        placeholder = f"{{{{{key}}}}}"
+                        placeholder = f"{{{key}}}"
                         content = content.replace(placeholder, value)
             except Exception:
                 pass  # Ignore config loading errors
 
     # Warn about unsubstituted placeholders
-    remaining = re.findall(r"\{\{[A-Z_]+\}\}", content)
+    remaining = re.findall(r"\{[A-Z_]+\}", content)
     if remaining:
         print("WARNING: Unsubstituted placeholders remain:", file=sys.stderr)
         for placeholder in set(remaining):

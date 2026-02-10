@@ -434,6 +434,6 @@ class TestValidationOutputAttempts:
             # Verify contents are different
             content_1 = path_1.read_text()
             content_2 = path_2.read_text()
-            assert "Attempt: 1" in content_1 or "attempt:# 1" in content_1.lower()
-            assert "Attempt: 2" in content_2 or "attempt:# 2" in content_2.lower()
+            assert "Attempt: 1" in content_1 or "attempt:** 1" in content_1.lower()
+            assert "Attempt: 2" in content_2 or "attempt:** 2" in content_2.lower()
 

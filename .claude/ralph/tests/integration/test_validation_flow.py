@@ -772,7 +772,7 @@ class TestAgentReviewRunsAfterCheckPass:
                 stdout = ""
                 if "log" in cmd and "develop" in cmd:
                     # All tickets have merge commits
-                    Result.stdout = """
+                    stdout = """
 abc123 Merge branch 'feature/AIUI-0001-test' into 'develop'
 def456 Merge branch 'feature/AIUI-0002-test' into 'develop'
 ghi789 Merge branch 'feature/AIUI-0003-test' into 'develop'
@@ -780,14 +780,14 @@ ghi789 Merge branch 'feature/AIUI-0003-test' into 'develop'
                 elif "branch" in cmd:
                     if "--merged" in cmd:
                         # All branches merged
-                        Result.stdout = """
+                        stdout = """
 feature/AIUI-0001-test
 feature/AIUI-0002-test
 feature/AIUI-0003-test
 """
                     else:
                         # All branches
-                        Result.stdout = """
+                        stdout = """
 main
 develop
 remotes/origin/feature/AIUI-0001-test
@@ -933,17 +933,17 @@ class TestReviewModelConfigurable:
                 returncode = 0
                 stdout = ""
                 if "log" in cmd:
-                    Result.stdout = "\n".join(
+                    stdout = "\n".join(
                         f"abc{i}23 Merge branch 'feature/{tid}-test' into 'develop'"
                         for i, tid in enumerate(batch_workflow["ticket_ids"])
                     )
                 elif "--merged" in cmd:
-                    Result.stdout = "\n".join(
+                    stdout = "\n".join(
                         f"  feature/{tid}-test"
                         for tid in batch_workflow["ticket_ids"]
                     )
                 elif "branch" in cmd:
-                    Result.stdout = "  main\n  develop\n" + "\n".join(
+                    stdout = "  main\n  develop\n" + "\n".join(
                         f"  remotes/origin/feature/{tid}-test"
                         for tid in batch_workflow["ticket_ids"]
                     )
@@ -986,17 +986,17 @@ class TestEndToEndValidationFlow:
                 returncode = 0
                 stdout = ""
                 if "log" in cmd:
-                    Result.stdout = "\n".join(
+                    stdout = "\n".join(
                         f"abc{i}23 Merge branch 'feature/{tid}-test' into 'develop'"
                         for i, tid in enumerate(batch_workflow["ticket_ids"])
                     )
                 elif "--merged" in cmd:
-                    Result.stdout = "\n".join(
+                    stdout = "\n".join(
                         f"  feature/{tid}-test"
                         for tid in batch_workflow["ticket_ids"]
                     )
                 elif "branch" in cmd:
-                    Result.stdout = "  main\n  develop\n" + "\n".join(
+                    stdout = "  main\n  develop\n" + "\n".join(
                         f"  remotes/origin/feature/{tid}-test"
                         for tid in batch_workflow["ticket_ids"]
                     )

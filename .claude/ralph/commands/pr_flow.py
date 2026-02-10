@@ -78,6 +78,12 @@ class PrFlowError(Exception):
     pass
 
 
+class MergeError(PrFlowError):
+    """Error specifically during merge operations."""
+
+    pass
+
+
 @dataclass
 class PrFlowResult:
     """Result of running the PR flow.
@@ -243,7 +249,7 @@ def merge_mr(pr_number: int) -> None:
         else:
             repo.merge_pull_request(pr_number, strategy="squash")
     except Exception as e:
-        raise PrFlowError(f"Failed to merge PR/MR: {e}")
+        raise MergeError(f"Failed to merge PR/MR: {e}")
 
 
 # Alias for backward compatibility

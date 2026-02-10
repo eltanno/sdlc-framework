@@ -176,23 +176,23 @@ def format_status_display(status: StatusResult) -> str:
     # Progress summary
     completed = status.tickets_by_status.get("completed", 0)
     total = status.total_tickets
-    lines.append(f"Progress:         {completed}/{total}")
+    lines.append(f"Progress          {completed}/{total}")
     lines.append("")
 
     # Current ticket
     if status.current_ticket:
-        lines.append("Current Ticket:")
-        lines.append(f"  ID:       {status.current_ticket['id']}")
-        lines.append(f"  Title:    {status.current_ticket['title']}")
-        lines.append(f"  Attempts: {status.current_ticket['attempts']}")
+        lines.append("Current Ticket")
+        lines.append(f"  ID              {status.current_ticket['id']}")
+        lines.append(f"  Title           {status.current_ticket['title']}")
+        lines.append(f"  Attempts        {status.current_ticket['attempts']}")
         lines.append("")
 
     # Ticket counts by status
-    lines.append("Ticket Status:")
-    lines.append(f"  Completed:      {status.tickets_by_status.get('completed', 0)}")
-    lines.append(f"  In Progress:    {status.tickets_by_status.get('in_progress', 0)}")
-    lines.append(f"  Pending:        {status.tickets_by_status.get('pending', 0)}")
-    lines.append(f"  Blocked:        {status.tickets_by_status.get('blocked', 0)}")
+    lines.append("Ticket Status")
+    lines.append(f"  Completed       {status.tickets_by_status.get('completed', 0)}")
+    lines.append(f"  In Progress     {status.tickets_by_status.get('in_progress', 0)}")
+    lines.append(f"  Pending         {status.tickets_by_status.get('pending', 0)}")
+    lines.append(f"  Blocked         {status.tickets_by_status.get('blocked', 0)}")
     lines.append("")
 
     # Blocked tickets

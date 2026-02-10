@@ -373,7 +373,7 @@ class TestProcessTicket:
         mock_ticket_done.assert_called_once()
         ticket_done_call = mock_ticket_done.call_args
         assert ticket_done_call[1]["ticket_id"] == "TASK-001"
-        assert ticket_done_call[1]["pr_number"] == 42
+        assert ticket_done_call[1]["pr_number"] == "42"
         assert ticket_done_call[1]["state_file"] == tmp_path / "state.json"
         assert ticket_done_call[1]["pm_tool"] is None
         assert ticket_done_call[1]["ralph_label"] == "ralph-test"
@@ -926,6 +926,7 @@ git:
         assert call_kwargs["pm_tool"] == mock_pm_tool
         assert call_kwargs["ralph_label"] == "ralph-1"
 
+    @patch("commands.orchestrator.stage_summary_files")
     @patch("commands.orchestrator.write_summary")
     @patch("commands.orchestrator.ensure_state_dir")
     @patch("commands.orchestrator.get_latest_attempt")
