@@ -362,6 +362,36 @@ class TestPrFlow:
         assert result.merged is True
         assert result.already_done is False
 
+    def test_pr_flow_passes_default_branch_to_sync_and_checkout(self, mock_git_module, mock_github_module, mocker):
+        """Given a custom default_branch, when running flow, then sync_with_main and checkout_detached_main receive it."""
+        from commands import pr_flow
+        from core.github import PullRequestResult
+
+        mock_sync = mocker.patch.object(pr_flow, "sync_with_main")
+        mock_checkout = mocker.patch.object(pr_flow, "checkout_detached_main")
+
+        mock_git_module.get_current_branch.return_value = "feature/TASK-001-test"
+        mock_git_module.is_dirty.return_value = True
+        mock_git_module.stage_all.return_value = None
+        mock_git_module.commit.return_value = "abc1234"
+        mock_git_module.push.return_value = None
+        mock_git_module.fetch.return_value = None
+
+        mock_github_module.find_merged_pr.return_value = None
+        mock_github_module.list_pull_requests.return_value = []
+        mock_github_module.find_issue_by_title.return_value = 110
+        mock_github_module.create_pull_request.return_value = PullRequestResult(
+            url="https://github.com/owner/repo/pull/42",
+            number=42,
+        )
+        mock_github_module.merge_pull_request.return_value = None
+
+        result = pr_flow.pr_flow("TASK-001", "Test", default_branch="develop")
+
+        mock_sync.assert_called_once_with(default_branch="develop")
+        mock_checkout.assert_called_once_with(default_branch="develop")
+        assert result.merged is True
+
     def test_pr_flow_already_merged_returns_early(self, mock_git_module, mock_github_module):
         """Given PR already merged, when running flow, then returns early with already_done."""
         from commands import pr_flow

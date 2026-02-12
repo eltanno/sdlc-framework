@@ -124,15 +124,17 @@
 
 ## Tickets
 
-*These will be created after plan approval:*
+**CRITICAL: This table MUST mirror the PRD ticket table exactly. Do NOT add, remove, or rename tickets here. The PRD is the single source of truth for what tickets exist. If you identify a missing ticket or gap during planning, add it to the Open Questions section — do NOT create it here.**
+
+*Copied from PRD with added Phase, Complexity, and Dependencies columns:*
 
 | # | Title | Description | Priority | Complexity | Phase | Dependencies |
 |---|-------|-------------|----------|------------|-------|--------------|
-| 1 | {Title} | Brief description | P1 | 1 | 1 | - |
-| 2 | {Title} | Brief description | P1 | 2 | 1 | - |
-| 3 | {Title} | Brief description | P2 | 3 | 2 | 1, 2 |
-| 4 | {Title} | Brief description | P2 | 3 | 2 | 1, 2 |
-| 5 | {Title} | Brief description | P3 | 4 | 3 | 3, 4 |
+| 1 | {Title from PRD} | Brief description | P1 | 1 | 1 | - |
+| 2 | {Title from PRD} | Brief description | P1 | 2 | 1 | - |
+| 3 | {Title from PRD} | Brief description | P2 | 3 | 2 | 1, 2 |
+| 4 | {Title from PRD} | Brief description | P2 | 3 | 2 | 1, 2 |
+| 5 | {Title from PRD} | Brief description | P3 | 4 | 3 | 3, 4 |
 
 **Complexity Score (1-5):** Determines which AI model handles implementation.
 

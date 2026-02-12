@@ -65,6 +65,11 @@ Examples:
         action="store_true",
         help="Show debug output and stack traces",
     )
+    run_parser.add_argument(
+        "--skip-preflight",
+        action="store_true",
+        help="Skip pre-flight test suite check",
+    )
 
     # Status command
     status_parser = subparsers.add_parser("status", help="Show workflow status")
@@ -161,6 +166,14 @@ def run_command(args: argparse.Namespace) -> int:
             logger.error(f"Setup failed: {setup_result.error}")
             return 1
         logger.info(f"Setup complete: found {setup_result.ticket_count} tickets")
+
+    # Pre-flight: verify test suite is green before processing tickets
+    if not args.dry_run and not args.skip_preflight:
+        from commands.preflight import run_preflight_check
+
+        preflight_passed = run_preflight_check(config_file)
+        if not preflight_passed:
+            return 1
 
     if args.dry_run:
         logger.info("DRY RUN MODE - No Claude invocations will be made")

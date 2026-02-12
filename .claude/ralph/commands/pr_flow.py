@@ -343,6 +343,7 @@ def pr_flow(
     commit_message: str,
     no_merge: bool = False,
     dry_run: bool = False,
+    default_branch: str = "main",
 ) -> PrFlowResult:
     """Run the complete PR flow: commit, push, create PR, merge.
 
@@ -353,6 +354,7 @@ def pr_flow(
         commit_message: Commit message / PR description
         no_merge: If True, don't merge the PR
         dry_run: If True, don't perform any real operations
+        default_branch: Name of the default branch (e.g., "main")
 
     Returns:
         PrFlowResult with all operation details
@@ -400,7 +402,7 @@ def pr_flow(
 
     # Sync with latest main to avoid merge conflicts on GitHub
     # This ensures the PR will be fast-forward mergeable
-    sync_with_main()
+    sync_with_main(default_branch=default_branch)
 
     # Push to remote
     push_branch(current_branch)
@@ -438,7 +440,7 @@ def pr_flow(
             pass  # Non-fatal
 
         # Checkout detached at main
-        checkout_detached_main()
+        checkout_detached_main(default_branch=default_branch)
 
     return PrFlowResult(
         ticket_id=ticket_id,

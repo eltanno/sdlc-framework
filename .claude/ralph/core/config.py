@@ -193,15 +193,29 @@ def _parse_config(data: dict[str, Any]) -> Config:
     is_monorepo = len(codebases_data) > 0
 
     codebases = []
-    for cb in codebases_data:
-        codebases.append(Codebase(
-            name=cb.get("name", ""),
-            path=cb.get("path", ""),
-            typecheck_command=cb.get("typecheck", ""),
-            lint_command=cb.get("lint", ""),
-            test_command=cb.get("test", ""),
-            build_command=cb.get("build", ""),
-        ))
+    if isinstance(codebases_data, dict):
+        # YAML mapping format: {backend: {path: ..., ...}, frontend: {...}}
+        for name, cb in codebases_data.items():
+            cb = cb or {}
+            codebases.append(Codebase(
+                name=name,
+                path=cb.get("path", ""),
+                typecheck_command=cb.get("typecheck_command", cb.get("typecheck", "")),
+                lint_command=cb.get("lint_command", cb.get("lint", "")),
+                test_command=cb.get("test_command", cb.get("test", "")),
+                build_command=cb.get("build_command", cb.get("build", "")),
+            ))
+    else:
+        # List format: [{name: backend, path: ..., ...}, ...]
+        for cb in codebases_data:
+            codebases.append(Codebase(
+                name=cb.get("name", ""),
+                path=cb.get("path", ""),
+                typecheck_command=cb.get("typecheck_command", cb.get("typecheck", "")),
+                lint_command=cb.get("lint_command", cb.get("lint", "")),
+                test_command=cb.get("test_command", cb.get("test", "")),
+                build_command=cb.get("build_command", cb.get("build", "")),
+            ))
 
     return Config(
         ralph=ralph_config,

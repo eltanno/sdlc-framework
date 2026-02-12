@@ -170,7 +170,7 @@ Fields:
 | TBD | Ticket 2 | Brief description | P1 | 2 | Ticket 1 |
 | TBD | Ticket 3 | Brief description | P2 | 4 | - |
 
-*Note: IDs will be filled in after ticket creation via `/ticket`.*
+*Note: IDs will be filled in after ticket creation via `/ticket`. Tickets must be listed in ascending ID order.*
 
 **Complexity Score (1-5):** Determines which AI model handles implementation.
 

@@ -271,3 +271,4 @@ Please review and approve to create tickets.
 - Make assumptions without documenting them
 - Design beyond the stated requirements
 - Forget to identify tickets in the PRD
+- **Add, remove, or rename tickets during the Plan phase** — the PRD is the single source of truth for what tickets exist. The plan organizes PRD tickets into phases and adds complexity/dependency columns, but the ticket list must match the PRD exactly. If you identify a gap (e.g., a missing prerequisite ticket), flag it in the Open Questions section and note it in your summary — do NOT silently add it to the ticket table.
