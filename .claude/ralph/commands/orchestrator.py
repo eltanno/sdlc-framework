@@ -558,6 +558,85 @@ def invoke_validator(
 
 
 # ============================================================================
+# System Manifest Update
+# ============================================================================
+
+
+def _update_system_manifest(
+    prd_path: Path,
+    plan_path: Path,
+    result: OrchestratorResult,
+) -> None:
+    """Update docs/SYSTEM.md after tickets have been completed.
+
+    Invokes Claude (haiku) to review what was implemented and update the
+    system manifest if any architectural or structural changes were made.
+
+    This is a best-effort operation -- failures are logged but do not
+    affect the orchestrator result.
+
+    Args:
+        prd_path: Path to PRD document that was implemented
+        plan_path: Path to plan document for the implementation
+        result: Orchestrator result containing completed ticket info
+    """
+    # Extract completed ticket IDs from results
+    completed_ids = [
+        tr.ticket_id
+        for tr in result.ticket_results
+        if tr.status == "completed"
+    ]
+
+    if not completed_ids:
+        logger.debug("No completed tickets to update SYSTEM.md for")
+        return
+
+    completed_ticket_ids = ", ".join(completed_ids)
+    completed_ticket_summary = ", ".join(completed_ids)
+
+    prompt = f"""You are updating the project's living system manifest after a batch of tickets were implemented.
+
+## Task
+1. Read `docs/SYSTEM.md` -- this is the current system manifest
+2. Read the PRD at `{prd_path}` -- this describes what was planned
+3. Read the plan at `{plan_path}` -- this describes the technical approach
+4. Review the completed tickets: {completed_ticket_ids}
+5. Determine if any of these sections in SYSTEM.md need updating:
+   - Architecture Overview (new services, components)
+   - Data Model (new tables, columns, relationships)
+   - Frontend Architecture (new stores, pipeline changes)
+   - Backend Architecture (new REST routes, new WS message types)
+   - Key Architectural Decisions (new decisions made)
+   - Conventions & Patterns (new patterns established)
+   - Active Constraints & Known Issues (new fragile areas)
+   - What NOT to Do (new anti-patterns discovered)
+   - Document Index (new documents created)
+6. If changes are needed, edit SYSTEM.md using the Edit tool
+7. If changes were made, update the "Last updated" date comment at the top
+8. If changes were made, commit with: `docs: update SYSTEM.md after {completed_ticket_summary}`
+
+## Rules
+- ONLY update if there are meaningful system-level changes (new message types, new tables, new stores, etc.)
+- Do NOT update for bug fixes, CSS changes, or minor tweaks
+- Keep the document concise -- same style as existing content
+- Do NOT add content that duplicates existing entries
+- If nothing needs updating, do nothing and exit
+"""
+
+    try:
+        logger.info(f"Invoking Claude to update SYSTEM.md for tickets: {completed_ticket_ids}")
+        invoke_claude(
+            prompt=prompt,
+            model="haiku",
+            timeout_minutes=5,
+            dry_run=False,
+        )
+        logger.info("SYSTEM.md update step completed")
+    except Exception as e:
+        logger.warning(f"SYSTEM.md update failed (non-fatal): {e}")
+
+
+# ============================================================================
 # Claude Invocation
 # ============================================================================
 
@@ -819,6 +898,7 @@ def process_ticket(
                 mark_blocked(
                     ticket_id=ticket_id,
                     reason=f"Merge failed: {e}",
+                    state_file=state_file,
                     pm_tool=pm_tool,
                     ralph_label=ralph_label,
                 )
@@ -991,9 +1071,10 @@ def _build_initial_prompt(
 
 ## Required Reading
 
-1. **PRD:** `{prd_path}` - Find acceptance criteria for {ticket_id}
-2. **Plan:** `{plan_path}` - Find technical approach for {ticket_id}
-3. **Coding Standards:** `docs/coding-standards.md` - Follow all standards
+1. **System Manifest:** `docs/SYSTEM.md` - Understand current architecture, decisions, and conventions FIRST
+2. **PRD:** `{prd_path}` - Find acceptance criteria for {ticket_id}
+3. **Plan:** `{plan_path}` - Find technical approach for {ticket_id}
+4. **Coding Standards:** `docs/coding-standards.md` - Follow all standards
 
 ## Your Task
 
@@ -1256,12 +1337,16 @@ For each acceptance criterion in the PRD/plan for {ticket_id}:
 2. Check if it is actually met in the implementation
 3. Note any discrepancies or partial implementations
 
-### Step 2: Verify Dependencies Are Merged
+### Step 2: Verify Upstream Dependencies Are Merged
 
-If the ticket has dependencies listed in the plan:
-1. Run `git log develop --oneline | grep {{dependency-id}}` for each dependency
-2. Verify each dependency has a merge commit on develop
-3. If any dependency is NOT merged, this is a validation failure
+If the ticket has upstream dependencies listed in the plan (other tickets it depends ON):
+1. Run `git log develop --oneline | grep {{dependency-id}}` for each upstream dependency
+2. Verify each upstream dependency has a merge commit on develop
+3. If any upstream dependency is NOT merged, this is a validation failure
+
+**IMPORTANT:** Do NOT check whether the CURRENT ticket is merged to develop. The current
+ticket is still on its feature branch — merging to develop happens AFTER validation confirms.
+You are only checking that tickets this one DEPENDS ON are already merged.
 
 ### Step 3: Scan for Bypass Language
 
@@ -1313,7 +1398,7 @@ Reason: [specific reason - criteria not met, bypass detected, dependencies not m
 
 Do NOT return VALIDATION_CONFIRMED if:
 - Any original acceptance criterion is not met
-- Dependencies are not merged to develop
+- Upstream dependencies are not merged to develop
 - Bypass language is detected without valid justification
 - The engineer's interpretation differs significantly from PRD requirements
 """
@@ -1433,6 +1518,11 @@ def run_orchestrator(
 
         # Reload state for next iteration
         state = load_workflow_state(state_file)
+
+    # Post-loop: Update SYSTEM.md if any tickets were completed
+    if result.completed_count > 0 and not dry_run:
+        logger.info("Updating docs/SYSTEM.md with changes from this run...")
+        _update_system_manifest(prd_path, plan_path, result)
 
     # Determine final status
     result.end_time = datetime.now()

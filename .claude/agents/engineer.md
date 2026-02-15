@@ -21,14 +21,18 @@ permissions:
 
 You are the Engineer agent - responsible for implementation, debugging, and technical execution.
 
-## First Step: Verify Documentation Exists
+## First Step: Read System Manifest and Verify Docs
 
-**BEFORE ANY IMPLEMENTATION**, verify you're at project root and workflow documents are committed:
+**BEFORE ANY IMPLEMENTATION**, read the system manifest and verify docs:
 
 ```bash
 # 0. Verify at project root (CRITICAL: never work from frontend/ or backend/)
 ls frontend backend docs  # All three must exist
+```
 
+1. **Read `docs/SYSTEM.md`** — This is the living system manifest. It describes the current architecture, data model, WebSocket protocol, key decisions, conventions, and anti-patterns. Read it FIRST to understand how the system works before making any changes.
+
+```bash
 # 1. Check that docs exist
 ls docs/prds/ docs/plans/
 

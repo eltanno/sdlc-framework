@@ -5,6 +5,8 @@ description: Automated playtest-fix-retest loop — finds bugs, fixes them, and 
 
 You are an autonomous QA + engineering loop. Your job is to repeatedly playtest the AI-MUD app, fix any bugs found, and retest until there are no critical or major bugs remaining.
 
+**CRITICAL RULE: The playtest must actually PLAY THE GAME.** This is not just a UI verification — the tester must navigate through pages using exits, explore areas, interact with NPCs/items, talk to the companion in different locations, and try to progress through the adventure. If the game cannot be played as a text adventure (can't move, can't navigate, nothing to do, stuck), that is a CRITICAL bug. The game should feel like a playable MUD.
+
 ## LOOP STRUCTURE
 
 ```
@@ -41,22 +43,55 @@ sleep 8
 
 Verify both are running before proceeding. Check `/tmp/backend.log` and `/tmp/frontend.log` for the URLs.
 
+## STEP 1.5: Reset Bug List After a New Release
+
+**Before each playtest loop**, check if a new PRD has been delivered since the last playtest run. Compare the PRD date/name in `docs/todo/playtest-bugs.md` header against the most recent PRD in `docs/prds/`.
+
+**If a new PRD has been delivered (i.e., new feature work was completed):**
+1. Archive the old bug list: `mv docs/todo/playtest-bugs.md docs/todo/playtest-bugs-$(date +%Y-%m-%d)-archive.md`
+2. Start fresh — the subagent creates a new `docs/todo/playtest-bugs.md` from scratch with BUG-001
+3. This is a clean slate — no regression checking of old bugs from the previous release cycle
+
+**If NO new PRD has been delivered (i.e., continuing the same release cycle):**
+- Keep the existing bug list and continue the cumulative approach as before
+
+**Why:** Each release cycle is a fresh product state. Carrying forward bugs from a previous release pollutes the report and wastes time re-verifying things that may have been intentionally changed. A new PRD = a new playtest baseline.
+
 ## STEP 2: Playtest (Delegate to Subagent)
 
-Launch a `general-purpose` subagent with access to Playwright tools. Give it the full playtest instructions:
+**Before launching the subagent**, read `docs/todo/playtest-bugs.md` yourself (if it exists) and include its full content in the subagent prompt. If the file was just reset (Step 1.5), tell the subagent this is a fresh playtest with no prior bug history.
 
-- Navigate to frontend URL
-- Register a new user (unique username with timestamp)
-- Complete all 4 onboarding steps (read `.env` for ANTHROPIC_API_KEY)
-- Test all game page panels (left sidebar, chat, right panel tabs, header, footer, map)
-- Test returning user flow (logout → login → verify persistence)
-- Test page refresh (F5 on game page → verify session survives)
-- Use `mcp__playwright__browser_snapshot` for page state, `mcp__playwright__browser_take_screenshot` for visual evidence
-- Write findings to `docs/todo/playtest-bugs.md`
+If the file exists and has prior content, the subagent needs it to:
+- Know which bugs were previously fixed (regression check)
+- Know which bugs are still open (verify if still broken or now fixed)
+- Assign correct sequential bug IDs to any NEW bugs (e.g., if last bug was BUG-015, next new one is BUG-016)
 
-The subagent MUST categorize each bug by severity: Critical, Major, Moderate, Low.
+Launch a `general-purpose` subagent with access to Playwright tools. Give it:
 
-The subagent MUST also verify any previously-fixed bugs are still working (regression check).
+1. **The full content of `docs/todo/playtest-bugs.md`** (the existing cumulative bug list)
+2. The full playtest instructions (from `.claude/commands/playtest.md`):
+   - Navigate to frontend URL
+   - Register a new user (unique username with timestamp)
+   - Complete all 4 onboarding steps (read `.env` for ANTHROPIC_API_KEY)
+   - Verify onboarding fixes (intro text in chat, input disabled after companion confirmed)
+   - Test all game page panels (left sidebar, chat, right panel tabs, header, footer, map)
+   - **PLAY THE GAME**: Click exits to navigate between areas, explore 3-4+ different locations, talk to companion in different areas, check for NPCs/items, try to progress through the adventure. If stuck (no exits, can't move, nothing to do) — CRITICAL BUG.
+   - Verify footer shows provider AND model name
+   - Verify settings has "Change LLM Settings" option
+   - Verify map shows actual visitable pages
+   - Test returning user flow (logout → login → verify persistence + same area)
+   - Test page refresh (F5 on game page → verify session survives)
+   - Use `mcp__playwright__browser_snapshot` for page state, `mcp__playwright__browser_take_screenshot` for visual evidence
+   - Include a "GAMEPLAY TEST" section in the report documenting areas visited, exits used, what worked/didn't
+
+3. **Bug list update rules:**
+   - READ the existing bug list first — do NOT start from scratch
+   - Verify ALL previously-fixed bugs still work (regression check)
+   - Verify ALL still-open bugs — mark as fixed if they're now resolved
+   - Assign NEW bugs sequential IDs continuing from the highest existing number
+   - Categorize each bug by severity: Critical, Major, Moderate, Low
+   - Write the UPDATED cumulative report back to `docs/todo/playtest-bugs.md`
+   - The file is a LIVING DOCUMENT — preserve history, don't overwrite it
 
 ## STEP 3: Evaluate Bug Report
 

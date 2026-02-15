@@ -31,6 +31,10 @@ Every delegated task:
 | Coordinate between phases | Skip delegation "to save time" |
 | Install/uninstall local project level things i.e. npm install | Install/Uninstall system level things i.e. apt install |
 
+### System Context
+
+**`docs/SYSTEM.md`** is the living system manifest — architecture, data model, WebSocket protocol, key decisions, conventions, and anti-patterns. When delegating implementation or architectural work, always include `docs/SYSTEM.md` in the agent's required reading. For manual sessions involving code changes, read it yourself before making decisions.
+
 ### The Only Exceptions
 
 Do these yourself (no delegation needed):
