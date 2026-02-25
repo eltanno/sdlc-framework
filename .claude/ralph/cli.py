@@ -12,7 +12,6 @@ Usage:
 
 Options:
     --dry-run           Preview without invoking Claude
-    --max-attempts N    Max retries per ticket (default: 3)
     --verbose           Show debug output and stack traces
     --help              Show help message
 """
@@ -53,12 +52,6 @@ Examples:
         "--dry-run",
         action="store_true",
         help="Preview without invoking Claude",
-    )
-    run_parser.add_argument(
-        "--max-attempts",
-        type=int,
-        default=3,
-        help="Maximum retry attempts per ticket (default: 3)",
     )
     run_parser.add_argument(
         "--verbose", "-v",
@@ -128,7 +121,7 @@ def main(argv: list[str] | None = None) -> int:
 def run_command(args: argparse.Namespace) -> int:
     """Execute the run command - main orchestrator loop."""
     from commands.orchestrator import run_orchestrator
-    from commands.setup import run_setup
+    from core.state import build_workflow_state
 
     logger = logging.getLogger(__name__)
 
@@ -140,32 +133,24 @@ def run_command(args: argparse.Namespace) -> int:
         logger.error(f"Plan file not found: {args.plan}")
         return 1
 
-    # State file is specific to this PRD (based on PRD filename)
-    # Store in tmp/ to avoid committing state files
-    prd_name = args.prd.stem  # e.g., "2026-01-20-asana-pm-tool-integration"
-    tmp_dir = Path("tmp")
-    tmp_dir.mkdir(exist_ok=True)
-    state_file = tmp_dir / f"ralph-state-{prd_name}.json"
-
     # Find config.yaml
     config_file = Path("config.yaml")
     if not config_file.exists():
         config_file = None
 
-    logger.info(f"Starting Ralph: prd={args.prd}, plan={args.plan}, state={state_file}, config={config_file or 'defaults'}")
+    # Build workflow state in memory from PRD and plan
+    logger.info(f"Starting Ralph: prd={args.prd}, plan={args.plan}, config={config_file or 'defaults'}")
 
-    # Initialize state file if it doesn't exist
-    if not state_file.exists():
-        logger.info("Initializing workflow state from PRD and plan...")
-        setup_result = run_setup(
-            prd_path=args.prd,
-            plan_path=args.plan,
-            state_file=state_file,
-        )
-        if not setup_result.success:
-            logger.error(f"Setup failed: {setup_result.error}")
-            return 1
-        logger.info(f"Setup complete: found {setup_result.ticket_count} tickets")
+    from core.config import get_default_branch
+    try:
+        default_branch = get_default_branch(config_file or Path("config.yaml"))
+        logger.info(f"Default branch: {default_branch}")
+    except Exception as e:
+        logger.error(f"Failed to determine default branch: {e}")
+        return 1
+    workflow_state = build_workflow_state(prd_path=args.prd, plan_path=args.plan)
+    ticket_count = len(workflow_state.ralph.tickets) if workflow_state.ralph else 0
+    logger.info(f"Built workflow state: found {ticket_count} tickets")
 
     # Pre-flight: verify test suite is green before processing tickets
     if not args.dry_run and not args.skip_preflight:
@@ -182,7 +167,7 @@ def run_command(args: argparse.Namespace) -> int:
         result = run_orchestrator(
             prd_path=args.prd,
             plan_path=args.plan,
-            state_file=state_file,
+            workflow_state=workflow_state,
             config_file=config_file,
             dry_run=args.dry_run,
         )

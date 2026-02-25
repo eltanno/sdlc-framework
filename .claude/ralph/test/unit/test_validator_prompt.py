@@ -30,6 +30,7 @@ class TestBuildValidatorPrompt:
         from commands.orchestrator import build_validator_prompt
 
         prompt = build_validator_prompt(
+            default_branch="develop-working",
             ticket_id="AIUI-0051",
             prd_path=Path("docs/prds/test.md"),
             plan_path=Path("docs/plans/test.md"),
@@ -44,6 +45,7 @@ class TestBuildValidatorPrompt:
         from commands.orchestrator import build_validator_prompt
 
         prompt = build_validator_prompt(
+            default_branch="develop-working",
             ticket_id="AIUI-0051",
             prd_path=Path("docs/prds/2026-01-30-feature.md"),
             plan_path=Path("docs/plans/test.md"),
@@ -58,6 +60,7 @@ class TestBuildValidatorPrompt:
         from commands.orchestrator import build_validator_prompt
 
         prompt = build_validator_prompt(
+            default_branch="develop-working",
             ticket_id="AIUI-0051",
             prd_path=Path("docs/prds/test.md"),
             plan_path=Path("docs/plans/2026-01-30-plan.md"),
@@ -72,6 +75,7 @@ class TestBuildValidatorPrompt:
         from commands.orchestrator import build_validator_prompt
 
         prompt = build_validator_prompt(
+            default_branch="develop-working",
             ticket_id="AIUI-0051",
             prd_path=Path("docs/prds/test.md"),
             plan_path=Path("docs/plans/test.md"),
@@ -87,6 +91,7 @@ class TestBuildValidatorPrompt:
         from commands.orchestrator import build_validator_prompt
 
         prompt = build_validator_prompt(
+            default_branch="develop-working",
             ticket_id="AIUI-0051",
             prd_path=Path("docs/prds/test.md"),
             plan_path=Path("docs/plans/test.md"),
@@ -105,6 +110,7 @@ class TestBuildValidatorPrompt:
         from commands.orchestrator import build_validator_prompt
 
         prompt = build_validator_prompt(
+            default_branch="develop-working",
             ticket_id="AIUI-0051",
             prd_path=Path("docs/prds/test.md"),
             plan_path=Path("docs/plans/test.md"),
@@ -122,6 +128,7 @@ class TestBuildValidatorPrompt:
         from commands.orchestrator import build_validator_prompt
 
         prompt = build_validator_prompt(
+            default_branch="develop-working",
             ticket_id="AIUI-0051",
             prd_path=Path("docs/prds/test.md"),
             plan_path=Path("docs/plans/test.md"),
@@ -139,6 +146,7 @@ class TestBuildValidatorPrompt:
         from commands.orchestrator import build_validator_prompt
 
         prompt = build_validator_prompt(
+            default_branch="develop-working",
             ticket_id="AIUI-0051",
             prd_path=Path("docs/prds/test.md"),
             plan_path=Path("docs/plans/test.md"),
@@ -154,6 +162,7 @@ class TestBuildValidatorPrompt:
         from commands.orchestrator import build_validator_prompt
 
         prompt = build_validator_prompt(
+            default_branch="develop-working",
             ticket_id="AIUI-0051",
             prd_path=Path("docs/prds/test.md"),
             plan_path=Path("docs/plans/test.md"),
@@ -171,6 +180,7 @@ class TestBuildValidatorPrompt:
         from commands.orchestrator import build_validator_prompt
 
         prompt = build_validator_prompt(
+            default_branch="develop-working",
             ticket_id="AIUI-0051",
             prd_path=Path("docs/prds/test.md"),
             plan_path=Path("docs/plans/test.md"),
@@ -189,6 +199,7 @@ class TestBuildValidatorPrompt:
         from commands.orchestrator import build_validator_prompt
 
         prompt = build_validator_prompt(
+            default_branch="develop-working",
             ticket_id="AIUI-0051",
             prd_path=Path("docs/prds/test.md"),
             plan_path=Path("docs/plans/test.md"),
@@ -210,6 +221,7 @@ class TestBuildValidatorPromptEdgeCases:
         from commands.orchestrator import build_validator_prompt
 
         prompt = build_validator_prompt(
+            default_branch="develop-working",
             ticket_id="AIUI-0051-SPECIAL",
             prd_path=Path("docs/prds/test.md"),
             plan_path=Path("docs/plans/test.md"),
@@ -224,6 +236,7 @@ class TestBuildValidatorPromptEdgeCases:
         from commands.orchestrator import build_validator_prompt
 
         prompt = build_validator_prompt(
+            default_branch="develop-working",
             ticket_id="TASK-001",
             prd_path=Path("docs/prds/2026/01/feature.md"),
             plan_path=Path("docs/plans/2026/01/feature.md"),
@@ -240,6 +253,7 @@ class TestBuildValidatorPromptEdgeCases:
         from commands.orchestrator import build_validator_prompt
 
         prompt = build_validator_prompt(
+            default_branch="develop-working",
             ticket_id="TASK-001",
             prd_path=Path("docs/prds/test.md"),
             plan_path=Path("docs/plans/test.md"),
@@ -254,6 +268,7 @@ class TestBuildValidatorPromptEdgeCases:
         from commands.orchestrator import build_validator_prompt
 
         prompt = build_validator_prompt(
+            default_branch="develop-working",
             ticket_id="TASK-001",
             prd_path=Path("docs/prds/test.md"),
             plan_path=Path("docs/plans/test.md"),

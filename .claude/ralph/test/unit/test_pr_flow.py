@@ -27,7 +27,7 @@ def mock_git_module(mocker):
 def mock_github_module(mocker):
     """Mock the github module as the repo tool.
 
-    This mocks _get_cached_repo_module to return a mock GitHub module
+    This mocks get_repo_module to return a mock GitHub module
     for tests that need to verify GitHub-specific behavior.
     """
     from core import github as real_github
@@ -48,7 +48,7 @@ def mock_github_module(mocker):
     mock_github.delete_remote_branch = mocker.MagicMock()
 
     # Patch the cached repo module getter to return our mock
-    mocker.patch("commands.pr_flow._get_cached_repo_module", return_value=mock_github)
+    mocker.patch("commands.pr_flow.get_repo_module", return_value=mock_github)
 
     return mock_github
 
@@ -121,11 +121,11 @@ class TestPushBranch:
         assert "Permission denied" in str(exc_info.value)
 
 
-class TestCreatePr:
-    """Tests for create_pr function."""
+class TestCreateMr:
+    """Tests for create_mr function."""
 
-    def test_create_pr_creates_with_ticket_in_title(self, mock_github_module):
-        """Given ticket ID, when creating PR, then title includes ticket ID."""
+    def test_create_mr_creates_with_ticket_in_title(self, mock_github_module):
+        """Given ticket ID, when creating MR, then title includes ticket ID."""
         from commands import pr_flow
         from core.github import PullRequestResult
 
@@ -134,14 +134,14 @@ class TestCreatePr:
             number=42,
         )
 
-        result = pr_flow.create_pr("TASK-001", "Implementation complete")
+        result = pr_flow.create_mr("TASK-001", "Implementation complete")
 
         create_call = mock_github_module.create_pull_request.call_args
         title = create_call[1].get("title") or create_call[0][0]
         assert "TASK-001" in title
 
-    def test_create_pr_links_to_issue_in_body(self, mock_github_module):
-        """Given issue number, when creating PR, then body links to issue."""
+    def test_create_mr_links_to_issue_in_body(self, mock_github_module):
+        """Given issue number, when creating MR, then body links to issue."""
         from commands import pr_flow
         from core.github import PullRequestResult
 
@@ -151,14 +151,14 @@ class TestCreatePr:
             number=42,
         )
 
-        pr_flow.create_pr("TASK-001", "Implementation complete")
+        pr_flow.create_mr("TASK-001", "Implementation complete")
 
         create_call = mock_github_module.create_pull_request.call_args
         body = create_call[1].get("body") or create_call[0][1]
         assert "#110" in body or "Closes #110" in body
 
-    def test_create_pr_returns_pr_info(self, mock_github_module):
-        """Given PR creation succeeds, when result returned, then PR URL and number are provided."""
+    def test_create_mr_returns_pr_info(self, mock_github_module):
+        """Given MR creation succeeds, when result returned, then PR URL and number are provided."""
         from commands import pr_flow
         from core.github import PullRequestResult
 
@@ -168,13 +168,13 @@ class TestCreatePr:
             number=123,
         )
 
-        result = pr_flow.create_pr("TASK-001", "Test")
+        result = pr_flow.create_mr("TASK-001", "Test")
 
         assert result.number == 123
         assert result.url == "https://github.com/owner/repo/pull/123"
 
-    def test_create_pr_handles_creation_failure(self, mock_github_module):
-        """Given PR creation fails, when create_pr called, then PrFlowError is raised with details."""
+    def test_create_mr_handles_creation_failure(self, mock_github_module):
+        """Given MR creation fails, when create_mr called, then PrFlowError is raised with details."""
         from commands import pr_flow
         from commands.pr_flow import PrFlowError
         from core.github import GitHubError
@@ -183,21 +183,21 @@ class TestCreatePr:
         mock_github_module.create_pull_request.side_effect = GitHubError("API error")
 
         with pytest.raises(PrFlowError) as exc_info:
-            pr_flow.create_pr("TASK-001", "Test")
+            pr_flow.create_mr("TASK-001", "Test")
 
         assert "API error" in str(exc_info.value)
 
 
-class TestMergePr:
-    """Tests for merge_pr function."""
+class TestMergeMr:
+    """Tests for merge_mr function."""
 
-    def test_merge_pr_uses_squash_by_default(self, mock_github_module):
+    def test_merge_mr_uses_squash_by_default(self, mock_github_module):
         """Given PR number, when merging, then squash merge is used to maintain clean history."""
         from commands import pr_flow
 
         mock_github_module.merge_pull_request.return_value = None
 
-        pr_flow.merge_pr(123)
+        pr_flow.merge_mr(123)
 
         # Verify merge was attempted with squash strategy
         mock_github_module.merge_pull_request.assert_called_once()
@@ -205,7 +205,7 @@ class TestMergePr:
         assert call_args[0][0] == 123
         assert call_args[1].get("strategy") == "squash"
 
-    def test_merge_pr_handles_merge_conflicts(self, mock_github_module):
+    def test_merge_mr_handles_merge_conflicts(self, mock_github_module):
         """Given PR has merge conflicts, when merging, then PrFlowError is raised with details."""
         from commands import pr_flow
         from commands.pr_flow import PrFlowError
@@ -214,43 +214,43 @@ class TestMergePr:
         mock_github_module.merge_pull_request.side_effect = GitHubError("Merge conflict")
 
         with pytest.raises(PrFlowError) as exc_info:
-            pr_flow.merge_pr(123)
+            pr_flow.merge_mr(123)
 
         assert "Merge conflict" in str(exc_info.value)
 
 
-class TestCheckoutDetachedMain:
-    """Tests for checkout_detached_main function."""
+class TestCheckoutDetachedDefault:
+    """Tests for checkout_detached_default function."""
 
-    def test_checkout_detached_main_fetches_and_checkouts(self, mock_git_module):
-        """Given main exists remotely, when checking out detached, then detached HEAD is used."""
+    def test_checkout_detached_default_fetches_and_checkouts(self, mock_git_module):
+        """Given default branch exists remotely, when checking out detached, then detached HEAD is used."""
         from commands import pr_flow
 
         mock_git_module.fetch.return_value = None
         # Simulate checkout --detach
         mock_git_module._run_git_command = MagicMock()
 
-        pr_flow.checkout_detached_main("main")
+        pr_flow.checkout_detached_default("main")
 
         mock_git_module.fetch.assert_called()
 
 
-class TestSyncWithMain:
-    """Tests for sync_with_main function."""
+class TestSyncWithDefault:
+    """Tests for sync_with_default function."""
 
-    def test_sync_with_main_fetches_and_merges(self, mock_git_module):
-        """Given main exists remotely, when syncing, then fetch and merge are called."""
+    def test_sync_with_default_fetches_and_merges(self, mock_git_module):
+        """Given default branch exists remotely, when syncing, then fetch and merge are called."""
         from commands import pr_flow
 
         mock_git_module.fetch.return_value = None
         mock_git_module.merge.return_value = None
 
-        pr_flow.sync_with_main("main")
+        pr_flow.sync_with_default("main")
 
         mock_git_module.fetch.assert_called_once_with(remote="origin")
         mock_git_module.merge.assert_called_once_with("origin/main")
 
-    def test_sync_with_main_raises_on_conflict(self, mock_git_module):
+    def test_sync_with_default_raises_on_conflict(self, mock_git_module):
         """Given merge has conflicts, when syncing, then PrFlowError is raised."""
         from commands import pr_flow
         from commands.pr_flow import PrFlowError
@@ -262,9 +262,9 @@ class TestSyncWithMain:
         mock_git_module.GitError = GitError
 
         with pytest.raises(PrFlowError) as exc_info:
-            pr_flow.sync_with_main()
+            pr_flow.sync_with_default(default_branch="develop-working")
 
-        assert "Merge conflicts" in str(exc_info.value)
+        assert "Merge conflicts" in str(exc_info.value) or "sync with" in str(exc_info.value).lower()
 
 
 
@@ -343,7 +343,7 @@ class TestPrFlow:
         )
         mock_github_module.merge_pull_request.return_value = None
 
-        result = pr_flow.pr_flow("TASK-001", "Implementation complete")
+        result = pr_flow.pr_flow("TASK-001", "Implementation complete", default_branch="develop-working")
 
         # Verify commit message format
         commit_msg = mock_git_module.commit.call_args[0][0]
@@ -363,12 +363,12 @@ class TestPrFlow:
         assert result.already_done is False
 
     def test_pr_flow_passes_default_branch_to_sync_and_checkout(self, mock_git_module, mock_github_module, mocker):
-        """Given a custom default_branch, when running flow, then sync_with_main and checkout_detached_main receive it."""
+        """Given a custom default_branch, when running flow, then sync_with_default and checkout_detached_default receive it."""
         from commands import pr_flow
         from core.github import PullRequestResult
 
-        mock_sync = mocker.patch.object(pr_flow, "sync_with_main")
-        mock_checkout = mocker.patch.object(pr_flow, "checkout_detached_main")
+        mock_sync = mocker.patch.object(pr_flow, "sync_with_default")
+        mock_checkout = mocker.patch.object(pr_flow, "checkout_detached_default")
 
         mock_git_module.get_current_branch.return_value = "feature/TASK-001-test"
         mock_git_module.is_dirty.return_value = True
@@ -396,11 +396,11 @@ class TestPrFlow:
         """Given PR already merged, when running flow, then returns early with already_done."""
         from commands import pr_flow
 
-        mock_git_module.get_current_branch.return_value = "main"
+        mock_git_module.get_current_branch.return_value = "develop-working"
         mock_git_module.is_dirty.return_value = False
         mock_github_module.find_merged_pr.return_value = 99
 
-        result = pr_flow.pr_flow("TASK-001", "Test")
+        result = pr_flow.pr_flow("TASK-001", "Test", default_branch="develop-working")
 
         assert result.already_done is True
         assert result.pr_number == 99
@@ -423,7 +423,7 @@ class TestPrFlow:
         }
         mock_github_module.merge_pull_request.return_value = None
 
-        result = pr_flow.pr_flow("TASK-001", "Test")
+        result = pr_flow.pr_flow("TASK-001", "Test", default_branch="develop-working")
 
         assert result.pr_number == 50
         mock_github_module.create_pull_request.assert_not_called()
@@ -446,24 +446,24 @@ class TestPrFlow:
             number=42,
         )
 
-        result = pr_flow.pr_flow("TASK-001", "Test", no_merge=True)
+        result = pr_flow.pr_flow("TASK-001", "Test", no_merge=True, default_branch="develop-working")
 
         assert result.merged is False
         mock_github_module.merge_pull_request.assert_not_called()
 
 
-    def test_pr_flow_raises_on_main_with_no_changes(self, mock_git_module, mock_github_module):
-        """Given on main branch with no changes and no existing PR, when running flow, then error is raised."""
+    def test_pr_flow_raises_on_default_branch_with_no_changes(self, mock_git_module, mock_github_module):
+        """Given on default branch with no changes and no existing PR, when running flow, then error is raised."""
         from commands import pr_flow
 
-        mock_git_module.get_current_branch.return_value = "main"
+        mock_git_module.get_current_branch.return_value = "develop-working"
         mock_git_module.is_dirty.return_value = False
         mock_github_module.find_merged_pr.return_value = None
 
         with pytest.raises(pr_flow.PrFlowError) as exc_info:
-            pr_flow.pr_flow("TASK-001", "Test")
+            pr_flow.pr_flow("TASK-001", "Test", default_branch="develop-working")
 
-        assert "main" in str(exc_info.value).lower() or "default branch" in str(exc_info.value).lower()
+        assert "develop-working" in str(exc_info.value).lower() or "default branch" in str(exc_info.value).lower()
 
 
 
@@ -517,7 +517,7 @@ class TestPrFlowWithGitLab:
         from commands import pr_flow
         from core.gitlab import MergeRequestResult
 
-        # Mock _get_cached_repo_module to return gitlab mock
+        # Mock get_repo_module to return gitlab mock
         mock_gitlab = mocker.MagicMock()
         mock_gitlab.find_merged_mr.return_value = None
         mock_gitlab.list_merge_requests.return_value = []
@@ -532,7 +532,7 @@ class TestPrFlowWithGitLab:
         # Mark this as having GitLab methods (not GitHub)
         mock_gitlab.find_issue_by_title = None
 
-        mocker.patch("commands.pr_flow._get_cached_repo_module", return_value=mock_gitlab)
+        mocker.patch("commands.pr_flow.get_repo_module", return_value=mock_gitlab)
 
         # Setup git mocks
         mock_git_module.get_current_branch.return_value = "feature/TASK-001-test"
@@ -543,7 +543,7 @@ class TestPrFlowWithGitLab:
         mock_git_module.fetch.return_value = None
         mock_git_module.merge.return_value = None
 
-        result = pr_flow.pr_flow("TASK-001", "Implementation complete")
+        result = pr_flow.pr_flow("TASK-001", "Implementation complete", default_branch="develop-working")
 
         # Verify gitlab module was used
         mock_gitlab.create_merge_request.assert_called_once()
@@ -563,7 +563,7 @@ class TestPrFlowWithGitLab:
         # GitLab doesn't have find_issue_by_title (issues handled by Asana/Trello)
         mock_gitlab.find_issue_by_title = None
 
-        mocker.patch("commands.pr_flow._get_cached_repo_module", return_value=mock_gitlab)
+        mocker.patch("commands.pr_flow.get_repo_module", return_value=mock_gitlab)
 
         result = pr_flow.create_mr("TASK-001", "Test implementation")
 
@@ -578,7 +578,7 @@ class TestPrFlowWithGitLab:
         mock_gitlab = mocker.MagicMock()
         mock_gitlab.merge_merge_request.return_value = None
 
-        mocker.patch("commands.pr_flow._get_cached_repo_module", return_value=mock_gitlab)
+        mocker.patch("commands.pr_flow.get_repo_module", return_value=mock_gitlab)
 
         pr_flow.merge_mr(123)
 
@@ -596,7 +596,7 @@ class TestPrFlowWithGitLab:
             {"iid": 50, "title": "Test MR"}
         ]
 
-        mocker.patch("commands.pr_flow._get_cached_repo_module", return_value=mock_gitlab)
+        mocker.patch("commands.pr_flow.get_repo_module", return_value=mock_gitlab)
 
         result = pr_flow.find_existing_pr("feature/test")
 
@@ -611,7 +611,7 @@ class TestPrFlowWithGitLab:
         mock_gitlab = mocker.MagicMock()
         mock_gitlab.find_merged_mr.return_value = 99
 
-        mocker.patch("commands.pr_flow._get_cached_repo_module", return_value=mock_gitlab)
+        mocker.patch("commands.pr_flow.get_repo_module", return_value=mock_gitlab)
 
         result = pr_flow.check_already_merged("TASK-001")
 

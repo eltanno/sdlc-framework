@@ -3,7 +3,6 @@
 This module handles:
 - Parsing dependency tables from markdown (table format)
 - Parsing dependency sections from markdown (section format)
-- Building dependency graphs
 - Detecting circular dependencies
 
 Supports TWO formats:
@@ -51,85 +50,6 @@ class TicketMetadata:
     complexity: int = 3
 
 
-@dataclass
-class DependencyGraph:
-    """Represents a dependency graph of tickets.
-
-    Attributes:
-        dependencies: Dictionary mapping ticket ID to list of dependency IDs
-        ticket_prefix: The prefix used for ticket IDs (e.g., "TASK", "SDLC")
-        complexity: Dictionary mapping ticket ID to complexity score (1-5)
-    """
-
-    dependencies: dict[str, list[str]]
-    ticket_prefix: str = ""
-    complexity: dict[str, int] | None = None
-
-    def get_dependencies(self, ticket_id: str) -> list[str]:
-        """Get the list of dependencies for a ticket.
-
-        Args:
-            ticket_id: The ticket ID to look up
-
-        Returns:
-            List of ticket IDs that this ticket depends on,
-            or empty list if ticket not found
-        """
-        return self.dependencies.get(ticket_id, [])
-
-    def get_dependents(self, ticket_id: str) -> list[str]:
-        """Get the list of tickets that depend on a given ticket.
-
-        Args:
-            ticket_id: The ticket ID to look up
-
-        Returns:
-            List of ticket IDs that depend on this ticket
-        """
-        dependents = []
-        for tid, deps in self.dependencies.items():
-            if ticket_id in deps:
-                dependents.append(tid)
-        return dependents
-
-    def to_dict(self) -> dict[str, list[str]]:
-        """Convert the graph to a dictionary.
-
-        Returns:
-            Dictionary mapping ticket IDs to their dependencies
-        """
-        return self.dependencies
-
-
-def parse_dependencies(
-    plan_path: Path,
-    ticket_prefix: str | None = None,
-    start_num: int | None = None,
-) -> dict[str, list[str]]:
-    """Parse ticket dependencies from a plan document.
-
-    Supports both table format and section format. Automatically detects
-    which format is used based on content.
-
-    Args:
-        plan_path: Path to the plan markdown file
-        ticket_prefix: Optional prefix for ticket IDs (e.g., "TASK").
-                      Required if using row number format.
-        start_num: Starting number for ticket ID mapping when using row numbers.
-                  Required if using row number format.
-
-    Returns:
-        Dictionary mapping ticket IDs to lists of dependency ticket IDs.
-        Empty list means no dependencies.
-
-    Raises:
-        FileNotFoundError: If the plan file doesn't exist
-    """
-    metadata = parse_ticket_metadata(plan_path, ticket_prefix, start_num)
-    # Return just dependencies for backwards compatibility
-    return {tid: meta.dependencies for tid, meta in metadata.items()}
-
-
 def parse_ticket_metadata(
     plan_path: Path,
     ticket_prefix: str | None = None,
@@ -171,25 +91,6 @@ def parse_ticket_metadata(
         result = {tid: TicketMetadata(dependencies=dep_list) for tid, dep_list in deps.items()}
 
     return result
-
-
-def _parse_table_format(
-    content: str,
-    ticket_prefix: str | None = None,
-    start_num: int | None = None,
-) -> dict[str, list[str]]:
-    """Parse dependencies from table format.
-
-    Args:
-        content: The plan content
-        ticket_prefix: Optional prefix for row number mapping
-        start_num: Starting number for row number mapping
-
-    Returns:
-        Dictionary of dependencies
-    """
-    metadata = _parse_table_format_full(content, ticket_prefix, start_num)
-    return {tid: meta.dependencies for tid, meta in metadata.items()}
 
 
 def _parse_table_format_full(

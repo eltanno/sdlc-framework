@@ -38,15 +38,15 @@ Before proceeding, verify:
 5. System review has been completed (`/system-review`)
 
 ```bash
-# Check git status - should be clean on main
+# Check git status - should be clean on the default branch
 git status
 git log --oneline -5
 
-# Check if on main branch
+# Check if on the default branch (see git.default_branch in config.yaml)
 git branch --show-current
 ```
 
-If not on main or have uncommitted changes, resolve first.
+If not on the default branch or have uncommitted changes, resolve first.
 
 ## Gather Release Information
 
@@ -182,7 +182,7 @@ Report to user:
 RELEASE COMPLETE
 
 Version: v1.1.0 (or iteration name)
-Branch: main
+Branch: [default branch from config.yaml]
 
 ## What Was Shipped
 - Feature 1: Brief description

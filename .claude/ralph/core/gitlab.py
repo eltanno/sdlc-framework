@@ -20,10 +20,12 @@ import time
 import urllib.parse
 from dataclasses import dataclass
 
+from core.errors import CLIError
+
 logger = logging.getLogger(__name__)
 
 
-class GitLabError(Exception):
+class GitLabError(CLIError):
     """Base exception for GitLab operations.
 
     Attributes:
@@ -32,21 +34,7 @@ class GitLabError(Exception):
         stderr: Standard error output from the command
     """
 
-    def __init__(
-        self,
-        message: str,
-        command: list[str] | None = None,
-        stderr: str | None = None,
-    ):
-        self.command = command
-        self.stderr = stderr
-        if command:
-            full_message = f"{message}: {' '.join(command)}"
-        else:
-            full_message = message
-        if stderr:
-            full_message = f"{full_message}\n{stderr}"
-        super().__init__(full_message)
+    pass
 
 
 class GitLabNotInstalledError(GitLabError):

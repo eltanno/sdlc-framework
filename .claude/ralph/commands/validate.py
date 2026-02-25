@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from core.config import Config
+from core.config import Codebase, Config
 
 
 @dataclass
@@ -109,7 +109,7 @@ class ValidationResult:
 
 
 def run_command(
-    command: str, working_dir: Path, timeout: int = 300
+    command: str, working_dir: Path, timeout: int = 300, name: str = ""
 ) -> CheckResult:
     """Run a single validation command.
 
@@ -117,6 +117,7 @@ def run_command(
         command: The command to run
         working_dir: Directory to run the command in
         timeout: Maximum seconds to wait for command (default 300)
+        name: Name for the CheckResult (e.g., "typecheck", "lint")
 
     Returns:
         CheckResult with pass/fail status and output
@@ -124,7 +125,7 @@ def run_command(
     # Empty command = skip
     if not command or command.strip() == "":
         return CheckResult(
-            name="",
+            name=name,
             passed=True,
             skipped=True,
             output="",
@@ -134,7 +135,7 @@ def run_command(
     # Echo commands are effectively skips
     if command.strip().startswith("echo"):
         return CheckResult(
-            name="",
+            name=name,
             passed=True,
             skipped=True,
             output="",
@@ -152,7 +153,7 @@ def run_command(
         )
 
         return CheckResult(
-            name="",
+            name=name,
             passed=result.returncode == 0,
             skipped=False,
             output=result.stdout,
@@ -161,7 +162,7 @@ def run_command(
 
     except subprocess.TimeoutExpired:
         return CheckResult(
-            name="",
+            name=name,
             passed=False,
             skipped=False,
             output="",
@@ -191,6 +192,33 @@ def run_validation(config: Config, project_root: Path) -> ValidationResult:
         return _validate_single_codebase(config, project_root)
 
 
+def _run_all_checks(
+    commands: Config | Codebase,
+    working_dir: Path,
+) -> ValidationResult:
+    """Run typecheck, lint, test, and build checks for a single codebase.
+
+    Args:
+        commands: Object with typecheck_command, lint_command, test_command,
+                  build_command attributes (Config or Codebase)
+        working_dir: Directory to run commands in
+
+    Returns:
+        ValidationResult with all check results
+    """
+    typecheck_result = run_command(commands.typecheck_command, working_dir, name="typecheck")
+    lint_result = run_command(commands.lint_command, working_dir, name="lint")
+    test_result = run_command(commands.test_command, working_dir, name="test")
+    build_result = run_command(commands.build_command, working_dir, name="build")
+
+    return ValidationResult(
+        typecheck=typecheck_result,
+        lint=lint_result,
+        test=test_result,
+        build=build_result,
+    )
+
+
 def _validate_single_codebase(
     config: Config, project_root: Path
 ) -> ValidationResult:
@@ -203,24 +231,7 @@ def _validate_single_codebase(
     Returns:
         ValidationResult with all check results
     """
-    typecheck_result = run_command(config.typecheck_command, project_root)
-    typecheck_result.name = "typecheck"
-
-    lint_result = run_command(config.lint_command, project_root)
-    lint_result.name = "lint"
-
-    test_result = run_command(config.test_command, project_root)
-    test_result.name = "test"
-
-    build_result = run_command(config.build_command, project_root)
-    build_result.name = "build"
-
-    return ValidationResult(
-        typecheck=typecheck_result,
-        lint=lint_result,
-        test=test_result,
-        build=build_result,
-    )
+    return _run_all_checks(config, project_root)
 
 
 def _validate_monorepo(config: Config, project_root: Path) -> ValidationResult:
@@ -245,24 +256,6 @@ def _validate_monorepo(config: Config, project_root: Path) -> ValidationResult:
             )
             continue
 
-        # Run validation for this codebase
-        typecheck_result = run_command(codebase.typecheck_command, codebase_path)
-        typecheck_result.name = "typecheck"
-
-        lint_result = run_command(codebase.lint_command, codebase_path)
-        lint_result.name = "lint"
-
-        test_result = run_command(codebase.test_command, codebase_path)
-        test_result.name = "test"
-
-        build_result = run_command(codebase.build_command, codebase_path)
-        build_result.name = "build"
-
-        codebase_results[codebase.name] = ValidationResult(
-            typecheck=typecheck_result,
-            lint=lint_result,
-            test=test_result,
-            build=build_result,
-        )
+        codebase_results[codebase.name] = _run_all_checks(codebase, codebase_path)
 
     return ValidationResult(codebase_results=codebase_results)

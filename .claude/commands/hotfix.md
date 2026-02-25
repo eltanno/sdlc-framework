@@ -199,10 +199,12 @@ Fix the production issue quickly while maintaining minimum quality standards.
 
 ### 1. Create Hotfix Branch
 
+Read the default branch from `config.yaml` (`git.default_branch`):
+
 ```bash
-git checkout main
-git pull origin main
-git checkout -b hotfix/{TASK_ID}-{short-description}
+DEFAULT_BRANCH=$(grep -A1 "^git:" config.yaml | grep "default_branch:" | awk '{print $2}')
+git fetch origin $DEFAULT_BRANCH
+git checkout -b hotfix/{TASK_ID}-{short-description} origin/$DEFAULT_BRANCH
 ```
 
 ### 2. Reproduce -> Test -> Fix

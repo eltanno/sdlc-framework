@@ -56,15 +56,18 @@ Note: These checks SHOULD pass since the engineer is required to verify them bef
 
 **If `git remote -v` returns empty, this is a local-only repository.**
 
-For local repos, PR phase = merge to main/master:
+For local repos, PR phase = merge to the default branch:
 
 ```bash
 # Get current branch and default branch
 CURRENT_BRANCH=$(git branch --show-current)
-DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@refs/remotes/origin/@@' || echo "master")
+DEFAULT_BRANCH=$(grep -E "^\s*default_branch:" config.yaml 2>/dev/null | awk '{print $2}')
+if [ -z "$DEFAULT_BRANCH" ]; then
+    echo "ERROR: git.default_branch not set in config.yaml"; exit 1
+fi
 
 # If on feature branch, merge to default branch
-if [[ "$CURRENT_BRANCH" != "$DEFAULT_BRANCH" && "$CURRENT_BRANCH" != "main" && "$CURRENT_BRANCH" != "master" ]]; then
+if [[ "$CURRENT_BRANCH" != "$DEFAULT_BRANCH" ]]; then
     git checkout $DEFAULT_BRANCH
     git merge $CURRENT_BRANCH
     echo "Merged $CURRENT_BRANCH → $DEFAULT_BRANCH"
@@ -77,7 +80,7 @@ fi
 
 LOCAL MERGE COMPLETE
 
-Branch: [feature-branch] → [main/master]
+Branch: [feature-branch] → [default branch]
 Commits: [N] commits merged
 
 Next: Run /validate
@@ -159,8 +162,9 @@ Read settings from `config.yaml`:
 # Repository type (github | gitlab)
 REPO_TYPE=$(grep -E "^\s*type:" config.yaml 2>/dev/null | grep -E "github|gitlab" | awk '{print $2}' || echo "github")
 
-# Default branch for PRs (main, develop, etc.) - under git section
-DEFAULT_BRANCH=$(grep -E "^\s*default_branch:" config.yaml 2>/dev/null | awk '{print $2}' || echo "main")
+# Default branch for PRs (develop-working, main, etc.) - under git section
+DEFAULT_BRANCH=$(grep -E "^\s*default_branch:" config.yaml 2>/dev/null | awk '{print $2}')
+if [ -z "$DEFAULT_BRANCH" ]; then echo "ERROR: git.default_branch not set in config.yaml"; exit 1; fi
 
 # Auto-merge setting (under git.pr section)
 AUTO_MERGE=$(grep -E "^\s*auto_merge:" config.yaml 2>/dev/null | awk '{print $2}' || echo "false")
@@ -334,7 +338,7 @@ PR/MR CREATED
 PR/MR: #[number] - [title]
 URL: https://github.com/... or https://gitlab.com/...
 
-Branch: feature/TASK-XXX-description → main
+Branch: feature/TASK-XXX-description → [default branch]
 
 Linked:
 - Ticket: TASK-XXX (updated with PR/MR link) ✅ or ⚠ (if update failed)

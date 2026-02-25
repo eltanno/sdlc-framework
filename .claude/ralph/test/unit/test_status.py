@@ -333,8 +333,15 @@ class TestEdgeCases:
         assert result.tickets_by_status == {}
 
     def test_handles_missing_optional_fields(self, tmp_path: Path) -> None:
-        """Given state file with minimal fields, should handle gracefully."""
+        """Given state file with minimal fields, should handle gracefully.
+
+        Required fields (prd_path, plan_path, tickets with id/title/status)
+        must be present. Optional fields like current_ticket, completed_count,
+        blocked_count, and ticket dependencies/attempts may be absent.
+        """
         state_data = {
+            "prd_path": "docs/prds/test.md",
+            "plan_path": "docs/plans/test.md",
             "tickets": [
                 {"id": "TASK-001", "title": "Task", "status": "pending"},
             ],
@@ -346,8 +353,8 @@ class TestEdgeCases:
 
         assert result.initialized is True
         assert result.total_tickets == 1
-        assert result.prd_path is None
-        assert result.plan_path is None
+        assert result.prd_path == "docs/prds/test.md"
+        assert result.plan_path == "docs/plans/test.md"
 
     def test_handles_blocked_ticket_without_reason(self, tmp_path: Path) -> None:
         """Given blocked ticket without reason, should provide a default."""

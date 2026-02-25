@@ -1,7 +1,7 @@
 """Display current workflow status.
 
 This module handles:
-- Reading workflow state
+- Reading workflow state via core.state.load_workflow_state()
 - Showing ticket counts by status
 - Highlighting active work
 - Showing blocked tickets with reasons
@@ -9,10 +9,14 @@ This module handles:
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from core.state import WorkflowState, load_workflow_state
+
+# Default block reason when none is provided on a blocked ticket.
+_DEFAULT_BLOCK_REASON = "No reason provided"
 
 
 @dataclass
@@ -50,75 +54,55 @@ class StatusResult:
         }
 
 
-def get_workflow_status(state_file: Path) -> StatusResult:
-    """Get the current workflow status.
+def _empty_status() -> StatusResult:
+    """Return a StatusResult representing an uninitialized workflow."""
+    return StatusResult(
+        initialized=False,
+        tickets_by_status={},
+        total_tickets=0,
+        current_ticket=None,
+        blocked_tickets=[],
+        prd_path=None,
+        plan_path=None,
+    )
 
-    Reads the workflow state file and returns a structured status result.
+
+def _status_from_workflow(state: WorkflowState) -> StatusResult:
+    """Build a StatusResult from a loaded WorkflowState.
 
     Args:
-        state_file: Path to the workflow state JSON file
+        state: Loaded workflow state from core.state.
 
     Returns:
-        StatusResult with workflow status information
-
-    Note:
-        If the state file doesn't exist, returns a result with initialized=False.
+        StatusResult populated from the workflow state.
     """
-    # Check if state file exists
-    if not state_file.exists():
-        return StatusResult(
-            initialized=False,
-            tickets_by_status={},
-            total_tickets=0,
-            current_ticket=None,
-            blocked_tickets=[],
-            prd_path=None,
-            plan_path=None,
-        )
-
-    # Load state file
-    try:
-        data = json.loads(state_file.read_text())
-    except json.JSONDecodeError:
-        return StatusResult(
-            initialized=False,
-            tickets_by_status={},
-            total_tickets=0,
-            current_ticket=None,
-            blocked_tickets=[],
-            prd_path=None,
-            plan_path=None,
-        )
-
-    tickets = data.get("tickets", [])
-    current_ticket_id = data.get("current_ticket")
+    tickets = state.tickets
 
     # Count tickets by status
     tickets_by_status: dict[str, int] = {}
     for ticket in tickets:
-        status = ticket.get("status", "unknown")
-        tickets_by_status[status] = tickets_by_status.get(status, 0) + 1
+        tickets_by_status[ticket.status] = tickets_by_status.get(ticket.status, 0) + 1
 
     # Find current ticket details
     current_ticket = None
-    if current_ticket_id:
+    if state.current_ticket:
         for ticket in tickets:
-            if ticket.get("id") == current_ticket_id:
+            if ticket.id == state.current_ticket:
                 current_ticket = {
-                    "id": ticket.get("id"),
-                    "title": ticket.get("title"),
-                    "attempts": ticket.get("attempts", 0),
+                    "id": ticket.id,
+                    "title": ticket.title,
+                    "attempts": ticket.attempts,
                 }
                 break
 
     # Find blocked tickets
     blocked_tickets = []
     for ticket in tickets:
-        if ticket.get("status") == "blocked":
+        if ticket.status == "blocked":
             blocked_tickets.append({
-                "id": ticket.get("id"),
-                "title": ticket.get("title"),
-                "block_reason": ticket.get("block_reason", "No reason provided"),
+                "id": ticket.id,
+                "title": ticket.title,
+                "block_reason": ticket.block_reason or _DEFAULT_BLOCK_REASON,
             })
 
     return StatusResult(
@@ -127,9 +111,32 @@ def get_workflow_status(state_file: Path) -> StatusResult:
         total_tickets=len(tickets),
         current_ticket=current_ticket,
         blocked_tickets=blocked_tickets,
-        prd_path=data.get("prd_path"),
-        plan_path=data.get("plan_path"),
+        prd_path=str(state.prd_path),
+        plan_path=str(state.plan_path),
     )
+
+
+def get_workflow_status(state_file: Path) -> StatusResult:
+    """Get the current workflow status.
+
+    Delegates to core.state.load_workflow_state() for canonical JSON parsing,
+    catching its exceptions to return safe defaults for missing or corrupt files.
+
+    Args:
+        state_file: Path to the workflow state JSON file
+
+    Returns:
+        StatusResult with workflow status information
+
+    Note:
+        If the state file doesn't exist or is invalid, returns initialized=False.
+    """
+    try:
+        state = load_workflow_state(state_file)
+    except (FileNotFoundError, ValueError, KeyError):
+        return _empty_status()
+
+    return _status_from_workflow(state)
 
 
 def format_status_display(status: StatusResult) -> str:

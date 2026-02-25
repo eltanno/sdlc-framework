@@ -43,7 +43,6 @@ from pathlib import Path
 import pytest
 
 from commands.orchestrator import (
-    build_validator_prompt,
     parse_validator_result,
     load_config,
     VALIDATION_CONFIRMED,
@@ -55,7 +54,6 @@ from commands.scripted_checks import (
     check_bypass_language,
     get_default_checks,
     ExecutionReportResult,
-    build_review_prompt,
 )
 from core.state import (
     WorkflowState,
@@ -163,7 +161,7 @@ dev:
   lint_command: "ruff check ."
 
 git:
-  default_branch: main
+  default_branch: develop-working
 """
     config_file = tmp_path / "config.yaml"
     config_file.write_text(config_content)
@@ -230,38 +228,6 @@ All criteria verified against original PRD/plan.
 class TestValidatorInvokedAfterEngineer:
     """TC-1: Verify validator is invoked after engineer reports VALIDATION_PASSED."""
 
-    def test_validator_invoked_when_engineer_passes(
-        self, validation_workflow: dict
-    ) -> None:
-        """Given engineer returns VALIDATION_PASSED, when process_ticket runs,
-        then validator is invoked before pr_flow.
-
-        FR-1 Acceptance Criteria:
-        - Given an engineer returns VALIDATION_PASSED, when the orchestrator
-          processes the result, then it invokes the validation agent before
-          calling pr_flow()
-        """
-        # Note: This test verifies the design intent. The current implementation
-        # in process_ticket doesn't invoke the validator yet - that integration
-        # is tracked as AIUI-0055. This test documents the expected behavior.
-
-        # Setup: Create validator prompt for the ticket
-        prompt = build_validator_prompt(
-            ticket_id="TASK-001",
-            prd_path=validation_workflow["prd_file"],
-            plan_path=validation_workflow["plan_file"],
-            state_dir=validation_workflow["state_dir"],
-            attempt=1,
-        )
-
-        # Verify prompt contains key validation instructions
-        assert "TASK-001" in prompt
-        assert "ORIGINAL acceptance criteria" in prompt or "original" in prompt.lower()
-        assert "PRD" in prompt
-        assert "plan" in prompt
-        assert "VALIDATION_CONFIRMED" in prompt
-        assert "VALIDATION_REJECTED" in prompt
-
     def test_validator_returns_confirmed_triggers_pr_flow(
         self, validation_workflow: dict
     ) -> None:
@@ -315,118 +281,12 @@ Reason: Acceptance criterion AC-3 not met - API does not return correct response
 
 
 # ============================================================================
-# TC-2: Validator Reads Original Criteria
-# ============================================================================
-
-
-class TestValidatorReadsOriginalCriteria:
-    """TC-2: Verify validator reads original PRD/plan acceptance criteria."""
-
-    def test_validator_prompt_references_prd_path(
-        self, validation_workflow: dict
-    ) -> None:
-        """Given the validator agent prompt, when it instructs the agent,
-        then it directs to read original PRD files.
-
-        FR-2 Acceptance Criteria:
-        - Given the validator agent prompt, when it instructs the agent,
-          then it directs to read original PRD/plan files
-        """
-        prompt = build_validator_prompt(
-            ticket_id="TASK-001",
-            prd_path=validation_workflow["prd_file"],
-            plan_path=validation_workflow["plan_file"],
-            state_dir=validation_workflow["state_dir"],
-            attempt=1,
-        )
-
-        # Verify prompt references original PRD
-        assert str(validation_workflow["prd_file"]) in prompt
-        assert str(validation_workflow["plan_file"]) in prompt
-
-    def test_validator_prompt_warns_against_engineer_interpretation(
-        self, validation_workflow: dict
-    ) -> None:
-        """Given the validator agent prompt, when it instructs the agent,
-        then it explicitly warns NOT to trust engineer's state file for
-        criteria definition.
-
-        FR-2 Acceptance Criteria:
-        - Given the validator agent prompt, when it instructs the agent,
-          then it explicitly warns NOT to trust engineer's state file for
-          criteria definition
-        """
-        prompt = build_validator_prompt(
-            ticket_id="TASK-001",
-            prd_path=validation_workflow["prd_file"],
-            plan_path=validation_workflow["plan_file"],
-            state_dir=validation_workflow["state_dir"],
-            attempt=1,
-        )
-
-        # Verify prompt warns against trusting engineer interpretation
-        prompt_lower = prompt.lower()
-        assert "not" in prompt_lower and "trust" in prompt_lower
-        # Or alternatively checks for similar warnings
-        assert "engineer" in prompt_lower
-        assert "original" in prompt_lower
-
-    def test_validator_prompt_compares_against_original_ac(
-        self, validation_workflow: dict
-    ) -> None:
-        """Given the validator runs, when it checks criteria, then it
-        compares actual state against original acceptance criteria.
-
-        FR-2 Acceptance Criteria:
-        - Given the validator runs, when it checks criteria, then it compares
-          actual state against original acceptance criteria
-        """
-        prompt = build_validator_prompt(
-            ticket_id="TASK-001",
-            prd_path=validation_workflow["prd_file"],
-            plan_path=validation_workflow["plan_file"],
-            state_dir=validation_workflow["state_dir"],
-            attempt=1,
-        )
-
-        # Verify prompt instructs to compare against original
-        assert "acceptance criteria" in prompt.lower() or "criteria" in prompt.lower()
-        assert "verify" in prompt.lower() or "check" in prompt.lower()
-
-
-# ============================================================================
 # TC-3: Validator Catches Unmerged Dependency
 # ============================================================================
 
 
 class TestValidatorCatchesUnmergedDependency:
     """TC-3: Verify validator catches when dependencies are not merged."""
-
-    def test_validator_prompt_includes_dependency_check_instructions(
-        self, validation_workflow: dict
-    ) -> None:
-        """Given a ticket has dependencies listed in the plan, when the
-        validator runs, then it checks each dependency is merged to develop.
-
-        FR-3 Acceptance Criteria:
-        - Given a ticket has dependencies listed in the plan, when validator
-          runs, then it checks each dependency is merged to develop
-        - Given the validator checks dependencies, when it runs git commands,
-          then it uses git log develop --oneline
-        """
-        prompt = build_validator_prompt(
-            ticket_id="TASK-002",  # This ticket depends on TASK-001
-            prd_path=validation_workflow["prd_file"],
-            plan_path=validation_workflow["plan_file"],
-            state_dir=validation_workflow["state_dir"],
-            attempt=1,
-        )
-
-        # Verify prompt includes dependency verification instructions
-        prompt_lower = prompt.lower()
-        assert "depend" in prompt_lower
-        assert "merge" in prompt_lower
-        assert "develop" in prompt_lower or "git" in prompt_lower
 
     def test_validator_rejects_when_dependency_not_merged(
         self, validation_workflow: dict
@@ -461,37 +321,6 @@ Reason: Dependency TASK-001 not merged to develop. Checked with git log develop 
 class TestValidatorFlagsBypassLanguage:
     """TC-4: Verify validator flags bypass language patterns."""
 
-    def test_validator_prompt_includes_bypass_detection(
-        self, validation_workflow: dict
-    ) -> None:
-        """Given the validator prompt, when it instructs the agent,
-        then it includes bypass language detection instructions.
-
-        FR-4 Acceptance Criteria:
-        - Validator scans for "not merged.*but.*acceptable"
-        - Validator scans for "doesn't block" or "doesn't apply"
-        - Validator scans for "out of scope" justifications
-        """
-        prompt = build_validator_prompt(
-            ticket_id="TASK-001",
-            prd_path=validation_workflow["prd_file"],
-            plan_path=validation_workflow["plan_file"],
-            state_dir=validation_workflow["state_dir"],
-            attempt=1,
-        )
-
-        # Verify prompt includes bypass detection patterns
-        prompt_lower = prompt.lower()
-        assert "bypass" in prompt_lower
-        # Check for at least one of the bypass patterns
-        has_pattern = any([
-            "doesn't block" in prompt_lower,
-            "doesn't apply" in prompt_lower,
-            "out of scope" in prompt_lower,
-            "not merged" in prompt_lower,
-        ])
-        assert has_pattern, "Prompt should include at least one bypass language pattern"
-
     def test_validator_rejects_when_bypass_detected(
         self, validation_workflow: dict
     ) -> None:
@@ -518,70 +347,20 @@ Reason: Bypass language detected in engineer state file. Found "doesn't apply" i
 
 
 # ============================================================================
-# TC-5: Validation File Created
-# ============================================================================
-
-
-class TestValidationFileCreated:
-    """TC-5: Verify validation file is created after validator runs."""
-
-    def test_validator_prompt_specifies_output_location(
-        self, validation_workflow: dict
-    ) -> None:
-        """Given the validator completes, when it writes output, then it
-        creates validation.md in the state directory.
-
-        FR-5 Acceptance Criteria:
-        - Given the validator completes, when it writes output, then it creates
-          docs/state/{ticket}/validation.md
-        """
-        prompt = build_validator_prompt(
-            ticket_id="TASK-001",
-            prd_path=validation_workflow["prd_file"],
-            plan_path=validation_workflow["plan_file"],
-            state_dir=validation_workflow["state_dir"],
-            attempt=1,
-        )
-
-        # Verify prompt specifies validation.md output
-        assert "validation.md" in prompt
-        assert "TASK-001" in prompt
-
-    def test_validator_prompt_specifies_content_structure(
-        self, validation_workflow: dict
-    ) -> None:
-        """Given the validation file, when reviewed, then it shows each
-        acceptance criterion checked with pass/fail status.
-
-        FR-5 Acceptance Criteria:
-        - Given the validation file, when reviewed, then it shows each
-          acceptance criterion checked
-        - Given the validation file, when reviewed, then it shows pass/fail
-          for each criterion
-        - Given the validation file, when reviewed, then it shows any flags
-          or concerns raised
-        """
-        prompt = build_validator_prompt(
-            ticket_id="TASK-001",
-            prd_path=validation_workflow["prd_file"],
-            plan_path=validation_workflow["plan_file"],
-            state_dir=validation_workflow["state_dir"],
-            attempt=1,
-        )
-
-        # Verify prompt specifies content requirements
-        prompt_lower = prompt.lower()
-        assert "criterion" in prompt_lower or "criteria" in prompt_lower
-        assert "pass" in prompt_lower or "fail" in prompt_lower
-
-
-# ============================================================================
 # TC-6: Scripted Check Catches Missing Merge
 # ============================================================================
 
 
 class TestScriptedCheckCatchesMissingMerge:
     """TC-6: Verify scripted check catches missing merge commit."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_default_branch(self, monkeypatch):
+        """Mock get_default_branch for all tests in this class."""
+        monkeypatch.setattr(
+            "commands.scripted_checks.get_default_branch",
+            lambda: "develop-working",
+        )
 
     def test_check_merge_commits_fails_when_ticket_not_merged(
         self, monkeypatch, tmp_path
@@ -668,6 +447,14 @@ ghi789 Merge branch 'feature/AIUI-0003-test' into 'develop'
 class TestScriptedCheckCatchesBypass:
     """TC-7: Verify scripted check catches bypass language."""
 
+    @pytest.fixture(autouse=True)
+    def _mock_default_branch(self, monkeypatch):
+        """Mock get_default_branch for tests that call run_execution_report_checks."""
+        monkeypatch.setattr(
+            "commands.scripted_checks.get_default_branch",
+            lambda: "develop-working",
+        )
+
     def test_bypass_language_check_detects_patterns(
         self, tmp_path
     ) -> None:
@@ -751,6 +538,14 @@ The dependency doesn't block the implementation so I proceeded anyway.
 class TestAgentReviewRunsAfterCheckPass:
     """TC-8: Verify agent review runs after scripted checks pass."""
 
+    @pytest.fixture(autouse=True)
+    def _mock_default_branch(self, monkeypatch):
+        """Mock get_default_branch for tests that use run_execution_report_checks."""
+        monkeypatch.setattr(
+            "commands.scripted_checks.get_default_branch",
+            lambda: "develop-working",
+        )
+
     def test_agent_review_runs_when_all_checks_pass(
         self, monkeypatch, batch_workflow: dict
     ) -> None:
@@ -770,7 +565,7 @@ class TestAgentReviewRunsAfterCheckPass:
             class Result:
                 returncode = 0
                 stdout = ""
-                if "log" in cmd and "develop" in cmd:
+                if "log" in cmd:
                     # All tickets have merge commits
                     stdout = """
 abc123 Merge branch 'feature/AIUI-0001-test' into 'develop'
@@ -811,29 +606,6 @@ remotes/origin/feature/AIUI-0003-test
         assert result.agent_review_completed is True
         assert result.agent_review_status == "dry_run"
 
-    def test_review_prompt_includes_cross_ticket_analysis(
-        self, batch_workflow: dict
-    ) -> None:
-        """Given the review agent runs, when it analyzes, then it
-        assesses overall coherence of changes.
-
-        FR-13 Acceptance Criteria:
-        - Given the review agent runs, when it analyzes, then it assesses
-          overall coherence of changes
-        - Given the review agent runs, when it analyzes, then it identifies
-          anything scripts couldn't catch
-        """
-        prompt = build_review_prompt(
-            ticket_ids=batch_workflow["ticket_ids"],
-            state_dir=batch_workflow["state_dir"],
-            scripted_checks_summary="All checks passed.",
-        )
-
-        # Verify prompt includes cross-ticket analysis instructions
-        prompt_lower = prompt.lower()
-        assert "cross-ticket" in prompt_lower or "pattern" in prompt_lower
-        assert "coherence" in prompt_lower or "consistent" in prompt_lower
-
 
 # ============================================================================
 # TC-9: validator_model Defaults to Sonnet
@@ -866,7 +638,7 @@ dev:
   test_command: "pytest"
 
 git:
-  default_branch: main
+  default_branch: develop-working
 """)
 
         config = load_config(config_file)
@@ -898,7 +670,7 @@ dev:
   test_command: "pytest"
 
 git:
-  default_branch: main
+  default_branch: develop-working
 """)
 
         config = load_config(config_file)
@@ -914,6 +686,14 @@ git:
 
 class TestReviewModelConfigurable:
     """TC-10: Verify review_model is configurable."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_default_branch(self, monkeypatch):
+        """Mock get_default_branch for tests that use run_execution_report_checks."""
+        monkeypatch.setattr(
+            "commands.scripted_checks.get_default_branch",
+            lambda: "develop-working",
+        )
 
     def test_review_model_used_in_execution_report(
         self, monkeypatch, batch_workflow: dict
@@ -970,6 +750,14 @@ class TestReviewModelConfigurable:
 
 class TestEndToEndValidationFlow:
     """End-to-end tests for the complete validation flow."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_default_branch(self, monkeypatch):
+        """Mock get_default_branch for tests that use run_execution_report_checks."""
+        monkeypatch.setattr(
+            "commands.scripted_checks.get_default_branch",
+            lambda: "develop-working",
+        )
 
     def test_full_execution_report_flow_all_pass(
         self, monkeypatch, batch_workflow: dict

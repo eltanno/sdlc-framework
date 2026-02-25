@@ -22,12 +22,9 @@ from core.state import (
     WorkflowState,
     Ticket,
     RalphState,
-    save_workflow_state,
 )
 from commands.orchestrator import (
     run_orchestrator,
-    load_config,
-    parse_engineer_result,
     select_model_for_complexity,
     OrchestratorConfig,
     OrchestratorResult,
@@ -45,43 +42,11 @@ from commands.orchestrator import (
 
 
 @pytest.fixture
-def test_config(tmp_path: Path) -> Path:
-    """Create a test config.yaml file.
-
-    Returns:
-        Path to the config file
-    """
-    config_content = """\
-project:
-  name: test-project
-
-ralph:
-  max_attempts: 3
-  sonnet_threshold: 2
-  state_directory: "docs/state"
-  engineer_timeout: 30
-  validator_timeout: 10
-
-dev:
-  test_command: "pytest"
-  lint_command: "ruff check ."
-  typecheck_command: "mypy ."
-  build_command: "python -m build"
-
-git:
-  default_branch: main
-"""
-    config_file = tmp_path / "config.yaml"
-    config_file.write_text(config_content)
-    return config_file
-
-
-@pytest.fixture
-def orchestrator_workflow(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
+def orchestrator_workflow(tmp_path: Path) -> tuple[Path, Path, Path]:
     """Create a complete workflow setup for orchestrator testing.
 
     Returns:
-        Tuple of (prd_file, plan_file, state_file, config_file)
+        Tuple of (prd_file, plan_file, config_file)
     """
     # Create PRD
     prd_content = """# Test PRD
@@ -105,27 +70,6 @@ def orchestrator_workflow(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
     plan_file = tmp_path / "plan.md"
     plan_file.write_text(plan_content)
 
-    # Create State
-    tickets = [
-        Ticket(id="TASK-001", title="First task", status="pending", dependencies=[]),
-        Ticket(id="TASK-002", title="Second task", status="pending", dependencies=["TASK-001"]),
-    ]
-    ralph = RalphState(
-        tickets=["TASK-001", "TASK-002"],
-        dependencies={"TASK-002": ["TASK-001"]},
-        attempts={},
-        blocked={},
-        source="github",
-    )
-    state = WorkflowState(
-        prd_path=prd_file,
-        plan_path=plan_file,
-        tickets=tickets,
-        ralph=ralph,
-    )
-    state_file = tmp_path / "workflow-state.json"
-    save_workflow_state(state, state_file)
-
     # Create Config
     config_content = """\
 ralph:
@@ -136,20 +80,23 @@ ralph:
 dev:
   test_command: "pytest"
   lint_command: "ruff check ."
+
+git:
+  default_branch: develop-working
 """
     config_content = config_content.replace("{state_dir}", str(tmp_path / "state"))
     config_file = tmp_path / "config.yaml"
     config_file.write_text(config_content)
 
-    return prd_file, plan_file, state_file, config_file
+    return prd_file, plan_file, config_file
 
 
 @pytest.fixture
-def single_ticket_workflow(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
+def single_ticket_workflow(tmp_path: Path) -> tuple[Path, Path, Path]:
     """Create a workflow with a single ticket.
 
     Returns:
-        Tuple of (prd_file, plan_file, state_file, config_file)
+        Tuple of (prd_file, plan_file, config_file)
     """
     prd_file = tmp_path / "prd.md"
     prd_file.write_text("# Test PRD\n")
@@ -157,90 +104,17 @@ def single_ticket_workflow(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
     plan_file = tmp_path / "plan.md"
     plan_file.write_text("# Test Plan\n")
 
-    tickets = [
-        Ticket(id="TASK-001", title="Only task", status="pending", dependencies=[]),
-    ]
-    ralph = RalphState(
-        tickets=["TASK-001"],
-        dependencies={},
-        attempts={},
-        blocked={},
-        source="github",
-    )
-    state = WorkflowState(
-        prd_path=prd_file,
-        plan_path=plan_file,
-        tickets=tickets,
-        ralph=ralph,
-    )
-    state_file = tmp_path / "workflow-state.json"
-    save_workflow_state(state, state_file)
-
     config_content = """\
 ralph:
   max_attempts: 3
+
+git:
+  default_branch: develop-working
 """
     config_file = tmp_path / "config.yaml"
     config_file.write_text(config_content)
 
-    return prd_file, plan_file, state_file, config_file
-
-
-# ============================================================================
-# Test Cases: Configuration Loading
-# ============================================================================
-
-
-class TestConfigLoading:
-    """Tests for configuration loading."""
-
-    def test_load_config_from_yaml(self, test_config: Path):
-        """Given a valid config.yaml, when loaded, then values are correct."""
-        config = load_config(test_config)
-
-        assert config.max_attempts == 3
-        assert config.sonnet_threshold == 2
-        assert config.engineer_timeout == 30
-        assert config.test_command == "pytest"
-        assert config.default_branch == "main"
-
-    def test_load_config_with_defaults(self, tmp_path: Path):
-        """Given a minimal config.yaml, when loaded, then defaults are used."""
-        config_file = tmp_path / "config.yaml"
-        config_file.write_text("project:\n  name: test\n")
-
-        config = load_config(config_file)
-
-        assert config.max_attempts == 3  # default
-        assert config.sonnet_threshold == 2  # default
-        assert config.engineer_timeout == 30  # default
-
-    def test_load_config_missing_file(self, tmp_path: Path):
-        """Given config.yaml doesn't exist, when loading, then error is raised."""
-        fake_config = tmp_path / "nonexistent.yaml"
-
-        with pytest.raises(FileNotFoundError):
-            load_config(fake_config)
-
-
-# ============================================================================
-# Test Cases: Model Selection
-# ============================================================================
-
-
-class TestModelSelection:
-    """Tests for model selection based on complexity."""
-
-    def test_sonnet_for_low_complexity(self):
-        """Given low complexity ticket, when selecting model, then sonnet is chosen."""
-        assert select_model_for_complexity(1, sonnet_threshold=2) == "sonnet"
-        assert select_model_for_complexity(2, sonnet_threshold=2) == "sonnet"
-
-    def test_opus_for_high_complexity(self):
-        """Given high complexity ticket, when selecting model, then opus is chosen."""
-        assert select_model_for_complexity(3, sonnet_threshold=2) == "opus"
-        assert select_model_for_complexity(4, sonnet_threshold=2) == "opus"
-        assert select_model_for_complexity(5, sonnet_threshold=2) == "opus"
+    return prd_file, plan_file, config_file
 
 
 class TestComplexityFlowEndToEnd:
@@ -248,9 +122,8 @@ class TestComplexityFlowEndToEnd:
 
     This test class ensures that:
     1. Complexity is parsed from PRD ticket tables
-    2. Complexity is stored in the state file
-    3. Complexity is passed to Ticket objects
-    4. Complexity is used for model selection
+    2. Complexity is passed to Ticket objects
+    3. Complexity is used for model selection
 
     This is the integration test that prevents regression of the complexity feature.
     """
@@ -277,37 +150,6 @@ class TestComplexityFlowEndToEnd:
         assert metadata["TASK-001"].complexity == 1
         assert metadata["TASK-002"].complexity == 3
         assert metadata["TASK-003"].complexity == 5
-
-    def test_complexity_stored_in_state_file(self, tmp_path):
-        """Given PRD with complexity, when setup runs, then state file contains complexity."""
-        from commands.setup import initialize_workflow_state
-        import json
-
-        prd_content = """# PRD
-
-## Tickets
-
-| ID | Title | Description | Priority | Complexity | Dependency |
-|----|-------|-------------|----------|------------|------------|
-| TEST-001 | Task 1 | Description | P1 | 2 | - |
-| TEST-002 | Task 2 | Description | P1 | 4 | TEST-001 |
-"""
-        prd_file = tmp_path / "prd.md"
-        prd_file.write_text(prd_content)
-
-        plan_file = tmp_path / "plan.md"
-        plan_file.write_text("# Plan\n\nNo table here.")
-
-        state_file = tmp_path / "state.json"
-
-        initialize_workflow_state(prd_file, plan_file, state_file)
-
-        # Read and verify state file
-        state_data = json.loads(state_file.read_text())
-        assert "ralph" in state_data
-        assert "complexity" in state_data["ralph"]
-        assert state_data["ralph"]["complexity"]["TEST-001"] == 2
-        assert state_data["ralph"]["complexity"]["TEST-002"] == 4
 
     def test_complexity_passed_to_ticket_object(self, tmp_path):
         """Given state with complexity, when get_next_ticket runs, then Ticket has complexity."""
@@ -405,64 +247,6 @@ class TestComplexityFlowEndToEnd:
 
 
 # ============================================================================
-# Test Cases: Engineer Result Parsing
-# ============================================================================
-
-
-class TestEngineerResultParsing:
-    """Tests for parsing engineer output."""
-
-    def test_parse_validation_passed(self):
-        """Given VALIDATION_PASSED output, when parsed, then status is correct."""
-        output = """\
-VALIDATION_PASSED
-
-Ticket: TASK-001
-Branch: feature/TASK-001-implementation
-Commit: abc123def
-"""
-        result = parse_engineer_result(output)
-
-        assert result.status == VALIDATION_PASSED
-        assert result.ticket_id == "TASK-001"
-        assert result.branch == "feature/TASK-001-implementation"
-        assert result.commit == "abc123def"
-
-    def test_parse_validation_failed(self):
-        """Given VALIDATION_FAILED output, when parsed, then status is correct."""
-        output = """\
-VALIDATION_FAILED
-
-Ticket: TASK-002
-Branch: feature/TASK-002-implementation
-Commit: def456ghi
-State file: docs/state/TASK-002/attempt-1/engineer-state.md
-"""
-        result = parse_engineer_result(output)
-
-        assert result.status == VALIDATION_FAILED
-        assert result.ticket_id == "TASK-002"
-        assert result.state_file == "docs/state/TASK-002/attempt-1/engineer-state.md"
-
-    def test_parse_timeout_result(self):
-        """Given timeout occurred, when parsed, then status is timeout."""
-        output = "Some partial output before timeout..."
-
-        result = parse_engineer_result(output, is_timeout=True)
-
-        assert result.status == "timeout"
-        assert result.raw_output == output
-
-    def test_parse_unknown_result(self):
-        """Given no validation marker, when parsed, then status is unknown."""
-        output = "Some output without markers"
-
-        result = parse_engineer_result(output)
-
-        assert result.status == "unknown"
-
-
-# ============================================================================
 # Test Cases: Dry Run Mode
 # ============================================================================
 
@@ -476,13 +260,13 @@ class TestDryRunMode:
     """
 
     def test_dry_run_process_ticket_no_claude_invocation(
-        self, orchestrator_workflow: tuple[Path, Path, Path, Path]
+        self, orchestrator_workflow: tuple[Path, Path, Path]
     ):
         """Given dry_run=True, when process_ticket runs, then Claude is not invoked
         AND the result contains preview information about what WOULD be done."""
         from commands.orchestrator import process_ticket
 
-        prd_file, plan_file, state_file, config_file = orchestrator_workflow
+        prd_file, plan_file, config_file = orchestrator_workflow
         config = OrchestratorConfig()
 
         # Create a test ticket
@@ -494,7 +278,6 @@ class TestDryRunMode:
                 config=config,
                 prd_path=prd_file,
                 plan_path=plan_file,
-                state_file=state_file,
                 dry_run=True,
             )
 
@@ -519,16 +302,16 @@ class TestHappyPath:
     """Tests for successful completion scenarios."""
 
     def test_single_ticket_success(
-        self, single_ticket_workflow: tuple[Path, Path, Path, Path], tmp_path: Path
+        self, single_ticket_workflow: tuple[Path, Path, Path], tmp_path: Path
     ):
         """Given a single ticket that passes validation, when process_ticket runs,
         then the ticket is completed successfully AND pr_flow is called with correct metadata."""
         from commands.orchestrator import process_ticket
 
-        prd_file, plan_file, state_file, config_file = single_ticket_workflow
+        prd_file, plan_file, config_file = single_ticket_workflow
         state_dir = tmp_path / "test_state"
         state_dir.mkdir()
-        config = OrchestratorConfig(state_directory=state_dir)
+        config = OrchestratorConfig(state_directory=state_dir, default_branch="develop-working")
         ticket = Ticket(id="TASK-001", title="Test", status="pending", dependencies=[])
 
         # Mock Claude to return VALIDATION_PASSED
@@ -555,7 +338,6 @@ class TestHappyPath:
                             config=config,
                             prd_path=prd_file,
                             plan_path=plan_file,
-                            state_file=state_file,
                             dry_run=False,
                         )
 
@@ -569,15 +351,14 @@ class TestHappyPath:
             ticket_id="TASK-001",
             commit_message="[TASK-001] Implementation complete",
             dry_run=False,
-            default_branch="main",
+            default_branch="develop-working",
         )
 
-        # Verify ticket_done was called with correct ticket ID, PR number, and state file
+        # Verify ticket_done was called with correct ticket ID and PR number
         mock_done.assert_called_once()
         call_kwargs = mock_done.call_args.kwargs
         assert call_kwargs["ticket_id"] == "TASK-001"
         assert call_kwargs["pr_number"] == "100"
-        assert call_kwargs["state_file"] == state_file
 
 
 # ============================================================================
@@ -589,16 +370,16 @@ class TestRetryFlow:
     """Tests for retry on validation failure."""
 
     def test_retry_on_validation_failure(
-        self, single_ticket_workflow: tuple[Path, Path, Path, Path], tmp_path: Path
+        self, single_ticket_workflow: tuple[Path, Path, Path], tmp_path: Path
     ):
         """Given validation fails then passes, when process_ticket runs,
         then ticket is completed after retry AND second attempt includes failure context."""
         from commands.orchestrator import process_ticket
 
-        prd_file, plan_file, state_file, config_file = single_ticket_workflow
+        prd_file, plan_file, config_file = single_ticket_workflow
         state_dir = tmp_path / "test_state"
         state_dir.mkdir()
-        config = OrchestratorConfig(max_attempts=3, state_directory=state_dir)
+        config = OrchestratorConfig(max_attempts=3, state_directory=state_dir, default_branch="develop-working")
 
         ticket = Ticket(id="TASK-001", title="Test", status="pending", dependencies=[])
 
@@ -608,7 +389,6 @@ class TestRetryFlow:
             ticket_id="TASK-001",
             branch="feature/TASK-001-implementation",
             commit="abc123",
-            state_file="docs/state/TASK-001/attempt-1/state.md",
         )
         pass_result = EngineerResult(
             status=VALIDATION_PASSED,
@@ -633,7 +413,6 @@ class TestRetryFlow:
                             config=config,
                             prd_path=prd_file,
                             plan_path=plan_file,
-                            state_file=state_file,
                             dry_run=False,
                         )
 
@@ -661,13 +440,13 @@ class TestAllBlockedScenario:
     """Tests for when all tickets become blocked."""
 
     def test_ticket_blocked_after_max_attempts(
-        self, single_ticket_workflow: tuple[Path, Path, Path, Path]
+        self, single_ticket_workflow: tuple[Path, Path, Path]
     ):
         """Given max attempts exceeded, when process_ticket finishes,
         then ticket is marked blocked with clear explanation of failure."""
         from commands.orchestrator import process_ticket
 
-        prd_file, plan_file, state_file, config_file = single_ticket_workflow
+        prd_file, plan_file, config_file = single_ticket_workflow
         config = OrchestratorConfig(max_attempts=2)
 
         ticket = Ticket(id="TASK-001", title="Test", status="pending", dependencies=[])
@@ -686,7 +465,6 @@ class TestAllBlockedScenario:
                 config=config,
                 prd_path=prd_file,
                 plan_path=plan_file,
-                state_file=state_file,
                 dry_run=False,
             )
 
@@ -701,13 +479,13 @@ class TestAllBlockedScenario:
         assert any(keyword in reason_lower for keyword in ["exceeded", "maximum", "max", "attempts"])
 
     def test_blocked_result_explains_what_failed(
-        self, single_ticket_workflow: tuple[Path, Path, Path, Path]
+        self, single_ticket_workflow: tuple[Path, Path, Path]
     ):
         """Given max attempts exceeded, when blocked, then block reason explains
         the ticket ID and attempt count for debugging."""
         from commands.orchestrator import process_ticket
 
-        prd_file, plan_file, state_file, config_file = single_ticket_workflow
+        prd_file, plan_file, config_file = single_ticket_workflow
         config = OrchestratorConfig(max_attempts=3)
 
         ticket = Ticket(id="TASK-001", title="Test task", status="pending", dependencies=[])
@@ -725,7 +503,6 @@ class TestAllBlockedScenario:
                 config=config,
                 prd_path=prd_file,
                 plan_path=plan_file,
-                state_file=state_file,
                 dry_run=False,
             )
 
@@ -751,16 +528,16 @@ class TestTimeoutHandling:
     """Tests for timeout handling."""
 
     def test_timeout_triggers_retry(
-        self, single_ticket_workflow: tuple[Path, Path, Path, Path], tmp_path: Path
+        self, single_ticket_workflow: tuple[Path, Path, Path], tmp_path: Path
     ):
         """Given Claude times out, when process_ticket runs, then retry is attempted
         AND timeout is treated as retryable (not permanent failure)."""
         from commands.orchestrator import process_ticket
 
-        prd_file, plan_file, state_file, config_file = single_ticket_workflow
+        prd_file, plan_file, config_file = single_ticket_workflow
         state_dir = tmp_path / "test_state"
         state_dir.mkdir()
-        config = OrchestratorConfig(max_attempts=3, state_directory=state_dir)
+        config = OrchestratorConfig(max_attempts=3, state_directory=state_dir, default_branch="develop-working")
 
         ticket = Ticket(id="TASK-001", title="Test", status="pending", dependencies=[])
 
@@ -789,7 +566,6 @@ class TestTimeoutHandling:
                             config=config,
                             prd_path=prd_file,
                             plan_path=plan_file,
-                            state_file=state_file,
                             dry_run=False,
                         )
 
@@ -844,12 +620,12 @@ class TestDependencyWaiting:
     """Tests for dependency waiting behavior."""
 
     @patch("commands.orchestrator.get_next_ticket")
-    @patch("commands.orchestrator.load_workflow_state")
+    @patch("commands.orchestrator.build_workflow_state")
     @patch("commands.orchestrator.create_pm_tool")
     def test_orchestrator_handles_waiting_on_dependencies(
         self,
         mock_create_pm: MagicMock,
-        mock_load_state: MagicMock,
+        mock_build_state: MagicMock,
         mock_get_next: MagicMock,
         tmp_path: Path
     ):
@@ -870,7 +646,7 @@ class TestDependencyWaiting:
             plan_path=plan_file,
             tickets=[],
         )
-        mock_load_state.return_value = mock_state
+        mock_build_state.return_value = mock_state
 
         # Return waiting_on_dependencies status for max_wait_retries times, then complete
         mock_get_next.side_effect = [
@@ -883,6 +659,8 @@ ralph:
   max_attempts: 3
 pm:
   tool: none
+git:
+  default_branch: develop-working
 """
         config_file = tmp_path / "config.yaml"
         config_file.write_text(config_content)
@@ -892,7 +670,7 @@ pm:
             result = run_orchestrator(
                 prd_path=prd_file,
                 plan_path=plan_file,
-                state_file=tmp_path / "state.json",
+                workflow_state=mock_state,
                 config_file=config_file,
                 dry_run=False,
                 max_wait_retries=1,  # Only wait once
@@ -906,24 +684,173 @@ pm:
 
 
 # ============================================================================
+# Test Cases: Claims Waiting (Gap 8 Fix - SLCA-0081)
+# ============================================================================
+
+
+class TestClaimsWaiting:
+    """Tests for waiting_on_claims retry behavior (Gap 8 fix).
+
+    When all eligible tickets are claimed by other instances, the orchestrator
+    must retry with a wait instead of exiting prematurely.
+    """
+
+    @patch("commands.orchestrator.get_next_ticket")
+    @patch("commands.orchestrator.build_workflow_state")
+    @patch("commands.orchestrator.create_pm_tool")
+    def test_waiting_on_claims_triggers_retry(
+        self,
+        mock_create_pm: MagicMock,
+        mock_build_state: MagicMock,
+        mock_get_next: MagicMock,
+        tmp_path: Path,
+    ):
+        """Given `get_next_ticket` returns `waiting_on_claims`, when orchestrator
+        processes this status, then it retries instead of exiting immediately."""
+        mock_create_pm.return_value = MagicMock()
+
+        prd_file = tmp_path / "prd.md"
+        prd_file.write_text("# Test PRD\n")
+        plan_file = tmp_path / "plan.md"
+        plan_file.write_text("# Test Plan\n")
+
+        mock_state = WorkflowState(
+            prd_path=prd_file,
+            plan_path=plan_file,
+            tickets=[],
+        )
+        mock_build_state.return_value = mock_state
+
+        # Return waiting_on_claims once, then no_more_tickets
+        mock_get_next.side_effect = [
+            MagicMock(ticket=None, has_more=True, status="waiting_on_claims"),
+            MagicMock(ticket=None, has_more=False, status="complete"),
+        ]
+
+        config_content = """\
+ralph:
+  max_attempts: 3
+pm:
+  tool: none
+git:
+  default_branch: develop-working
+"""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(config_content)
+
+        with patch.dict(os.environ, {"RALPH_LABEL": "ralph-test"}):
+            result = run_orchestrator(
+                prd_path=prd_file,
+                plan_path=plan_file,
+                workflow_state=mock_state,
+                config_file=config_file,
+                dry_run=False,
+                max_wait_retries=3,  # More than the 1 waiting_on_claims response
+                wait_interval=0,  # Don't actually wait
+            )
+
+        # Orchestrator must have retried: get_next_ticket called at least twice
+        # (not once, which would mean it exited immediately on waiting_on_claims)
+        assert mock_get_next.call_count == 2, (
+            f"Expected 2 calls to get_next_ticket (retry after waiting_on_claims), "
+            f"got {mock_get_next.call_count}. "
+            "Orchestrator must not exit immediately on waiting_on_claims."
+        )
+        assert result.completed_count == 0
+        assert result.status == "complete"
+
+    @patch("commands.orchestrator.get_next_ticket")
+    @patch("commands.orchestrator.build_workflow_state")
+    @patch("commands.orchestrator.create_pm_tool")
+    def test_waiting_on_claims_timeout_exits_gracefully(
+        self,
+        mock_create_pm: MagicMock,
+        mock_build_state: MagicMock,
+        mock_get_next: MagicMock,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ):
+        """Given repeated `waiting_on_claims` responses, when max wait time is exceeded,
+        then orchestrator exits gracefully with a clear log message."""
+        import logging
+
+        mock_create_pm.return_value = MagicMock()
+
+        prd_file = tmp_path / "prd.md"
+        prd_file.write_text("# Test PRD\n")
+        plan_file = tmp_path / "plan.md"
+        plan_file.write_text("# Test Plan\n")
+
+        mock_state = WorkflowState(
+            prd_path=prd_file,
+            plan_path=plan_file,
+            tickets=[],
+        )
+        mock_build_state.return_value = mock_state
+
+        # Always return waiting_on_claims
+        mock_get_next.return_value = MagicMock(
+            ticket=None, has_more=True, status="waiting_on_claims"
+        )
+
+        config_content = """\
+ralph:
+  max_attempts: 3
+pm:
+  tool: none
+git:
+  default_branch: develop-working
+"""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(config_content)
+
+        with caplog.at_level(logging.INFO, logger="commands.orchestrator"):
+            with patch.dict(os.environ, {"RALPH_LABEL": "ralph-test"}):
+                result = run_orchestrator(
+                    prd_path=prd_file,
+                    plan_path=plan_file,
+                    workflow_state=mock_state,
+                    config_file=config_file,
+                    dry_run=False,
+                    max_wait_retries=2,  # Exit after 2 retries
+                    wait_interval=0,  # Don't actually wait
+                )
+
+        # Orchestrator exits after max_wait_retries calls
+        assert mock_get_next.call_count == 2, (
+            f"Expected 2 calls (max_wait_retries=2), got {mock_get_next.call_count}"
+        )
+        assert result.completed_count == 0
+        # Must exit cleanly (not crash)
+        assert result.status == "complete"
+
+        # Must log a clear message about the timeout
+        log_text = " ".join(caplog.messages).lower()
+        assert any(
+            keyword in log_text
+            for keyword in ["claim", "wait", "timeout", "max", "exit"]
+        ), f"Expected a log message about claims wait timeout, got: {caplog.messages}"
+
+
+# ============================================================================
 # Test Cases: State File Integration
 # ============================================================================
 
 
-class TestStateFileIntegration:
-    """Tests for state file integration with process_ticket."""
+class TestTicketDoneIntegration:
+    """Tests for ticket_done integration with process_ticket."""
 
-    def test_ticket_done_called_with_correct_state(
-        self, single_ticket_workflow: tuple[Path, Path, Path, Path], tmp_path: Path
+    def test_ticket_done_called_with_correct_data(
+        self, single_ticket_workflow: tuple[Path, Path, Path], tmp_path: Path
     ):
         """Given a ticket completes, when process_ticket finishes,
-        then ticket_done is called with correct ticket ID and state file."""
+        then ticket_done is called with correct ticket ID and PR number."""
         from commands.orchestrator import process_ticket
 
-        prd_file, plan_file, state_file, config_file = single_ticket_workflow
+        prd_file, plan_file, config_file = single_ticket_workflow
         state_dir = tmp_path / "test_state"
         state_dir.mkdir()
-        config = OrchestratorConfig(state_directory=state_dir)
+        config = OrchestratorConfig(state_directory=state_dir, default_branch="develop-working")
 
         ticket = Ticket(id="TASK-001", title="Test", status="pending", dependencies=[])
 
@@ -950,7 +877,6 @@ class TestStateFileIntegration:
                             config=config,
                             prd_path=prd_file,
                             plan_path=plan_file,
-                            state_file=state_file,
                             dry_run=False,
                         )
 
@@ -958,7 +884,109 @@ class TestStateFileIntegration:
         mock_done.assert_called_once()
         call_kwargs = mock_done.call_args.kwargs
 
-        # Verify it received the state file and ticket ID
+        # Verify it received the ticket ID and PR number
         assert call_kwargs["ticket_id"] == "TASK-001"
-        assert call_kwargs["state_file"] == state_file
         assert call_kwargs["pr_number"] == "100"
+
+
+# ============================================================================
+# Test Cases: SYSTEM.md Update Moved to /ralph-loop (SLCA-0085)
+# ============================================================================
+
+
+class TestSystemManifestNotCalledByOrchestrator:
+    """Tests verifying that run_orchestrator does NOT call update_system_manifest.
+
+    SLCA-0085: The SYSTEM.md update was moved from the orchestrator to the
+    /ralph-loop command to prevent conflicts when running concurrent loops.
+    Each orchestrator instance should NOT attempt to update SYSTEM.md.
+    """
+
+    @patch("commands.orchestrator.get_next_ticket")
+    @patch("commands.orchestrator.build_workflow_state")
+    @patch("commands.orchestrator.create_pm_tool")
+    @patch("commands.orchestrator.process_ticket")
+    def test_run_orchestrator_does_not_call_update_system_manifest(
+        self,
+        mock_process_ticket: MagicMock,
+        mock_create_pm: MagicMock,
+        mock_build_state: MagicMock,
+        mock_get_next: MagicMock,
+        tmp_path: Path,
+    ):
+        """Given tickets complete successfully, when run_orchestrator finishes,
+        then update_system_manifest is NOT called (it is now the caller's
+        responsibility via /ralph-loop)."""
+        mock_create_pm.return_value = MagicMock()
+
+        prd_file = tmp_path / "prd.md"
+        prd_file.write_text("# Test PRD\n")
+        plan_file = tmp_path / "plan.md"
+        plan_file.write_text("# Test Plan\n")
+
+        mock_state = WorkflowState(
+            prd_path=prd_file,
+            plan_path=plan_file,
+            tickets=[],
+        )
+        mock_build_state.return_value = mock_state
+
+        # First call returns a ticket, second call returns complete
+        mock_ticket = MagicMock()
+        mock_ticket.ticket = Ticket(
+            id="TASK-001", title="Test", status="pending", dependencies=[]
+        )
+        mock_ticket.has_more = True
+        mock_ticket.status = "ready"
+
+        mock_get_next.side_effect = [
+            mock_ticket,
+            MagicMock(ticket=None, has_more=False, status="complete"),
+        ]
+
+        # process_ticket returns completed result
+        from commands.orchestrator import TicketResult
+
+        mock_process_ticket.return_value = TicketResult(
+            ticket_id="TASK-001",
+            status="completed",
+            attempts=1,
+            pr_number=100,
+        )
+
+        config_content = """\
+ralph:
+  max_attempts: 3
+pm:
+  tool: none
+git:
+  default_branch: develop-working
+"""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(config_content)
+
+        with patch.dict(os.environ, {"RALPH_LABEL": "ralph-test"}):
+            with patch(
+                "commands.orchestrator.update_system_manifest"
+            ) as mock_update:
+                result = run_orchestrator(
+                    prd_path=prd_file,
+                    plan_path=plan_file,
+                    workflow_state=mock_state,
+                    config_file=config_file,
+                    dry_run=False,
+                )
+
+        # Verify ticket was completed
+        assert result.completed_count == 1
+
+        # CRITICAL: update_system_manifest must NOT be called by run_orchestrator
+        mock_update.assert_not_called()
+
+    def test_update_system_manifest_is_importable_as_public_api(self):
+        """Given the function was renamed from _update_system_manifest,
+        when importing from orchestrator, then it is available as
+        update_system_manifest (no leading underscore)."""
+        from commands.orchestrator import update_system_manifest
+
+        assert callable(update_system_manifest)

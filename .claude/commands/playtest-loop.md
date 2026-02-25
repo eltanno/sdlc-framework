@@ -3,45 +3,54 @@ allowed-tools: Bash(*), mcp__playwright__*, Read, Write, Edit, Glob, Grep, Task,
 description: Automated playtest-fix-retest loop — finds bugs, fixes them, and retests until clean
 ---
 
-You are an autonomous QA + engineering loop. Your job is to repeatedly playtest the AI-MUD app, fix any bugs found, and retest until there are no critical or major bugs remaining.
+You are an autonomous QA + engineering loop. Your job is to repeatedly playtest the application, fix any bugs found, and retest until there are no critical or major bugs remaining.
 
-**CRITICAL RULE: The playtest must actually PLAY THE GAME.** This is not just a UI verification — the tester must navigate through pages using exits, explore areas, interact with NPCs/items, talk to the companion in different locations, and try to progress through the adventure. If the game cannot be played as a text adventure (can't move, can't navigate, nothing to do, stuck), that is a CRITICAL bug. The game should feel like a playable MUD.
+## STEP 0: Understand the Project
+
+Read `docs/SYSTEM.md` to understand:
+- What this application does and how it works
+- The architecture (frontend, backend, services)
+- Key user flows to test
+- Known issues and fragile areas
+
+Read `CLAUDE.md` for:
+- How to start/stop the dev environment
+- Project structure and conventions
+
+This context will inform what to test and how to test it.
 
 ## LOOP STRUCTURE
 
 ```
-┌─────────────────────────────────────────────┐
-│  1. START SERVERS                           │
-│  2. PLAYTEST (subagent) → bug report        │
-│  3. Any critical/major bugs? ──No──→ DONE   │
-│       │ Yes                                 │
-│  4. FIX BUGS (subagent) → committed code    │
-│  5. RUN TESTS → all pass?                   │
-│       │ No → fix test failures first        │
-│       │ Yes                                 │
-│  6. KILL SERVERS, go to step 1              │
-└─────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│  1. START SERVERS (if not already running)        │
+│  2. PLAYTEST (subagent) → bug report             │
+│  3. Any critical/major code bugs (BUG-XXX)?      │
+│       │ Yes → 4a. FIX CODE BUGS (engineer)       │
+│       │        5. RUN TESTS → all pass?           │
+│       │             No → fix test failures        │
+│  3b. Any critical/major LLM issues (LLM-XXX)?   │
+│       │ Yes → 4b. FIX LLM ISSUES (engineer)     │
+│       │        5. RUN TESTS → all pass?           │
+│       │             No → fix test failures        │
+│  3c. Neither? ──────────────────────→ DONE       │
+│  6. KILL SERVERS, go to step 1                   │
+└──────────────────────────────────────────────────┘
 ```
 
 ## STEP 1: Start Servers
 
-```bash
-# Kill anything on the ports first
-lsof -ti:3000 2>/dev/null | xargs -r kill
-for port in $(seq 5173 5180); do lsof -ti:$port 2>/dev/null | xargs -r kill; done
-sleep 2
+Read `CLAUDE.md` for the correct dev startup procedure. Typical pattern:
 
-# Start backend
-cd /home/jim/workspace/ai-mud && npm run dev --workspace=backend > /tmp/backend.log 2>&1 &
+1. Check if services are already running (docker-compose, background tasks)
+2. Start any required service containers (databases, caches, etc.)
+3. Start backend dev server (in background)
+4. Start frontend dev server (in background)
+5. Wait for both to be ready and verify by checking their output logs
 
-# Start frontend
-cd /home/jim/workspace/ai-mud && npm run dev --workspace=frontend > /tmp/frontend.log 2>&1 &
+**Determine the correct URLs** from the server output (e.g., frontend port, backend port).
 
-# Wait for ready
-sleep 8
-```
-
-Verify both are running before proceeding. Check `/tmp/backend.log` and `/tmp/frontend.log` for the URLs.
+If servers are already running from a previous iteration, verify they're still healthy before reusing them.
 
 ## STEP 1.5: Reset Bug List After a New Release
 
@@ -69,22 +78,16 @@ If the file exists and has prior content, the subagent needs it to:
 Launch a `general-purpose` subagent with access to Playwright tools. Give it:
 
 1. **The full content of `docs/todo/playtest-bugs.md`** (the existing cumulative bug list)
-2. The full playtest instructions (from `.claude/commands/playtest.md`):
-   - Navigate to frontend URL
-   - Register a new user (unique username with timestamp)
-   - Complete all 4 onboarding steps (read `.env` for ANTHROPIC_API_KEY)
-   - Verify onboarding fixes (intro text in chat, input disabled after companion confirmed)
-   - Test all game page panels (left sidebar, chat, right panel tabs, header, footer, map)
-   - **PLAY THE GAME**: Click exits to navigate between areas, explore 3-4+ different locations, talk to companion in different areas, check for NPCs/items, try to progress through the adventure. If stuck (no exits, can't move, nothing to do) — CRITICAL BUG.
-   - Verify footer shows provider AND model name
-   - Verify settings has "Change LLM Settings" option
-   - Verify map shows actual visitable pages
-   - Test returning user flow (logout → login → verify persistence + same area)
-   - Test page refresh (F5 on game page → verify session survives)
-   - Use `mcp__playwright__browser_snapshot` for page state, `mcp__playwright__browser_take_screenshot` for visual evidence
-   - Include a "GAMEPLAY TEST" section in the report documenting areas visited, exits used, what worked/didn't
+2. **The content of `docs/SYSTEM.md`** (so it understands the app's architecture and user flows)
+3. The full playtest instructions (from `.claude/commands/playtest.md`) — this includes Phase 5 (LLM Response Quality) which tests guardrails, grading quality, help text, and key phrases
+4. **The content of `backend/api/prompts.py`** (so it can verify LLM responses comply with prompt rules)
 
-3. **Bug list update rules:**
+5. **Time allocation guidance:**
+   - **~30% on regression/verification** — Quick pass/fail checks on existing bugs. Fixed bugs: confirm they still work. Open bugs: confirm they're still broken or now fixed. Don't spend excessive time on known issues — the fix either works or it doesn't.
+   - **~70% on fresh exploratory testing** — The primary goal is to discover NEW bugs. Run all 6 playtest phases thoroughly, testing different scenarios, pages, and flows than previous rounds. Try different units, different chat scenarios, different edge cases. Don't just re-tread the same paths as last time.
+   - **Vary your testing** — Use a different unit/scenario for LLM testing than previous rounds. Navigate pages in different orders. Try features in combinations not previously tested.
+
+6. **Bug list update rules:**
    - READ the existing bug list first — do NOT start from scratch
    - Verify ALL previously-fixed bugs still work (regression check)
    - Verify ALL still-open bugs — mark as fixed if they're now resolved
@@ -97,31 +100,60 @@ Launch a `general-purpose` subagent with access to Playwright tools. Give it:
 
 Read `docs/todo/playtest-bugs.md` after the playtest subagent finishes.
 
-**EXIT CONDITION:** If there are NO critical or major bugs remaining, the loop is done. Write a final summary and stop.
+The bug report has two sections — **Bugs** (code issues, BUG-XXX) and **LLM Behavior Issues** (prompt quality gaps, LLM-XXX). Evaluate both:
 
-**CONTINUE CONDITION:** If there are critical or major bugs, proceed to Step 4.
+**EXIT CONDITION:** If there are NO critical or major issues in EITHER section, the loop is done. Write a final summary and stop.
 
-## STEP 4: Fix Bugs (Delegate to Subagent)
+**CONTINUE with Step 4a:** If there are critical or major **code bugs** (BUG-XXX), fix those first.
 
-Launch an `engineer` subagent to fix ALL critical and major bugs. Include in the prompt:
+**CONTINUE with Step 4b:** If there are critical or major **LLM behavior issues** (LLM-XXX), fix those after code bugs (or directly if no code bugs).
 
-- The full content of `docs/todo/playtest-bugs.md`
+**Priority order:** Code bugs first (Step 4a), then LLM issues (Step 4b). Both must be clear of critical/major items before the loop exits.
+
+## STEP 4a: Fix Code Bugs (Delegate to Subagent)
+
+Launch an `engineer` subagent to fix ALL critical and major **code bugs** (BUG-XXX only).
+
+Include in the prompt:
+
+- The **code bugs section only** from `docs/todo/playtest-bugs.md` (BUG-XXX entries)
+- The content of `docs/SYSTEM.md` for architectural context
 - Instructions to fix critical bugs first, then major bugs
 - Stay on the current branch
-- Run `npm test --workspace=frontend` and `npm test --workspace=backend` after all fixes
+- Run the project's test commands after all fixes (read from `config.yaml` or `CLAUDE.md`)
 - Commit changes with a descriptive message
 - Do NOT modify test expectations unless the test was testing broken behavior
 
 **IMPORTANT:** Only send ONE engineer subagent — multiple agents in the same workspace conflict.
 
+## STEP 4b: Fix LLM Behavior Issues (Delegate to Subagent)
+
+Launch an `engineer` subagent to fix ALL critical and major **LLM behavior issues** (LLM-XXX only). This is prompt engineering work — changes to system prompts in `backend/api/prompts.py`.
+
+Include in the prompt:
+
+- The **LLM Behavior Issues section** from `docs/todo/playtest-bugs.md` (LLM-XXX entries)
+- The **full content of `backend/api/prompts.py`** (so the agent understands the current prompt structure)
+- The content of `docs/SYSTEM.md` for architectural context
+- **Prompt engineering constraints:**
+  - Read and understand the ENTIRE current prompt before making changes
+  - Make **surgical, minimal changes** — do not rewrite or reorganise existing prompt text
+  - Keep prompts **concise and effective** — no verbose instructions, no redundancy
+  - Do NOT duplicate rules that already exist — if a rule is partially there, strengthen it rather than adding a second copy
+  - Consider that prompt changes affect ALL scenarios (not just the one tested) — avoid scenario-specific fixes in the base prompt
+  - Preserve the existing prompt structure and organisation
+  - After changes, the prompt must still fit within ~1000 tokens (system prompt budget)
+- Stay on the current branch
+- Run the project's test commands after all fixes
+- Commit changes with a descriptive message referencing the LLM-XXX IDs
+
+**IMPORTANT:** Only send ONE engineer subagent — multiple agents in the same workspace conflict. Do NOT run 4a and 4b in parallel.
+
 ## STEP 5: Verify Tests Pass
 
-After the engineer subagent returns, verify all tests pass:
-
-```bash
-cd /home/jim/workspace/ai-mud && npm test --workspace=frontend 2>&1 | tail -5
-cd /home/jim/workspace/ai-mud && npm test --workspace=backend 2>&1 | tail -5
-```
+After the engineer subagent returns, verify all tests pass by running the project's test commands. Read `config.yaml` for the correct commands, or use:
+- Backend tests (e.g., `cd backend && pytest`)
+- Frontend tests (e.g., `cd frontend && npm test`)
 
 If tests fail, send the failures back to an engineer subagent to fix.
 
@@ -129,10 +161,7 @@ If tests fail, send the failures back to an engineer subagent to fix.
 
 Kill the servers and go back to Step 1 for a fresh playtest.
 
-```bash
-lsof -ti:3000 2>/dev/null | xargs -r kill
-for port in $(seq 5173 5180); do lsof -ti:$port 2>/dev/null | xargs -r kill; done
-```
+Kill any background dev servers and service containers as appropriate for the project.
 
 ## LOOP LIMITS
 
@@ -146,15 +175,27 @@ for port in $(seq 5173 5180); do lsof -ti:$port 2>/dev/null | xargs -r kill; don
 When the loop exits (either clean or max iterations), write a summary to `docs/todo/playtest-summary.md`:
 
 - Total iterations run
-- Bugs found and fixed per iteration
-- Remaining bugs (if any) with severity
+- Code bugs (BUG-XXX) found and fixed per iteration
+- LLM behavior issues (LLM-XXX) found and fixed per iteration
+- Remaining issues (if any) with severity, separated by type
 - Overall app status assessment
+
+## POST-LOOP: Surface Remaining LLM Issues
+
+**After the loop exits, if there are ANY open LLM behavior issues (any severity), explicitly tell the user:**
+
+1. List each remaining LLM issue with its ID, severity, and one-line summary
+2. Ask: "There are N LLM behavior issues remaining. These require prompt engineering changes to `backend/api/prompts.py`. Want me to fix them now?"
+3. If yes — proceed with Step 4b (prompt engineering fix) even though the loop has exited
+4. If no — leave them tracked in `docs/todo/playtest-bugs.md` for later
+
+**Do NOT silently leave LLM issues in the report.** The user should always be made aware and given the choice to act on them immediately.
 
 ## IMPORTANT NOTES
 
-- Be patient with LLM responses during playtest — they take 10-30 seconds
-- Password for test accounts: "TestPass123!"
-- Read `.env` for the ANTHROPIC_API_KEY — do NOT hardcode it
+- Read `docs/SYSTEM.md` and `CLAUDE.md` first — they tell you everything about the project
+- Be patient with any LLM/AI responses during playtest — they can take 10-30 seconds
 - Use `mcp__playwright__browser_snapshot` (accessibility tree) over screenshots for verifying content
+- Use `mcp__playwright__browser_take_screenshot` for visual evidence of bugs
 - Always kill servers between iterations for a clean state
 - Each playtest should use a DIFFERENT username to avoid state contamination

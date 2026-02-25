@@ -1,17 +1,14 @@
 """Unit tests for commands/ticket_reset.py - Ticket reset functionality.
 
-Tests cover:
-- Resetting blocked tickets to pending
-- Clearing block reason
-- Resetting attempt counter
-- Handling non-blocked tickets (error case)
-- Handling non-existent tickets (error case)
-- Optional state cleanup
+reset_ticket no longer reads or writes state files. It:
+- Validates ticket_id is not empty
+- Optionally cleans up the ticket's state directory (attempt dirs)
+- Returns a ResetResult with success, ticket_id, state_cleaned
 
-Following TDD: Write failing tests first, then implement.
+The actual blocked/unblocked status is managed via PM tool labels,
+not local state files. This module focuses on filesystem cleanup.
 """
 
-import json
 from pathlib import Path
 
 import pytest
@@ -20,168 +17,41 @@ import pytest
 class TestResetTicket:
     """Tests for the reset_ticket function."""
 
-    def test_reset_blocked_ticket_sets_status_to_pending(self, tmp_path: Path):
-        """Given a blocked ticket, when resetting, then ticket status becomes pending."""
+    def test_reset_ticket_returns_success(self):
+        """Given a valid ticket_id, reset_ticket returns a successful result."""
         from commands.ticket_reset import reset_ticket
-        from core.state import load_workflow_state
 
-        # Setup workflow state with blocked ticket
-        state = {
-            "prd_path": "docs/prds/test.md",
-            "plan_path": "docs/plans/test.md",
-            "tickets": [
-                {
-                    "id": "TASK-001",
-                    "title": "Blocked ticket",
-                    "status": "blocked",
-                    "dependencies": [],
-                    "attempts": 3,
-                    "block_reason": "Test failure",
-                }
-            ],
-            "current_ticket": None,
-            "completed_count": 0,
-            "blocked_count": 1,
-        }
-        state_file = tmp_path / "workflow-state.json"
-        state_file.write_text(json.dumps(state))
+        result = reset_ticket("TASK-001", clean_state=False)
 
-        result = reset_ticket("TASK-001", state_file)
-
-        # Verify state was updated
-        updated_state = load_workflow_state(state_file)
-        ticket = updated_state.tickets[0]
-
-        assert ticket.status == "pending"
         assert result.success is True
-        assert result.previous_status == "blocked"
-        assert result.new_status == "pending"
+        assert result.ticket_id == "TASK-001"
+        assert result.state_cleaned is False
 
-    def test_reset_blocked_ticket_clears_block_reason(self, tmp_path: Path):
-        """Given a blocked ticket with a reason, when resetting, then block reason is cleared."""
+    def test_reset_ticket_raises_on_empty_ticket_id(self):
+        """Given an empty ticket_id, reset_ticket raises TicketResetError."""
+        from commands.ticket_reset import reset_ticket, TicketResetError
+
+        with pytest.raises(TicketResetError, match="ticket_id is required"):
+            reset_ticket("")
+
+    def test_reset_ticket_default_clean_state_is_true(self, tmp_path: Path):
+        """Given no clean_state argument, default is True (cleans up)."""
         from commands.ticket_reset import reset_ticket
-        from core.state import load_workflow_state
 
-        state = {
-            "prd_path": "docs/prds/test.md",
-            "plan_path": "docs/plans/test.md",
-            "tickets": [
-                {
-                    "id": "TASK-001",
-                    "title": "Blocked ticket",
-                    "status": "blocked",
-                    "dependencies": [],
-                    "attempts": 2,
-                    "block_reason": "Validation failed after 3 attempts",
-                }
-            ],
-            "current_ticket": None,
-            "completed_count": 0,
-            "blocked_count": 1,
-        }
-        state_file = tmp_path / "workflow-state.json"
-        state_file.write_text(json.dumps(state))
+        # Create state directory with files
+        state_dir = tmp_path / "TASK-001"
+        attempt_dir = state_dir / "attempt-1"
+        attempt_dir.mkdir(parents=True)
+        (attempt_dir / "engineer-state.json").write_text('{"status": "failed"}')
 
-        reset_ticket("TASK-001", state_file)
+        result = reset_ticket(
+            "TASK-001",
+            state_base_dir=tmp_path,
+        )
 
-        updated_state = load_workflow_state(state_file)
-        ticket = updated_state.tickets[0]
-
-        assert ticket.block_reason is None
-
-    def test_reset_blocked_ticket_resets_attempt_counter(self, tmp_path: Path):
-        """Given a blocked ticket with attempts, when resetting, then attempt counter resets to 0."""
-        from commands.ticket_reset import reset_ticket
-        from core.state import load_workflow_state
-
-        state = {
-            "prd_path": "docs/prds/test.md",
-            "plan_path": "docs/plans/test.md",
-            "tickets": [
-                {
-                    "id": "TASK-001",
-                    "title": "Blocked ticket",
-                    "status": "blocked",
-                    "dependencies": [],
-                    "attempts": 5,
-                    "block_reason": "Max attempts exceeded",
-                }
-            ],
-            "current_ticket": None,
-            "completed_count": 0,
-            "blocked_count": 1,
-        }
-        state_file = tmp_path / "workflow-state.json"
-        state_file.write_text(json.dumps(state))
-
-        reset_ticket("TASK-001", state_file)
-
-        updated_state = load_workflow_state(state_file)
-        ticket = updated_state.tickets[0]
-
-        assert ticket.attempts == 0
-
-    @pytest.mark.parametrize("status", ["pending", "in_progress", "completed"])
-    def test_reset_non_blocked_ticket_raises_error(self, tmp_path: Path, status: str):
-        """Given a non-blocked ticket (any status except blocked), when resetting, then an error is raised."""
-        from commands.ticket_reset import reset_ticket, TicketResetError
-
-        state = {
-            "prd_path": "docs/prds/test.md",
-            "plan_path": "docs/plans/test.md",
-            "tickets": [
-                {
-                    "id": "TASK-001",
-                    "title": f"{status.capitalize()} ticket",
-                    "status": status,
-                    "dependencies": [],
-                    "attempts": 0 if status == "pending" else 1,
-                }
-            ],
-            "current_ticket": "TASK-001" if status == "in_progress" else None,
-            "completed_count": 1 if status == "completed" else 0,
-            "blocked_count": 0,
-        }
-        state_file = tmp_path / "workflow-state.json"
-        state_file.write_text(json.dumps(state))
-
-        with pytest.raises(TicketResetError, match="only blocked tickets can be reset"):
-            reset_ticket("TASK-001", state_file)
-
-    def test_reset_nonexistent_ticket_raises_error(self, tmp_path: Path):
-        """Given a non-existent ticket ID, when resetting, then an error is raised."""
-        from commands.ticket_reset import reset_ticket, TicketResetError
-
-        state = {
-            "prd_path": "docs/prds/test.md",
-            "plan_path": "docs/plans/test.md",
-            "tickets": [
-                {
-                    "id": "TASK-001",
-                    "title": "Some ticket",
-                    "status": "pending",
-                    "dependencies": [],
-                    "attempts": 0,
-                }
-            ],
-            "current_ticket": None,
-            "completed_count": 0,
-            "blocked_count": 0,
-        }
-        state_file = tmp_path / "workflow-state.json"
-        state_file.write_text(json.dumps(state))
-
-        with pytest.raises(TicketResetError, match="not found"):
-            reset_ticket("TASK-INVALID", state_file)
-
-    def test_reset_with_missing_state_file_raises_error(self, tmp_path: Path):
-        """Given a missing state file, when resetting, then an error is raised."""
-        from commands.ticket_reset import reset_ticket, TicketResetError
-
-        missing_file = tmp_path / "missing-state.json"
-
-        with pytest.raises(TicketResetError, match="State file not found"):
-            reset_ticket("TASK-001", missing_file)
+        # Default clean_state=True should remove the directory
+        assert not state_dir.exists()
+        assert result.state_cleaned is True
 
 
 class TestResetTicketWithCleanup:
@@ -191,29 +61,8 @@ class TestResetTicketWithCleanup:
         """Given clean_state=True, when resetting, then state files are removed."""
         from commands.ticket_reset import reset_ticket
 
-        # Setup workflow state
-        state = {
-            "prd_path": "docs/prds/test.md",
-            "plan_path": "docs/plans/test.md",
-            "tickets": [
-                {
-                    "id": "TASK-001",
-                    "title": "Blocked ticket",
-                    "status": "blocked",
-                    "dependencies": [],
-                    "attempts": 2,
-                    "block_reason": "Test failure",
-                }
-            ],
-            "current_ticket": None,
-            "completed_count": 0,
-            "blocked_count": 1,
-        }
-        state_file = tmp_path / "workflow-state.json"
-        state_file.write_text(json.dumps(state))
-
         # Create state directory with files
-        state_dir = tmp_path / "docs" / "state" / "TASK-001"
+        state_dir = tmp_path / "TASK-001"
         attempt_dir = state_dir / "attempt-1"
         attempt_dir.mkdir(parents=True)
         (attempt_dir / "engineer-state.json").write_text('{"status": "failed"}')
@@ -223,9 +72,8 @@ class TestResetTicketWithCleanup:
 
         result = reset_ticket(
             "TASK-001",
-            state_file,
             clean_state=True,
-            state_base_dir=tmp_path / "docs" / "state"
+            state_base_dir=tmp_path,
         )
 
         # Verify state directory was removed
@@ -233,40 +81,19 @@ class TestResetTicketWithCleanup:
         assert result.state_cleaned is True
 
     def test_reset_without_clean_state_preserves_state_directory(self, tmp_path: Path):
-        """Given clean_state=False (default), when resetting, then state files are preserved."""
+        """Given clean_state=False, when resetting, then state files are preserved."""
         from commands.ticket_reset import reset_ticket
 
-        state = {
-            "prd_path": "docs/prds/test.md",
-            "plan_path": "docs/plans/test.md",
-            "tickets": [
-                {
-                    "id": "TASK-001",
-                    "title": "Blocked ticket",
-                    "status": "blocked",
-                    "dependencies": [],
-                    "attempts": 1,
-                    "block_reason": "Error",
-                }
-            ],
-            "current_ticket": None,
-            "completed_count": 0,
-            "blocked_count": 1,
-        }
-        state_file = tmp_path / "workflow-state.json"
-        state_file.write_text(json.dumps(state))
-
         # Create state directory
-        state_dir = tmp_path / "docs" / "state" / "TASK-001"
+        state_dir = tmp_path / "TASK-001"
         attempt_dir = state_dir / "attempt-1"
         attempt_dir.mkdir(parents=True)
         (attempt_dir / "engineer-state.json").write_text('{"status": "failed"}')
 
         result = reset_ticket(
             "TASK-001",
-            state_file,
             clean_state=False,
-            state_base_dir=tmp_path / "docs" / "state"
+            state_base_dir=tmp_path,
         )
 
         # Verify state directory was preserved
@@ -275,39 +102,18 @@ class TestResetTicketWithCleanup:
         assert result.state_cleaned is False
 
     def test_reset_with_clean_state_handles_missing_state_dir(self, tmp_path: Path):
-        """Given clean_state=True but no state directory exists, when resetting, then no error."""
+        """Given clean_state=True but no state directory exists, then no error."""
         from commands.ticket_reset import reset_ticket
 
-        state = {
-            "prd_path": "docs/prds/test.md",
-            "plan_path": "docs/plans/test.md",
-            "tickets": [
-                {
-                    "id": "TASK-001",
-                    "title": "Blocked ticket",
-                    "status": "blocked",
-                    "dependencies": [],
-                    "attempts": 0,
-                    "block_reason": "Never started",
-                }
-            ],
-            "current_ticket": None,
-            "completed_count": 0,
-            "blocked_count": 1,
-        }
-        state_file = tmp_path / "workflow-state.json"
-        state_file.write_text(json.dumps(state))
-
         # No state directory created
-        state_dir = tmp_path / "docs" / "state" / "TASK-001"
+        state_dir = tmp_path / "TASK-001"
         assert not state_dir.exists()
 
         # Should not raise error
         result = reset_ticket(
             "TASK-001",
-            state_file,
             clean_state=True,
-            state_base_dir=tmp_path / "docs" / "state"
+            state_base_dir=tmp_path,
         )
 
         assert result.success is True
@@ -318,63 +124,22 @@ class TestResetTicketWithCleanup:
 class TestResetTicketResult:
     """Tests for the ResetResult dataclass returned by reset_ticket."""
 
-    def test_result_contains_all_required_fields(self, tmp_path: Path):
+    def test_result_contains_all_required_fields(self):
         """Given a successful reset, result contains all expected fields."""
         from commands.ticket_reset import reset_ticket
 
-        state = {
-            "prd_path": "docs/prds/test.md",
-            "plan_path": "docs/plans/test.md",
-            "tickets": [
-                {
-                    "id": "TASK-001",
-                    "title": "Blocked ticket",
-                    "status": "blocked",
-                    "dependencies": [],
-                    "attempts": 3,
-                    "block_reason": "Validation failed",
-                }
-            ],
-            "current_ticket": None,
-            "completed_count": 0,
-            "blocked_count": 1,
-        }
-        state_file = tmp_path / "workflow-state.json"
-        state_file.write_text(json.dumps(state))
-
-        result = reset_ticket("TASK-001", state_file)
+        result = reset_ticket("TASK-001", clean_state=False)
 
         assert result.success is True
         assert result.ticket_id == "TASK-001"
-        assert result.previous_status == "blocked"
-        assert result.new_status == "pending"
         assert result.state_cleaned is False
 
-    def test_result_to_dict_for_json_output(self, tmp_path: Path):
+    def test_result_to_dict_for_json_output(self):
         """Given a result, to_dict returns JSON-serializable dictionary."""
+        import json
         from commands.ticket_reset import reset_ticket
 
-        state = {
-            "prd_path": "docs/prds/test.md",
-            "plan_path": "docs/plans/test.md",
-            "tickets": [
-                {
-                    "id": "TASK-001",
-                    "title": "Blocked ticket",
-                    "status": "blocked",
-                    "dependencies": [],
-                    "attempts": 1,
-                    "block_reason": "Error",
-                }
-            ],
-            "current_ticket": None,
-            "completed_count": 0,
-            "blocked_count": 1,
-        }
-        state_file = tmp_path / "workflow-state.json"
-        state_file.write_text(json.dumps(state))
-
-        result = reset_ticket("TASK-001", state_file)
+        result = reset_ticket("TASK-001", clean_state=False)
         result_dict = result.to_dict()
 
         # Should be JSON serializable (verify by actually serializing)
@@ -383,61 +148,21 @@ class TestResetTicketResult:
 
         # Should contain expected keys with correct values
         assert result_dict["ticket"] == "TASK-001"
-        assert result_dict["previous_status"] == "blocked"
-        assert result_dict["new_status"] == "pending"
         assert result_dict["state_cleaned"] is False
 
         # Verify round-trip preserves data
         assert parsed == result_dict
 
-
-class TestResetTicketUpdatesBlockedCount:
-    """Tests for blocked count updates in workflow state."""
-
-    @pytest.mark.parametrize("initial_count,expected_count", [(2, 1), (1, 0)])
-    def test_reset_decrements_blocked_count(self, tmp_path: Path, initial_count: int, expected_count: int):
-        """Given a blocked ticket, when resetting, then blocked_count is decremented correctly."""
+    def test_result_to_dict_with_cleaned_state(self, tmp_path: Path):
+        """Given state was cleaned, to_dict reflects that."""
         from commands.ticket_reset import reset_ticket
-        from core.state import load_workflow_state
 
-        tickets = [
-            {
-                "id": "TASK-001",
-                "title": "Blocked ticket to reset",
-                "status": "blocked",
-                "dependencies": [],
-                "attempts": 2,
-                "block_reason": "Error",
-            }
-        ]
+        # Create a state directory to clean
+        state_dir = tmp_path / "TASK-001"
+        (state_dir / "attempt-1").mkdir(parents=True)
 
-        # Add another blocked ticket if testing count 2>1
-        if initial_count == 2:
-            tickets.append({
-                "id": "TASK-002",
-                "title": "Another blocked ticket",
-                "status": "blocked",
-                "dependencies": [],
-                "attempts": 1,
-                "block_reason": "Another error",
-            })
+        result = reset_ticket("TASK-001", clean_state=True, state_base_dir=tmp_path)
+        result_dict = result.to_dict()
 
-        state = {
-            "prd_path": "docs/prds/test.md",
-            "plan_path": "docs/plans/test.md",
-            "tickets": tickets,
-            "current_ticket": None,
-            "completed_count": 0,
-            "blocked_count": initial_count,
-        }
-        state_file = tmp_path / "workflow-state.json"
-        state_file.write_text(json.dumps(state))
-
-        # Verify initial state has the expected blocked count
-        initial_state = load_workflow_state(state_file)
-        assert initial_state.blocked_count == initial_count
-
-        reset_ticket("TASK-001", state_file)
-
-        updated_state = load_workflow_state(state_file)
-        assert updated_state.blocked_count == expected_count
+        assert result_dict["ticket"] == "TASK-001"
+        assert result_dict["state_cleaned"] is True

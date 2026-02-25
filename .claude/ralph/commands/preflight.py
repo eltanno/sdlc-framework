@@ -15,15 +15,13 @@ from __future__ import annotations
 import logging
 import time
 from pathlib import Path
-from typing import Optional, Union
-
 from commands.validate import ValidationResult, run_validation
 from core.config import ConfigError, load_config
 
 logger = logging.getLogger(__name__)
 
 
-def run_preflight_check(config_file: Optional[Union[str, Path]]) -> bool:
+def run_preflight_check(config_file: str | Path | None) -> bool:
     """Run pre-flight validation to ensure the test suite is green.
 
     Loads the project config and runs all validation checks (typecheck, lint,
@@ -100,7 +98,7 @@ def _log_failures(result: ValidationResult) -> None:
 
 
 def _log_check_failures(
-    codebase_name: Optional[str], result: ValidationResult
+    codebase_name: str | None, result: ValidationResult
 ) -> None:
     """Log individual check failures for a single codebase or project.
 

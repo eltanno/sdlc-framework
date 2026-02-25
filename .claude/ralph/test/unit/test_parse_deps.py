@@ -9,10 +9,14 @@ from pathlib import Path
 import pytest
 
 from commands.parse_deps import (
-    parse_dependencies,
+    parse_ticket_metadata,
     detect_circular_dependencies,
-    DependencyGraph,
 )
+
+
+def _deps(metadata: dict) -> dict[str, list[str]]:
+    """Helper: extract just dependencies from ticket metadata."""
+    return {tid: meta.dependencies for tid, meta in metadata.items()}
 
 
 class TestParseTableFormat:
@@ -33,7 +37,7 @@ class TestParseTableFormat:
         plan_file = tmp_path / "plan.md"
         plan_file.write_text(plan_content)
 
-        result = parse_dependencies(plan_file)
+        result = _deps(parse_ticket_metadata(plan_file))
 
         assert result["TASK-001"] == []
         assert result["TASK-002"] == ["TASK-001"]
@@ -55,7 +59,7 @@ class TestParseTableFormat:
         plan_file.write_text(plan_content)
 
         # Need to provide ticket prefix for row number mapping
-        result = parse_dependencies(plan_file, ticket_prefix="TASK", start_num=1)
+        result = _deps(parse_ticket_metadata(plan_file, ticket_prefix="TASK", start_num=1))
 
         assert result["TASK-0001"] == []
         assert result["TASK-0002"] == ["TASK-0001"]
@@ -76,7 +80,7 @@ class TestParseTableFormat:
         plan_file = tmp_path / "plan.md"
         plan_file.write_text(plan_content)
 
-        result = parse_dependencies(plan_file)
+        result = _deps(parse_ticket_metadata(plan_file))
 
         assert result["TASK-001"] == []
         assert result["TASK-002"] == []
@@ -112,7 +116,7 @@ Description of the third task.
         plan_file = tmp_path / "plan.md"
         plan_file.write_text(plan_content)
 
-        result = parse_dependencies(plan_file)
+        result = _deps(parse_ticket_metadata(plan_file))
 
         assert result["TASK-001"] == []
         assert result["TASK-002"] == ["TASK-001"]
@@ -135,7 +139,7 @@ Description of the third task.
         plan_file = tmp_path / "plan.md"
         plan_file.write_text(plan_content)
 
-        result = parse_dependencies(plan_file)
+        result = _deps(parse_ticket_metadata(plan_file))
 
         assert result["TASK-001"] == []
         assert result["TASK-002"] == ["TASK-001"]
@@ -200,47 +204,6 @@ class TestCircularDependencyDetection:
         assert cycle == ["TASK-001", "TASK-001"]
 
 
-class TestDependencyGraph:
-    """Tests for the DependencyGraph dataclass."""
-
-    def test_get_dependents(self) -> None:
-        """Test finding which tickets depend on a given ticket."""
-        deps = {
-            "TASK-001": [],
-            "TASK-002": ["TASK-001"],
-            "TASK-003": ["TASK-001"],
-            "TASK-004": ["TASK-002"],
-        }
-        graph = DependencyGraph(dependencies=deps, ticket_prefix="TASK")
-
-        dependents = graph.get_dependents("TASK-001")
-
-        assert "TASK-002" in dependents
-        assert "TASK-003" in dependents
-        assert "TASK-004" not in dependents
-
-    def test_get_dependencies(self) -> None:
-        """Test getting dependencies for a ticket."""
-        deps = {
-            "TASK-001": [],
-            "TASK-002": ["TASK-001"],
-            "TASK-003": ["TASK-001", "TASK-002"],
-        }
-        graph = DependencyGraph(dependencies=deps, ticket_prefix="TASK")
-
-        assert graph.get_dependencies("TASK-001") == []
-        assert graph.get_dependencies("TASK-002") == ["TASK-001"]
-        assert "TASK-001" in graph.get_dependencies("TASK-003")
-        assert "TASK-002" in graph.get_dependencies("TASK-003")
-
-    def test_get_dependencies_unknown_ticket(self) -> None:
-        """Test getting dependencies for a non-existent ticket."""
-        deps = {"TASK-001": []}
-        graph = DependencyGraph(dependencies=deps, ticket_prefix="TASK")
-
-        assert graph.get_dependencies("TASK-999") == []
-
-
 class TestEdgeCases:
     """Tests for edge cases and error handling."""
 
@@ -249,14 +212,14 @@ class TestEdgeCases:
         non_existent = tmp_path / "non_existent.md"
 
         with pytest.raises(FileNotFoundError):
-            parse_dependencies(non_existent)
+            parse_ticket_metadata(non_existent)
 
     def test_empty_file(self, tmp_path: Path) -> None:
         """Test parsing an empty plan file."""
         plan_file = tmp_path / "empty.md"
         plan_file.write_text("")
 
-        result = parse_dependencies(plan_file)
+        result = parse_ticket_metadata(plan_file)
 
         assert result == {}
 
@@ -273,7 +236,7 @@ This plan has no tickets table.
         plan_file = tmp_path / "plan.md"
         plan_file.write_text(plan_content)
 
-        result = parse_dependencies(plan_file)
+        result = parse_ticket_metadata(plan_file)
 
         assert result == {}
 
@@ -292,7 +255,7 @@ This plan has no tickets table.
         plan_file = tmp_path / "plan.md"
         plan_file.write_text(plan_content)
 
-        result = parse_dependencies(plan_file)
+        result = _deps(parse_ticket_metadata(plan_file))
 
         # Should parse valid rows and skip invalid
         assert "TASK-001" in result
@@ -321,7 +284,7 @@ class TestRealWorldPlanFormat:
         plan_file = tmp_path / "plan.md"
         plan_file.write_text(plan_content)
 
-        result = parse_dependencies(plan_file)
+        result = _deps(parse_ticket_metadata(plan_file))
 
         assert result["SDLC-0013"] == []
         assert result["SDLC-0014"] == ["SDLC-0013"]

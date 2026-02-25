@@ -10,13 +10,15 @@ Key components:
 - State file I/O: get_previous_state, get_previous_validation
 - State file writing: write_engineer_state, write_validation_report
 - Markdown generation: generate_engineer_state_md, generate_validation_md, generate_summary_md
-- Workflow state: load_workflow_state, save_workflow_state, WorkflowState, Ticket
+- Ticket extraction: extract_tickets_from_prd
+- Workflow state: build_workflow_state, load_workflow_state, save_workflow_state, WorkflowState, Ticket
 - Prompt building: build_prompt
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import sys
@@ -25,6 +27,8 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 # ============================================================================
@@ -916,6 +920,129 @@ def generate_summary_md(summary_data: dict[str, Any]) -> str:
 # ============================================================================
 
 
+def extract_tickets_from_prd(prd_path: Path) -> list[str]:
+    """Extract ticket IDs from the Tickets table in a PRD document.
+
+    Finds the ## Tickets section and extracts IDs from the first column
+    of the markdown table. This is more robust than pattern-matching
+    anywhere in the document.
+
+    Args:
+        prd_path: Path to the PRD document
+
+    Returns:
+        List of unique ticket IDs in document order
+    """
+    content = prd_path.read_text()
+    tickets: list[str] = []
+    seen: set[str] = set()
+
+    # Find the Tickets section (## Tickets or # Tickets)
+    tickets_section_pattern = re.compile(
+        r"^#{1,2}\s*Tickets\s*$",
+        re.MULTILINE | re.IGNORECASE
+    )
+
+    match = tickets_section_pattern.search(content)
+
+    if not match:
+        logger.warning("No '## Tickets' section found in PRD")
+        return tickets
+
+    # Get content from Tickets section to next section (or end)
+    section_start = match.end()
+    next_section = re.search(r"^#{1,2}\s+\w", content[section_start:], re.MULTILINE)
+    if next_section:
+        section_content = content[section_start:section_start + next_section.start()]
+    else:
+        section_content = content[section_start:]
+
+    # Parse markdown table rows in this section
+    # Table format: | ID | Title | ... |
+    # We want the first column value from each data row
+    table_row_pattern = re.compile(r"^\|([^|]+)\|", re.MULTILINE)
+
+    for row_match in table_row_pattern.finditer(section_content):
+        first_cell = row_match.group(1).strip()
+
+        # Skip header row and separator row
+        if first_cell.lower() == "id" or first_cell.startswith("-"):
+            continue
+
+        # Extract ticket ID - could be plain or markdown-linked
+        # Plain: SDLC-0067
+        # Linked: [SDLC-0067](url)
+        ticket_id = None
+
+        # Try markdown link format first: [PREFIX-NNNN](url)
+        link_match = re.match(r"\[([A-Z]+-\d+)\]\(", first_cell)
+        if link_match:
+            ticket_id = link_match.group(1)
+        else:
+            # Try plain format: PREFIX-NNNN
+            plain_match = re.match(r"([A-Z]+-\d+)$", first_cell)
+            if plain_match:
+                ticket_id = plain_match.group(1)
+
+        if ticket_id and ticket_id not in seen:
+            tickets.append(ticket_id)
+            seen.add(ticket_id)
+
+    return tickets
+
+
+def build_workflow_state(prd_path: Path, plan_path: Path) -> WorkflowState:
+    """Build WorkflowState in memory from PRD and plan documents.
+
+    Extracts ticket IDs, dependencies, and complexity scores from the PRD
+    (falling back to plan for metadata). No state file is read or written.
+
+    Args:
+        prd_path: Path to the PRD document
+        plan_path: Path to the plan document
+
+    Returns:
+        Populated WorkflowState with RalphState containing tickets,
+        dependencies, and complexity scores
+    """
+    from commands.parse_deps import parse_ticket_metadata
+
+    # Extract ticket IDs from PRD
+    ticket_ids = extract_tickets_from_prd(prd_path)
+
+    # Parse metadata (dependencies + complexity) from PRD first
+    ticket_metadata = parse_ticket_metadata(prd_path)
+
+    # Fallback to plan if PRD had no metadata
+    if not ticket_metadata:
+        ticket_metadata = parse_ticket_metadata(plan_path)
+
+    # Extract dependencies and complexity from metadata
+    dependencies = {tid: meta.dependencies for tid, meta in ticket_metadata.items()}
+    complexity = {tid: meta.complexity for tid, meta in ticket_metadata.items()}
+
+    # Build RalphState — attempts and blocked come from external sources
+    # (filesystem and PM tool labels respectively), not from local state
+    ralph = RalphState(
+        source="unknown",
+        tickets=ticket_ids,
+        dependencies=dependencies,
+        complexity=complexity,
+        attempts={},
+        blocked={},
+    )
+
+    return WorkflowState(
+        prd_path=prd_path,
+        plan_path=plan_path,
+        tickets=[],  # uses ralph.tickets
+        ralph=ralph,
+        current_ticket=None,
+        completed_count=0,
+        blocked_count=0,
+    )
+
+
 def load_workflow_state(state_file: Path) -> WorkflowState:
     """Load workflow state from a JSON file.
 
@@ -977,40 +1104,6 @@ def save_workflow_state(state: WorkflowState, state_file: Path) -> None:
     _atomic_write(state_file, content)
 
 
-def update_ticket_status(state_file: Path, ticket_id: str, new_status: str) -> None:
-    """Update a ticket's status in the workflow state file.
-
-    Args:
-        state_file: Path to the state file
-        ticket_id: ID of the ticket to update
-        new_status: New status value
-    """
-    state = load_workflow_state(state_file)
-
-    for ticket in state.tickets:
-        if ticket.id == ticket_id:
-            ticket.status = new_status
-            break
-
-    save_workflow_state(state, state_file)
-
-
-def get_ticket_by_id(state: WorkflowState, ticket_id: str) -> Ticket | None:
-    """Get a ticket by its ID.
-
-    Args:
-        state: WorkflowState object
-        ticket_id: ID of the ticket to find
-
-    Returns:
-        Ticket object if found, None otherwise
-    """
-    for ticket in state.tickets:
-        if ticket.id == ticket_id:
-            return ticket
-    return None
-
-
 # ============================================================================
 # Prompt Building
 # ============================================================================
@@ -1056,12 +1149,14 @@ def build_prompt(
                 config = yaml.safe_load(config_file.read_text())
                 dev = config.get("dev", {})
 
+                git = config.get("git", {})
+
                 config_subs = {
                     "TEST_COMMAND": dev.get("test_command", ""),
                     "LINT_COMMAND": dev.get("lint_command", ""),
                     "TYPECHECK_COMMAND": dev.get("typecheck_command", ""),
                     "BUILD_COMMAND": dev.get("build_command", ""),
-                    "DEFAULT_BRANCH": dev.get("default_branch", "main"),
+                    "DEFAULT_BRANCH": git.get("default_branch", ""),
                 }
 
                 for key, value in config_subs.items():

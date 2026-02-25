@@ -18,7 +18,7 @@ dev:
 
 # Git Conventions
 git:
-  default_branch: main
+  default_branch: develop-working
   branch_prefix:
     feature: "feature/"
     bugfix: "bugfix/"
@@ -55,6 +55,7 @@ ralph:
   review_model: "opus"                # Model for post-loop review in /execution-report (sonnet | haiku | opus) - default: opus
   engineer_timeout: 30                # Minutes for engineer invocation
   validator_timeout: 10               # Minutes for validator invocation
+  validator_max_retries: 2             # Max validator-only retries before falling back to full engineer re-run
   review_timeout: 5                   # Minutes for post-loop review
 
   # V2: Multi-instance concurrency control (label-based)
@@ -62,3 +63,4 @@ ralph:
   # instance_label is now in .env (RALPH_LABEL) to prevent commit conflicts
   instance_label_prefix: "ralph-"     # Prefix for all instance labels (used to skip other instances' tickets)
   use_assignee: false                 # Also assign issues to user (set false for multi-instance with same user)
+  max_concurrent_loops: 4             # Maximum parallel Ralph instances (1-4)

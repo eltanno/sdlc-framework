@@ -123,9 +123,10 @@ glab ci status
 ### 3. Branch Status
 
 ```bash
-# Is branch up to date with main?
-git fetch origin main
-git log HEAD..origin/main --oneline
+# Is branch up to date with default branch?
+DEFAULT_BRANCH=$(grep -A1 "^git:" config.yaml | grep "default_branch:" | awk '{print $2}')
+git fetch origin $DEFAULT_BRANCH
+git log HEAD..origin/$DEFAULT_BRANCH --oneline
 ```
 
 ### 4. Acceptance Criteria Verification
@@ -151,7 +152,7 @@ Return:
 VALIDATION REPORT
 
 PR: #[number]
-Branch: feature/TASK-XXX → main
+Branch: feature/TASK-XXX → [default branch]
 
 ## Code Quality
 - Tests: PASS/FAIL ([N] tests)

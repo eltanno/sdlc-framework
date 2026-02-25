@@ -16,6 +16,8 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
+import pytest
+
 from commands.scripted_checks import (
     ScriptedCheckResult,
     ScriptedChecksResult,
@@ -298,6 +300,14 @@ class TestRunScriptedChecks:
 class TestCheckMergeCommits:
     """Tests for check_merge_commits() function (AIUI-0058)."""
 
+    @pytest.fixture(autouse=True)
+    def mock_default_branch(self, monkeypatch) -> None:
+        """Mock get_default_branch to return 'develop' for all merge commit tests."""
+        monkeypatch.setattr(
+            "commands.scripted_checks.get_default_branch",
+            lambda: "develop",
+        )
+
     def test_all_tickets_merged_passes(self, monkeypatch, tmp_path) -> None:
         """check_merge_commits should pass when all tickets have merge commits on develop."""
         import subprocess
@@ -457,6 +467,14 @@ ghi789 Merge AIUI-0003: Add feature
 
 class TestCheckOrphanedBranches:
     """Tests for check_orphaned_branches() function (AIUI-0059)."""
+
+    @pytest.fixture(autouse=True)
+    def mock_default_branch(self, monkeypatch) -> None:
+        """Mock get_default_branch to return 'develop' for all orphaned branches tests."""
+        monkeypatch.setattr(
+            "commands.scripted_checks.get_default_branch",
+            lambda: "develop",
+        )
 
     def test_all_branches_merged_passes(self, monkeypatch, tmp_path) -> None:
         """check_orphaned_branches should pass when all feature branches are merged or deleted."""

@@ -100,7 +100,7 @@ Generate this status report:
 
 ## Git
 
-- **Branch:** main / feature/TASK-XXX-desc
+- **Branch:** [default branch] / feature/TASK-XXX-desc
 - **Uncommitted Changes:** Yes/No
 - **Open PRs:** [list or none]
 

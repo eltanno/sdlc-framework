@@ -2,14 +2,11 @@
 
 Tests cover:
 - Valid YAML loading with typed config access
-- Environment variable overrides (RALPH_LABEL)
 - Missing/malformed config file handling
 - Default values for missing keys
-- Instance label validation
-- Use assignee flag
-- Instance label prefix
 - PM tool type loading and validation
 - Repo tool type loading and validation
+- Default branch loading
 """
 
 import pytest
@@ -19,12 +16,9 @@ from core.config import (
     Config,
     ConfigError,
     load_config,
-    get_instance_label,
-    get_instance_label_prefix,
-    get_use_assignee,
+    get_default_branch,
     get_pm_tool_type,
     get_repo_tool_type,
-    matches_instance_prefix,
     VALID_PM_TOOLS,
     VALID_REPO_TOOLS,
 )
@@ -101,6 +95,30 @@ ralph:
         # max_attempts should default to 3
         assert config.ralph.max_attempts == 3
 
+    def test_load_config_max_concurrent_loops_from_yaml(self, tmp_path: Path) -> None:
+        """Given ralph.max_concurrent_loops is set in config, when loaded,
+        then the value is accessible on RalphConfig."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""\
+ralph:
+  max_concurrent_loops: 2
+""")
+        config = load_config(config_file)
+
+        assert config.ralph.max_concurrent_loops == 2
+
+    def test_load_config_max_concurrent_loops_defaults_to_four(self, tmp_path: Path) -> None:
+        """Given ralph.max_concurrent_loops is not set, when loaded,
+        then it defaults to 4."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""\
+ralph:
+  use_assignee: true
+""")
+        config = load_config(config_file)
+
+        assert config.ralph.max_concurrent_loops == 4
+
     def test_load_config_empty_ralph_section_uses_all_defaults(self, tmp_path: Path) -> None:
         """Given config has empty ralph section, all defaults are applied."""
         config_file = tmp_path / "config.yaml"
@@ -113,6 +131,7 @@ ralph: {}
         assert config.ralph.use_assignee is True
         assert config.ralph.sonnet_threshold == 2
         assert config.ralph.max_attempts == 3
+        assert config.ralph.max_concurrent_loops == 4
 
     def test_load_config_missing_ralph_section_uses_defaults(self, tmp_path: Path) -> None:
         """Given config has no ralph section, defaults are applied."""
@@ -125,219 +144,6 @@ dev:
 
         assert config.ralph.instance_label_prefix == "ralph-"
         assert config.ralph.use_assignee is True
-
-
-class TestGetInstanceLabel:
-    """Tests for get_instance_label function."""
-
-    def test_get_instance_label_from_env_var(self, tmp_path: Path, monkeypatch) -> None:
-        """Given RALPH_LABEL env var is set, when config loads,
-        then the instance_label reflects the environment value.
-        """
-        config_file = tmp_path / "config.yaml"
-        config_file.write_text("""\
-ralph:
-  instance_label_prefix: "ralph-"
-""")
-        monkeypatch.setenv("RALPH_LABEL", "ralph-2")
-
-        label = get_instance_label(config_file)
-
-        assert label == "ralph-2"
-
-    def test_get_instance_label_defaults_to_prefix_1(self, tmp_path: Path, monkeypatch) -> None:
-        """Given RALPH_LABEL not set, when getting label,
-        then default to {prefix}1.
-        """
-        config_file = tmp_path / "config.yaml"
-        config_file.write_text("""\
-ralph:
-  instance_label_prefix: "ralph-"
-""")
-        monkeypatch.delenv("RALPH_LABEL", raising=False)
-
-        label = get_instance_label(config_file)
-
-        assert label == "ralph-1"
-
-    def test_get_instance_label_validates_format(self, tmp_path: Path, monkeypatch) -> None:
-        """Given RALPH_LABEL has invalid format, when getting label,
-        then raise error.
-        """
-        config_file = tmp_path / "config.yaml"
-        config_file.write_text("""\
-ralph:
-  instance_label_prefix: "ralph-"
-""")
-        monkeypatch.setenv("RALPH_LABEL", "my-custom-label")
-
-        with pytest.raises(ConfigError) as exc_info:
-            get_instance_label(config_file)
-
-        assert "ralph-" in str(exc_info.value)
-        assert "pattern" in str(exc_info.value).lower()
-
-    def test_get_instance_label_with_custom_prefix(self, tmp_path: Path, monkeypatch) -> None:
-        """Given custom prefix in config and matching env var, label is valid."""
-        config_file = tmp_path / "config.yaml"
-        config_file.write_text("""\
-ralph:
-  instance_label_prefix: "worker-"
-""")
-        monkeypatch.setenv("RALPH_LABEL", "worker-3")
-
-        label = get_instance_label(config_file)
-
-        assert label == "worker-3"
-
-    def test_get_instance_label_custom_prefix_default(self, tmp_path: Path, monkeypatch) -> None:
-        """Given custom prefix, default label uses that prefix."""
-        config_file = tmp_path / "config.yaml"
-        config_file.write_text("""\
-ralph:
-  instance_label_prefix: "ci-"
-""")
-        monkeypatch.delenv("RALPH_LABEL", raising=False)
-
-        label = get_instance_label(config_file)
-
-        assert label == "ci-1"
-
-
-class TestGetInstanceLabelPrefix:
-    """Tests for get_instance_label_prefix function."""
-
-    def test_get_prefix_from_config(self, tmp_path: Path) -> None:
-        """Given configured prefix, returns that prefix."""
-        config_file = tmp_path / "config.yaml"
-        config_file.write_text("""\
-ralph:
-  instance_label_prefix: "my-prefix-"
-""")
-
-        prefix = get_instance_label_prefix(config_file)
-
-        assert prefix == "my-prefix-"
-
-    def test_get_prefix_defaults_to_ralph(self, tmp_path: Path) -> None:
-        """Given no prefix configured, defaults to 'ralph-'."""
-        config_file = tmp_path / "config.yaml"
-        config_file.write_text("""\
-ralph:
-  use_assignee: true
-""")
-
-        prefix = get_instance_label_prefix(config_file)
-
-        assert prefix == "ralph-"
-
-    def test_get_prefix_missing_file_returns_default(self, tmp_path: Path) -> None:
-        """Given missing config file, returns default prefix."""
-        config_file = tmp_path / "nonexistent.yaml"
-
-        prefix = get_instance_label_prefix(config_file)
-
-        assert prefix == "ralph-"
-
-    def test_get_prefix_malformed_yaml_returns_default(self, tmp_path: Path) -> None:
-        """Given malformed YAML config file, returns default prefix."""
-        config_file = tmp_path / "config.yaml"
-        config_file.write_text("""\
-ralph:
-  instance_label_prefix: [invalid yaml
-""")
-
-        prefix = get_instance_label_prefix(config_file)
-
-        assert prefix == "ralph-"
-
-
-class TestGetUseAssignee:
-    """Tests for get_use_assignee function."""
-
-    def test_get_use_assignee_false(self, tmp_path: Path) -> None:
-        """Given use_assignee is false, returns False."""
-        config_file = tmp_path / "config.yaml"
-        config_file.write_text("""\
-ralph:
-  use_assignee: false
-""")
-
-        result = get_use_assignee(config_file)
-
-        assert result is False
-
-    def test_get_use_assignee_true(self, tmp_path: Path) -> None:
-        """Given use_assignee is true, returns True."""
-        config_file = tmp_path / "config.yaml"
-        config_file.write_text("""\
-ralph:
-  use_assignee: true
-""")
-
-        result = get_use_assignee(config_file)
-
-        assert result is True
-
-    def test_get_use_assignee_defaults_to_true(self, tmp_path: Path) -> None:
-        """Given use_assignee not configured, defaults to True."""
-        config_file = tmp_path / "config.yaml"
-        config_file.write_text("""\
-ralph:
-  instance_label_prefix: "ralph-"
-""")
-
-        result = get_use_assignee(config_file)
-
-        assert result is True
-
-    def test_get_use_assignee_missing_file_returns_default(self, tmp_path: Path) -> None:
-        """Given missing config file, returns default True."""
-        config_file = tmp_path / "nonexistent.yaml"
-
-        result = get_use_assignee(config_file)
-
-        assert result is True
-
-    def test_get_use_assignee_malformed_yaml_returns_default(self, tmp_path: Path) -> None:
-        """Given malformed YAML config file, returns default True."""
-        config_file = tmp_path / "config.yaml"
-        config_file.write_text("""\
-ralph:
-  use_assignee: [invalid yaml
-""")
-
-        result = get_use_assignee(config_file)
-
-        assert result is True
-
-
-class TestMatchesInstancePrefix:
-    """Tests for matches_instance_prefix function."""
-
-    def test_matching_label_returns_true(self) -> None:
-        """Given label matches prefix, returns True."""
-        assert matches_instance_prefix("ralph-1", "ralph-") is True
-        assert matches_instance_prefix("ralph-99", "ralph-") is True
-
-    def test_non_matching_label_returns_false(self) -> None:
-        """Given label doesn't match prefix, returns False."""
-        assert matches_instance_prefix("worker-1", "ralph-") is False
-        assert matches_instance_prefix("other-label", "ralph-") is False
-
-    def test_empty_label_returns_false(self) -> None:
-        """Given empty label, returns False."""
-        assert matches_instance_prefix("", "ralph-") is False
-
-    def test_none_label_returns_false(self) -> None:
-        """Given None label, returns False (defensive programming - None shouldn't crash)."""
-        assert matches_instance_prefix(None, "ralph-") is False  # type: ignore
-
-    def test_custom_prefix_matching(self) -> None:
-        """Given custom prefix, matches correctly."""
-        assert matches_instance_prefix("ci-agent-1", "ci-") is True
-        assert matches_instance_prefix("worker-5", "worker-") is True
-        assert matches_instance_prefix("ci-agent-1", "worker-") is False
 
 
 class TestConfigDataclass:
@@ -353,7 +159,6 @@ ralph:
   sonnet_threshold: 3
   max_attempts: 5
   state_directory: "custom/state"
-  keep_state_files: false
   validator_model: "sonnet"
   engineer_timeout: 60
   validator_timeout: 15
@@ -366,7 +171,6 @@ ralph:
         assert config.ralph.sonnet_threshold == 3
         assert config.ralph.max_attempts == 5
         assert config.ralph.state_directory == "custom/state"
-        assert config.ralph.keep_state_files is False
         assert config.ralph.validator_model == "sonnet"
         assert config.ralph.engineer_timeout == 60
         assert config.ralph.validator_timeout == 15
@@ -443,7 +247,7 @@ ralph:
 class TestGetPmToolType:
     """Tests for get_pm_tool_type function."""
 
-    @pytest.mark.parametrize("tool", ["github", "trello", "asana", "linear", "none"])
+    @pytest.mark.parametrize("tool", ["github", "trello", "asana", "none"])
     def test_get_pm_tool_type_accepts_all_valid_tools(self, tmp_path: Path, tool: str) -> None:
         """Given any valid pm.tool value, when getting PM tool type, then returns that value."""
         config_file = tmp_path / "config.yaml"
@@ -605,4 +409,154 @@ repo:
 
         error_msg = str(exc_info.value).lower()
         assert "yaml" in error_msg or "parse" in error_msg
+
+
+class TestGetDefaultBranch:
+    """Tests for get_default_branch function."""
+
+    def test_get_default_branch_returns_configured_value(self, tmp_path: Path) -> None:
+        """Given git.default_branch is set, when getting default branch, then returns that value."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""\
+git:
+  default_branch: develop-working
+""")
+        result = get_default_branch(config_file)
+
+        assert result == "develop-working"
+
+    def test_get_default_branch_raises_when_no_git_section(self, tmp_path: Path) -> None:
+        """Given no git section in config, when getting default branch, then raises ConfigError."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""\
+ralph:
+  instance_label_prefix: "ralph-"
+""")
+        with pytest.raises(ConfigError) as exc_info:
+            get_default_branch(config_file)
+
+        assert "git.default_branch" in str(exc_info.value)
+
+    def test_get_default_branch_raises_when_missing_default_branch_key(self, tmp_path: Path) -> None:
+        """Given git section exists but default_branch missing, raises ConfigError."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""\
+git:
+  branch_prefix:
+    feature: "feature/"
+""")
+        with pytest.raises(ConfigError) as exc_info:
+            get_default_branch(config_file)
+
+        assert "git.default_branch" in str(exc_info.value)
+
+    def test_get_default_branch_raises_when_file_missing(self, tmp_path: Path) -> None:
+        """Given config file doesn't exist, when getting default branch, then raises ConfigError."""
+        config_file = tmp_path / "nonexistent.yaml"
+
+        with pytest.raises(ConfigError) as exc_info:
+            get_default_branch(config_file)
+
+        assert "not found" in str(exc_info.value)
+
+    def test_get_default_branch_raises_on_malformed_yaml(self, tmp_path: Path) -> None:
+        """Given config file has malformed YAML, when getting default branch, then raises ConfigError."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""\
+git:
+  default_branch: [invalid yaml
+""")
+        with pytest.raises(ConfigError) as exc_info:
+            get_default_branch(config_file)
+
+        error_msg = str(exc_info.value).lower()
+        assert "parse" in error_msg or "yaml" in error_msg
+
+    def test_get_default_branch_raises_on_empty_string(self, tmp_path: Path) -> None:
+        """Given git.default_branch is empty string, when getting default branch, then raises ConfigError."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""\
+git:
+  default_branch: ""
+""")
+        with pytest.raises(ConfigError) as exc_info:
+            get_default_branch(config_file)
+
+        assert "git.default_branch" in str(exc_info.value)
+
+
+class TestConfigDevCommandParsing:
+    """Tests for top-level Config dev command parsing with _command suffix."""
+
+    def test_load_config_reads_command_suffix_fields(self, tmp_path: Path) -> None:
+        """Given dev section uses _command suffix, when config loads,
+        then top-level Config picks up the values correctly.
+        """
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""\
+dev:
+  typecheck_command: "npx tsc --noEmit"
+  lint_command: "ruff check ."
+  test_command: "pytest"
+  build_command: "npm run build"
+""")
+        config = load_config(config_file)
+
+        assert config.typecheck_command == "npx tsc --noEmit"
+        assert config.lint_command == "ruff check ."
+        assert config.test_command == "pytest"
+        assert config.build_command == "npm run build"
+
+    def test_load_config_reads_short_fields_as_fallback(self, tmp_path: Path) -> None:
+        """Given dev section uses short names (no _command suffix), when config loads,
+        then top-level Config falls back to the short names.
+        """
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""\
+dev:
+  typecheck: "npx tsc --noEmit"
+  lint: "ruff check ."
+  test: "pytest"
+  build: "npm run build"
+""")
+        config = load_config(config_file)
+
+        assert config.typecheck_command == "npx tsc --noEmit"
+        assert config.lint_command == "ruff check ."
+        assert config.test_command == "pytest"
+        assert config.build_command == "npm run build"
+
+    def test_load_config_command_suffix_takes_precedence(self, tmp_path: Path) -> None:
+        """Given both _command and short forms exist, the _command variant wins."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""\
+dev:
+  typecheck_command: "correct-typecheck"
+  typecheck: "wrong-typecheck"
+  lint_command: "correct-lint"
+  lint: "wrong-lint"
+  test_command: "correct-test"
+  test: "wrong-test"
+  build_command: "correct-build"
+  build: "wrong-build"
+""")
+        config = load_config(config_file)
+
+        assert config.typecheck_command == "correct-typecheck"
+        assert config.lint_command == "correct-lint"
+        assert config.test_command == "correct-test"
+        assert config.build_command == "correct-build"
+
+    def test_load_config_empty_dev_section_defaults_to_empty_strings(self, tmp_path: Path) -> None:
+        """Given empty dev section, all command fields default to empty string."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""\
+dev: {}
+""")
+        config = load_config(config_file)
+
+        assert config.typecheck_command == ""
+        assert config.lint_command == ""
+        assert config.test_command == ""
+        assert config.build_command == ""
 

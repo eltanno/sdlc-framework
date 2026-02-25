@@ -6,27 +6,22 @@ environment variables, providing typed access to configuration values.
 Replaces: .claude/scripts/ralph/config-helpers.sh
 
 Example:
-    >>> from core.config import load_config, get_instance_label
+    >>> from core.config import load_config
     >>> config = load_config(Path("config.yaml"))
     >>> print(config.ralph.instance_label_prefix)
     'ralph-'
-    >>> label = get_instance_label(Path("config.yaml"))
-    >>> print(label)
-    'ralph-1'
 """
 
 from __future__ import annotations
 
-import os
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
 import yaml
 
 # Valid PM tool types
-VALID_PM_TOOLS: frozenset[str] = frozenset({"github", "trello", "asana", "linear", "none"})
+VALID_PM_TOOLS: frozenset[str] = frozenset({"github", "trello", "asana", "none"})
 
 # Valid repository tool types
 VALID_REPO_TOOLS: frozenset[str] = frozenset({"github", "gitlab"})
@@ -40,7 +35,7 @@ class ConfigError(Exception):
         message: Human-readable error message.
     """
 
-    def __init__(self, message: str, file_path: Optional[Path] = None) -> None:
+    def __init__(self, message: str, file_path: Path | None = None) -> None:
         self.file_path = file_path
         self.message = message
         super().__init__(self._format_message())
@@ -82,12 +77,14 @@ class RalphConfig:
         sonnet_threshold: Complexity threshold for model selection (default: 2).
         max_attempts: Maximum retry attempts per ticket (default: 3).
         state_directory: Directory for state files (default: "docs/state").
-        keep_state_files: Whether to keep state files for audit (default: True).
+        keep_state_files: Whether to keep state files as audit trail (default: True).
         validator_model: Model for validation analysis (default: "sonnet").
         engineer_timeout: Timeout in minutes for engineer (default: 30).
         validator_timeout: Timeout in minutes for validator (default: 10).
         review_model: Model for post-loop batch review in /execution-report (default: "opus").
             Opus is justified as final safety net for batch-level review.
+        review_timeout: Timeout in minutes for post-loop review (default: 5).
+        max_concurrent_loops: Maximum parallel Ralph instances (1-4, default: 4).
     """
 
     instance_label_prefix: str = "ralph-"
@@ -100,6 +97,8 @@ class RalphConfig:
     engineer_timeout: int = 30
     validator_timeout: int = 10
     review_model: str = "opus"
+    review_timeout: int = 5
+    max_concurrent_loops: int = 4
 
 
 @dataclass
@@ -128,7 +127,7 @@ class Config:
     codebases: list[Codebase] = field(default_factory=list)
 
 
-def load_config(config_path: Union[str, Path]) -> Config:
+def load_config(config_path: str | Path) -> Config:
     """Load configuration from a YAML file.
 
     Args:
@@ -183,6 +182,8 @@ def _parse_config(data: dict[str, Any]) -> Config:
         engineer_timeout=ralph_data.get("engineer_timeout", 30),
         validator_timeout=ralph_data.get("validator_timeout", 10),
         review_model=ralph_data.get("review_model", "opus"),
+        review_timeout=ralph_data.get("review_timeout", 5),
+        max_concurrent_loops=ralph_data.get("max_concurrent_loops", 4),
     )
 
     # Parse validation settings from dev section
@@ -219,114 +220,52 @@ def _parse_config(data: dict[str, Any]) -> Config:
 
     return Config(
         ralph=ralph_config,
-        typecheck_command=dev_data.get("typecheck", ""),
-        lint_command=dev_data.get("lint", ""),
-        test_command=dev_data.get("test", ""),
-        build_command=dev_data.get("build", ""),
+        typecheck_command=dev_data.get("typecheck_command", dev_data.get("typecheck", "")),
+        lint_command=dev_data.get("lint_command", dev_data.get("lint", "")),
+        test_command=dev_data.get("test_command", dev_data.get("test", "")),
+        build_command=dev_data.get("build_command", dev_data.get("build", "")),
         is_monorepo=is_monorepo,
         codebases=codebases,
     )
 
 
-def get_instance_label_prefix(config_path: Union[str, Path]) -> str:
-    """Get the instance label prefix from config.
+def _load_raw_yaml(config_path: str | Path) -> tuple[Path, dict[str, Any]]:
+    """Load and parse raw YAML data from a config file.
 
-    If the config file doesn't exist or doesn't have the setting,
-    returns the default prefix "ralph-".
-
-    Args:
-        config_path: Path to the config.yaml file.
-
-    Returns:
-        Instance label prefix string.
-    """
-    path = Path(config_path)
-
-    if not path.exists():
-        return "ralph-"
-
-    try:
-        config = load_config(path)
-        return config.ralph.instance_label_prefix
-    except ConfigError:
-        return "ralph-"
-
-
-def get_instance_label(config_path: Union[str, Path]) -> str:
-    """Get the instance label for this Ralph instance.
-
-    The label is read from the RALPH_LABEL environment variable.
-    If not set, defaults to "{prefix}1" where prefix is from config.
-
-    Validates that the label matches the required pattern: {prefix}{number}
+    This is a shared helper for accessor functions that need raw YAML data
+    beyond what load_config() parses (e.g., pm.tool, git.default_branch,
+    tickets.prefix, repo.type).
 
     Args:
         config_path: Path to the config.yaml file.
 
     Returns:
-        Instance label string (e.g., "ralph-1", "ralph-2").
+        Tuple of (resolved Path, parsed YAML dict).
 
     Raises:
-        ConfigError: If RALPH_LABEL doesn't match the required pattern.
-    """
-    prefix = get_instance_label_prefix(config_path)
-    label = os.environ.get("RALPH_LABEL", "")
-
-    if not label:
-        return f"{prefix}1"
-
-    # Validate format: must match {prefix}{number}
-    pattern = f"^{re.escape(prefix)}[0-9]+$"
-    if not re.match(pattern, label):
-        raise ConfigError(
-            f"RALPH_LABEL must match pattern '{prefix}{{number}}' "
-            f"(e.g., {prefix}1, {prefix}2), got: '{label}'"
-        )
-
-    return label
-
-
-def get_use_assignee(config_path: Union[str, Path]) -> bool:
-    """Get whether to use GitHub issue assignment.
-
-    If the config file doesn't exist or doesn't have the setting,
-    returns True (for backward compatibility).
-
-    Args:
-        config_path: Path to the config.yaml file.
-
-    Returns:
-        Boolean indicating whether to use assignee.
+        ConfigError: If the file is missing or contains invalid YAML.
     """
     path = Path(config_path)
 
     if not path.exists():
-        return True
+        raise ConfigError(
+            f"Configuration file not found: {path}",
+            file_path=path,
+        )
 
     try:
-        config = load_config(path)
-        return config.ralph.use_assignee
-    except ConfigError:
-        return True
+        content = path.read_text(encoding="utf-8")
+        data = yaml.safe_load(content) or {}
+    except yaml.YAMLError as e:
+        raise ConfigError(
+            f"Failed to parse YAML: {e}",
+            file_path=path,
+        ) from e
+
+    return path, data
 
 
-def matches_instance_prefix(label: Optional[str], prefix: str) -> bool:
-    """Check if a label matches the instance label prefix pattern.
-
-    Args:
-        label: Label to check (e.g., "ralph-1").
-        prefix: Prefix to match against (e.g., "ralph-").
-
-    Returns:
-        True if label starts with prefix, False otherwise.
-    """
-    if not label:
-        return False
-
-    return label.startswith(prefix)
-
-
-def get_pm_tool_type(config_path: Union[str, Path]) -> str:
+def get_pm_tool_type(config_path: str | Path) -> str:
     """Get the configured project management tool type.
 
     Reads pm.tool from the config file and validates it against
@@ -336,28 +275,13 @@ def get_pm_tool_type(config_path: Union[str, Path]) -> str:
         config_path: Path to the config.yaml file.
 
     Returns:
-        PM tool type string (github | trello | asana | linear | none).
+        PM tool type string (github | trello | asana | none).
 
     Raises:
         ConfigError: If config file is missing, pm.tool is not set,
             or pm.tool has an invalid value.
     """
-    path = Path(config_path)
-
-    if not path.exists():
-        raise ConfigError(
-            f"Configuration file not found: {path}",
-            file_path=path
-        )
-
-    try:
-        content = path.read_text(encoding="utf-8")
-        data = yaml.safe_load(content) or {}
-    except yaml.YAMLError as e:
-        raise ConfigError(
-            f"Failed to parse YAML: {e}",
-            file_path=path
-        ) from e
+    path, data = _load_raw_yaml(config_path)
 
     # Get pm section
     pm_data = data.get("pm", {}) or {}
@@ -382,7 +306,62 @@ def get_pm_tool_type(config_path: Union[str, Path]) -> str:
     return tool
 
 
-def get_repo_tool_type(config_path: Union[str, Path]) -> str:
+def get_default_branch(config_path: str | Path = Path("config.yaml")) -> str:
+    """Get the configured default git branch.
+
+    Raises ConfigError if git.default_branch is not set — never silently
+    falls back to 'main'.
+
+    Args:
+        config_path: Path to the config.yaml file.
+
+    Returns:
+        Default branch name string (e.g., "develop-working").
+
+    Raises:
+        ConfigError: If config.yaml is missing, unparseable, or
+            git.default_branch is not set.
+    """
+    path, data = _load_raw_yaml(config_path)
+
+    git_data = data.get("git", {}) or {}
+    branch = git_data.get("default_branch")
+
+    if not branch:
+        raise ConfigError(
+            "git.default_branch is not set in config.yaml. "
+            "This is required — add e.g.: git:\n  default_branch: develop-working",
+            file_path=path,
+        )
+
+    return branch
+
+
+def get_ticket_prefix(config_path: str | Path) -> str | None:
+    """Get the ticket ID prefix from config (e.g., "SLCA").
+
+    Reads tickets.prefix from config.yaml. Returns None if not set.
+
+    Args:
+        config_path: Path to the config.yaml file.
+
+    Returns:
+        Ticket prefix string or None.
+    """
+    path = Path(config_path)
+    if not path.exists():
+        return None
+
+    try:
+        _, data = _load_raw_yaml(config_path)
+    except ConfigError:
+        return None
+
+    tickets_data = data.get("tickets", {}) or {}
+    return tickets_data.get("prefix") or None
+
+
+def get_repo_tool_type(config_path: str | Path) -> str:
     """Get the configured repository tool type.
 
     Reads repo.type from the config file and validates it against
@@ -398,22 +377,7 @@ def get_repo_tool_type(config_path: Union[str, Path]) -> str:
         ConfigError: If config file is missing, has invalid YAML,
             or repo.type has an invalid value.
     """
-    path = Path(config_path)
-
-    if not path.exists():
-        raise ConfigError(
-            f"Configuration file not found: {path}",
-            file_path=path
-        )
-
-    try:
-        content = path.read_text(encoding="utf-8")
-        data = yaml.safe_load(content) or {}
-    except yaml.YAMLError as e:
-        raise ConfigError(
-            f"Failed to parse YAML: {e}",
-            file_path=path
-        ) from e
+    path, data = _load_raw_yaml(config_path)
 
     # Get repo section
     repo_data = data.get("repo", {}) or {}

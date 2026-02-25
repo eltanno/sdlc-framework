@@ -4,8 +4,6 @@ This module tests the PM tool integration including:
 - Full workflow: setup -> get_next -> ticket_done
 - Parallel instance simulation (race condition handling)
 - Dependency checking against closed issues
-- State reset on PRD/state mismatch
-
 These tests mock the gh CLI subprocess calls to simulate GitHub operations.
 """
 
@@ -35,7 +33,6 @@ from commands.get_next import (
     claim_ticket_with_race_detection,
 )
 from commands.ticket_done import ticket_done
-from commands.setup import run_setup, detect_ticket_mismatch
 
 
 # ============================================================================
@@ -171,8 +168,8 @@ def mock_pm() -> MockPMTool:
 def pm_workflow(tmp_path: Path, mock_pm: MockPMTool) -> tuple[Path, WorkflowState, MockPMTool]:
     """Create a workflow for PM tool testing with mocked tickets.
 
-    Uses hybrid schema with both tickets array (for mark_ticket_done) and
-    ralph state (for PM tool operations).
+    Uses hybrid schema with both tickets array and ralph state
+    (for PM tool operations).
 
     Returns:
         Tuple of (state_file_path, workflow_state, mock_pm_tool)
@@ -182,7 +179,7 @@ def pm_workflow(tmp_path: Path, mock_pm: MockPMTool) -> tuple[Path, WorkflowStat
     mock_pm.add_ticket("75", TicketStatus.OPEN, title="Add pm.tool config loading")
     mock_pm.add_ticket("76", TicketStatus.OPEN, title="Implement LocalPM fallback")
 
-    # Create tickets array (needed for mark_ticket_done)
+    # Create tickets array
     tickets = [
         Ticket(id="74", title="Create PM tool abstraction layer", status="pending", dependencies=[]),
         Ticket(id="75", title="Add pm.tool config loading", status="pending", dependencies=[]),
@@ -202,7 +199,7 @@ def pm_workflow(tmp_path: Path, mock_pm: MockPMTool) -> tuple[Path, WorkflowStat
     state = WorkflowState(
         prd_path=Path("docs/prds/test.md"),
         plan_path=Path("docs/plans/test.md"),
-        tickets=tickets,  # Include tickets array for mark_ticket_done compatibility
+        tickets=tickets,
         ralph=ralph,
     )
 
@@ -228,7 +225,7 @@ def dependency_workflow(tmp_path: Path, mock_pm: MockPMTool) -> tuple[Path, Work
     mock_pm.add_ticket("75", TicketStatus.OPEN, title="Second task")
     mock_pm.add_ticket("76", TicketStatus.OPEN, title="Third task")
 
-    # Create tickets array (needed for mark_ticket_done)
+    # Create tickets array
     tickets = [
         Ticket(id="74", title="First task", status="pending", dependencies=[]),
         Ticket(id="75", title="Second task", status="pending", dependencies=["74"]),
@@ -246,7 +243,7 @@ def dependency_workflow(tmp_path: Path, mock_pm: MockPMTool) -> tuple[Path, Work
     state = WorkflowState(
         prd_path=Path("docs/prds/test.md"),
         plan_path=Path("docs/plans/test.md"),
-        tickets=tickets,  # Include tickets array for mark_ticket_done compatibility
+        tickets=tickets,
         ralph=ralph,
     )
 
@@ -257,7 +254,7 @@ def dependency_workflow(tmp_path: Path, mock_pm: MockPMTool) -> tuple[Path, Work
 
 
 # ============================================================================
-# Test Cases: Full Workflow (setup -> get_next -> ticket_done)
+# Test Cases: Full Workflow (get_next -> ticket_done)
 # ============================================================================
 
 
@@ -294,7 +291,6 @@ class TestFullPMWorkflow:
             ticket_id="74",
             pr_number="100",
             issue_number=74,
-            state_file=state_file,
             pm_tool=mock_pm,
             ralph_label="ralph-1",
         )
@@ -344,7 +340,6 @@ class TestFullPMWorkflow:
                 ticket_id=result.ticket.id,
                 pr_number=f"10{ticket_id}",
                 issue_number=int(result.ticket.id),
-                state_file=state_file,
                 pm_tool=mock_pm,
                 ralph_label="ralph-1",
             )
@@ -685,153 +680,6 @@ class TestDependencyCheckingAgainstClosed:
         # With 74 closed but 75 open (and claimed), 76 should not be available
         assert result_no_76.ticket is None or result_no_76.ticket.id != "76", \
             "Ticket 76 should not be available when only some dependencies are closed"
-
-
-# ============================================================================
-# Test Cases: State Reset on Mismatch
-# ============================================================================
-
-
-class TestStateResetOnMismatch:
-    """Tests for state reset when PRD and state tickets don't match."""
-
-    def test_detect_no_mismatch_when_same(self):
-        """Given PRD and state have same tickets,
-        when detecting mismatch,
-        then no mismatch is reported."""
-        prd_tickets = ["SDLC-001", "SDLC-002"]
-        state_tickets = ["SDLC-001", "SDLC-002"]
-
-        result = detect_ticket_mismatch(prd_tickets, state_tickets)
-
-        assert result.has_mismatch is False
-        assert result.added == []
-        assert result.removed == []
-
-    def test_setup_resets_state_on_mismatch_noninteractive(self, tmp_path: Path):
-        """Given mismatch between PRD and existing state,
-        when running setup in non-interactive mode,
-        then state is reset to match PRD with warning."""
-        # Create PRD with tickets
-        prd_content = """# Test PRD
-
-## Tickets
-
-| ID | Title | Dependencies |
-|----|-------|--------------|
-| SDLC-001 | First task | - |
-| SDLC-002 | Second task | - |
-| SDLC-003 | New task | SDLC-001 |
-"""
-        prd_file = tmp_path / "prd.md"
-        prd_file.write_text(prd_content)
-
-        # Create plan
-        plan_content = """# Test Plan
-
-## Tickets
-
-| ID | Title | Dependencies |
-|----|-------|--------------|
-| SDLC-001 | First task | - |
-| SDLC-002 | Second task | - |
-| SDLC-003 | New task | SDLC-001 |
-"""
-        plan_file = tmp_path / "plan.md"
-        plan_file.write_text(plan_content)
-
-        # Create existing state with different tickets
-        existing_state = WorkflowState(
-            prd_path=prd_file,
-            plan_path=plan_file,
-            tickets=[],
-            ralph=RalphState(
-                tickets=["SDLC-001", "SDLC-002", "SDLC-OLD"],  # SDLC-OLD will be removed
-                dependencies={},
-                attempts={"SDLC-001": 2},  # Should be preserved
-                blocked={},
-                source="github",
-            ),
-        )
-
-        state_file = tmp_path / "workflow-state.json"
-        save_workflow_state(existing_state, state_file)
-
-        # Run setup (non-interactive)
-        result = run_setup(
-            prd_path=prd_file,
-            plan_path=plan_file,
-            state_file=state_file,
-            interactive=False,
-        )
-
-        # Setup should succeed with mismatch warning
-        assert result.success is True
-        assert result.mismatch_detected is True
-        assert "SDLC-003" in (result.tickets_added or [])
-        assert "SDLC-OLD" in (result.tickets_removed or [])
-        assert result.warning is not None
-        assert "mismatch" in result.warning.lower() or "reconciled" in result.warning.lower()
-
-        # Verify state was reset to PRD tickets
-        reloaded_state = load_workflow_state(state_file)
-        assert reloaded_state.ralph is not None
-        assert set(reloaded_state.ralph.tickets) == {"SDLC-001", "SDLC-002", "SDLC-003"}
-        # Attempt count for SDLC-001 should be preserved
-        assert reloaded_state.ralph.attempts.get("SDLC-001") == 2
-
-    def test_setup_preserves_attempt_counts_on_reset(self, tmp_path: Path):
-        """Given existing state with attempt counts,
-        when state is reset due to mismatch,
-        then attempt counts for matching tickets are preserved."""
-        # Create PRD with subset of original tickets plus new one
-        prd_content = """# Test PRD
-
-## Tickets
-
-| ID | Title | Dependencies |
-|----|-------|--------------|
-| SDLC-001 | First task | - |
-| SDLC-003 | New task | - |
-"""
-        prd_file = tmp_path / "prd.md"
-        prd_file.write_text(prd_content)
-
-        plan_file = tmp_path / "plan.md"
-        plan_file.write_text("# Test Plan\n")
-
-        # Create existing state with attempt counts
-        existing_state = WorkflowState(
-            prd_path=prd_file,
-            plan_path=plan_file,
-            tickets=[],
-            ralph=RalphState(
-                tickets=["SDLC-001", "SDLC-002"],
-                dependencies={},
-                attempts={"SDLC-001": 3, "SDLC-002": 1},  # SDLC-002 will be lost
-                blocked={"SDLC-002": "Test block"},
-                source="github",
-            ),
-        )
-
-        state_file = tmp_path / "workflow-state.json"
-        save_workflow_state(existing_state, state_file)
-
-        # Run setup
-        result = run_setup(
-            prd_path=prd_file,
-            plan_path=plan_file,
-            state_file=state_file,
-            interactive=False,
-        )
-
-        assert result.success is True
-
-        # Verify attempt count preserved for SDLC-001, lost for SDLC-002
-        reloaded_state = load_workflow_state(state_file)
-        assert reloaded_state.ralph is not None
-        assert reloaded_state.ralph.attempts.get("SDLC-001") == 3
-        assert "SDLC-002" not in reloaded_state.ralph.attempts
 
 
 # ============================================================================

@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Protocol
 
+from core.errors import CLIError
+
 logger = logging.getLogger(__name__)
 
 
@@ -50,7 +52,7 @@ class TicketInfo:
     labels: list[str] = field(default_factory=list)
 
 
-class PMError(Exception):
+class PMError(CLIError):
     """Base exception for PM tool operations.
 
     Attributes:
@@ -59,21 +61,7 @@ class PMError(Exception):
         stderr: Standard error output from the command
     """
 
-    def __init__(
-        self,
-        message: str,
-        command: list[str] | None = None,
-        stderr: str | None = None,
-    ):
-        self.command = command
-        self.stderr = stderr
-        if command:
-            full_message = f"{message}: {' '.join(command)}"
-        else:
-            full_message = message
-        if stderr:
-            full_message = f"{full_message}\n{stderr}"
-        super().__init__(full_message)
+    pass
 
 
 class PMNotInstalledError(PMError):
@@ -203,6 +191,9 @@ def _run_gh_command(
 ) -> subprocess.CompletedProcess[str]:
     """Run a gh CLI command and return the result.
 
+    Delegates to core.github._run_gh_command and translates exceptions
+    to PM-specific error types.
+
     Args:
         args: Command arguments (without 'gh' prefix)
         check: If True, raise PMError on non-zero exit code
@@ -216,41 +207,23 @@ def _run_gh_command(
         PMAuthError: If gh is not authenticated
         PMError: For other gh command failures
     """
-    cmd = ["gh"] + args
+    from core.github import (
+        _run_gh_command as _github_run_gh_command,
+        GitHubNotInstalledError,
+        GitHubAuthError,
+        GitHubError,
+    )
+
     try:
-        result = subprocess.run(
-            cmd,
-            capture_output=capture_output,
-            text=True,
+        return _github_run_gh_command(
+            args, check=check, capture_output=capture_output
         )
-    except FileNotFoundError:
-        raise PMNotInstalledError(
-            "GitHub CLI (gh) is not installed. Please install it from https://cli.github.com/",
-            command=cmd,
-        )
-
-    if check and result.returncode != 0:
-        stderr = result.stderr if result.stderr else ""
-
-        # Check for authentication errors
-        if (
-            "GH_TOKEN" in stderr
-            or "not logged in" in stderr
-            or "authentication" in stderr.lower()
-        ):
-            raise PMAuthError(
-                "GitHub CLI is not authenticated. Run 'gh auth login' to authenticate.",
-                command=cmd,
-                stderr=stderr,
-            )
-
-        raise PMError(
-            f"GitHub CLI command failed with exit code {result.returncode}",
-            command=cmd,
-            stderr=stderr,
-        )
-
-    return result
+    except GitHubNotInstalledError as e:
+        raise PMNotInstalledError(str(e), command=e.command, stderr=e.stderr) from e
+    except GitHubAuthError as e:
+        raise PMAuthError(str(e), command=e.command, stderr=e.stderr) from e
+    except GitHubError as e:
+        raise PMError(str(e), command=e.command, stderr=e.stderr) from e
 
 
 class GitHubPM:
@@ -264,22 +237,24 @@ class GitHubPM:
     (e.g., "[SDLC-0052] Description").
     """
 
-    def __init__(self, blocked_label: str = "blocked"):
+    def __init__(self, blocked_label: str = "blocked", ticket_prefix: str | None = None):
         """Initialize GitHubPM.
 
         Args:
             blocked_label: Label name used to mark blocked tickets
+            ticket_prefix: Project ticket prefix (e.g., "SLCA") for matching
+                issue titles like "[SLCA-0052] Description"
         """
         self._blocked_label = blocked_label
+        self._ticket_prefix = ticket_prefix
         # Cache mapping ticket_id (e.g., "SDLC-0052") to issue_number (e.g., "102")
         self._ticket_to_issue: dict[str, str] = {}
 
     def _extract_ticket_id(self, title: str) -> str | None:
         """Extract ticket ID from issue title.
 
-        Looks for pattern [TICKET_ID] at the start of the title.
-        Examples: "[SDLC-0052] Description" -> "SDLC-0052"
-                  "[TASK-001] Feature" -> "TASK-001"
+        When ticket_prefix is set, matches exactly [{prefix}-XXXX].
+        Otherwise falls back to matching any [LETTERS-DIGITS] pattern.
 
         Args:
             title: Issue title
@@ -288,8 +263,12 @@ class GitHubPM:
             Ticket ID if found, None otherwise
         """
         import re
-        match = re.match(r"\[([^\]]+)\]", title)
-        return match.group(1) if match else None
+        if self._ticket_prefix:
+            pattern = rf"\[({re.escape(self._ticket_prefix)}-\d+)\]"
+        else:
+            pattern = r"\[([A-Z]+-\d+)\]"
+        matches = re.findall(pattern, title)
+        return matches[0] if matches else None
 
     def _find_issue_number(self, ticket_id: str) -> str | None:
         """Find GitHub issue number for a ticket ID.

@@ -154,10 +154,12 @@ Implement this ticket using Test-Driven Development (TDD).
 
 ### 1. Create Feature Branch
 
+Read the default branch from `config.yaml` (`git.default_branch`):
+
 ```bash
-git checkout main
-git pull origin main
-git checkout -b feature/TASK-{id}-{short-description}
+DEFAULT_BRANCH=$(grep -A1 "^git:" config.yaml | grep "default_branch:" | awk '{print $2}')
+git fetch origin $DEFAULT_BRANCH
+git checkout -b feature/TASK-{id}-{short-description} origin/$DEFAULT_BRANCH
 ```
 
 ### 2. TDD Cycle

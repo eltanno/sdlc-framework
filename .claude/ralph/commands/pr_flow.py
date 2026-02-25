@@ -11,20 +11,17 @@ Supports both GitHub and GitLab based on repo.type configuration.
 This is a port of .claude/scripts/ralph/pr-flow.sh
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
-from typing import Union
 
 from core import git
 from core.config import get_repo_tool_type
 
 
-# Cache for the repo module to avoid repeated config reads
-_repo_module_cache: ModuleType | None = None
-
-
-def get_repo_module(config_path: Union[str, Path] = Path("config.yaml")) -> ModuleType:
+def get_repo_module(config_path: str | Path = Path("config.yaml")) -> ModuleType:
     """Get the configured repository tool module.
 
     Reads repo.type from config and returns the appropriate module
@@ -39,37 +36,14 @@ def get_repo_module(config_path: Union[str, Path] = Path("config.yaml")) -> Modu
     Raises:
         ConfigError: If repo.type has an invalid value.
     """
-    global _repo_module_cache
-
-    # Read config to determine tool
     tool = get_repo_tool_type(config_path)
 
     if tool == "gitlab":
         from core import gitlab
-        _repo_module_cache = gitlab
         return gitlab
     else:
         from core import github
-        _repo_module_cache = github
         return github
-
-
-def _get_cached_repo_module() -> ModuleType:
-    """Get the cached repo module, or load it if not cached.
-
-    Returns:
-        The cached github or gitlab module.
-    """
-    global _repo_module_cache
-    if _repo_module_cache is None:
-        return get_repo_module()
-    return _repo_module_cache
-
-
-def _reset_repo_module_cache() -> None:
-    """Reset the repo module cache. Useful for testing."""
-    global _repo_module_cache
-    _repo_module_cache = None
 
 
 class PrFlowError(Exception):
@@ -168,7 +142,7 @@ def create_mr(ticket_id: str, commit_message: str):
     Raises:
         PrFlowError: If PR/MR creation fails
     """
-    repo = _get_cached_repo_module()
+    repo = get_repo_module()
 
     # Try to find linked issue (GitHub only - GitLab tickets are in Asana/Trello)
     issue_number = None
@@ -227,10 +201,6 @@ def create_mr(ticket_id: str, commit_message: str):
         raise PrFlowError(f"Failed to create PR/MR: {e}")
 
 
-# Alias for backward compatibility
-create_pr = create_mr
-
-
 def merge_mr(pr_number: int) -> None:
     """Merge a pull request (GitHub) or merge request (GitLab) using squash merge.
 
@@ -240,7 +210,7 @@ def merge_mr(pr_number: int) -> None:
     Raises:
         PrFlowError: If merge fails
     """
-    repo = _get_cached_repo_module()
+    repo = get_repo_module()
 
     try:
         # Both modules have merge_pull_request/merge_merge_request with same signature
@@ -252,18 +222,14 @@ def merge_mr(pr_number: int) -> None:
         raise MergeError(f"Failed to merge PR/MR: {e}")
 
 
-# Alias for backward compatibility
-merge_pr = merge_mr
-
-
-def checkout_detached_main(default_branch: str = "main") -> None:
+def checkout_detached_default(default_branch: str) -> None:
     """Checkout detached HEAD at origin's default branch.
 
     This is worktree-safe since it doesn't checkout the branch itself,
     just a detached HEAD at that commit.
 
     Args:
-        default_branch: Name of the default branch
+        default_branch: Name of the default branch (required, no fallback)
     """
     try:
         git.fetch(remote="origin")
@@ -274,14 +240,14 @@ def checkout_detached_main(default_branch: str = "main") -> None:
         pass
 
 
-def sync_with_main(default_branch: str = "main") -> None:
-    """Sync current branch with latest main to avoid merge conflicts.
+def sync_with_default(default_branch: str) -> None:
+    """Sync current branch with latest default branch to avoid merge conflicts.
 
-    Fetches the latest main branch and merges it into the current branch.
+    Fetches the latest default branch and merges it into the current branch.
     This ensures the PR will be fast-forward mergeable.
 
     Args:
-        default_branch: Name of the default branch to sync with
+        default_branch: Name of the default branch to sync with (required, no fallback)
 
     Raises:
         PrFlowError: If fetch or merge fails (including conflicts)
@@ -305,7 +271,7 @@ def find_existing_pr(branch: str) -> int | None:
     Returns:
         PR/MR number if found, None otherwise
     """
-    repo = _get_cached_repo_module()
+    repo = get_repo_module()
 
     # Both modules have list_pull_requests/list_merge_requests with same signature
     if hasattr(repo, "list_merge_requests"):
@@ -329,7 +295,7 @@ def check_already_merged(ticket_id: str) -> int | None:
     Returns:
         PR/MR number if merged PR/MR found, None otherwise
     """
-    repo = _get_cached_repo_module()
+    repo = get_repo_module()
 
     # Both modules have find_merged_pr/find_merged_mr with same signature
     if hasattr(repo, "find_merged_mr"):
@@ -343,7 +309,7 @@ def pr_flow(
     commit_message: str,
     no_merge: bool = False,
     dry_run: bool = False,
-    default_branch: str = "main",
+    default_branch: str = "",
 ) -> PrFlowResult:
     """Run the complete PR flow: commit, push, create PR, merge.
 
@@ -354,18 +320,24 @@ def pr_flow(
         commit_message: Commit message / PR description
         no_merge: If True, don't merge the PR
         dry_run: If True, don't perform any real operations
-        default_branch: Name of the default branch (e.g., "main")
+        default_branch: Name of the default branch (required — callers must pass explicitly)
 
     Returns:
         PrFlowResult with all operation details
 
     Raises:
-        PrFlowError: If any operation fails
+        PrFlowError: If any operation fails or default_branch is not provided
     """
+    if not default_branch:
+        raise PrFlowError(
+            "default_branch must be explicitly provided — "
+            "read git.default_branch from config.yaml"
+        )
+
     current_branch = git.get_current_branch()
 
-    # Check if already merged (handles the case where we're on main and ticket is done)
-    if current_branch in ("main", "master"):
+    # Check if already merged (handles the case where we're on default branch and ticket is done)
+    if current_branch == default_branch:
         merged_pr = check_already_merged(ticket_id)
         if merged_pr:
             return PrFlowResult(
@@ -400,9 +372,9 @@ def pr_flow(
     # Stage and commit changes
     commit_sha = stage_and_commit(ticket_id, commit_message)
 
-    # Sync with latest main to avoid merge conflicts on GitHub
+    # Sync with latest default branch to avoid merge conflicts on GitHub
     # This ensures the PR will be fast-forward mergeable
-    sync_with_main(default_branch=default_branch)
+    sync_with_default(default_branch=default_branch)
 
     # Push to remote
     push_branch(current_branch)
@@ -410,7 +382,7 @@ def pr_flow(
     # Check if PR already exists
     existing_pr = find_existing_pr(current_branch)
 
-    repo = _get_cached_repo_module()
+    repo = get_repo_module()
 
     if existing_pr:
         # Use existing PR/MR
@@ -439,8 +411,8 @@ def pr_flow(
         except Exception:
             pass  # Non-fatal
 
-        # Checkout detached at main
-        checkout_detached_main(default_branch=default_branch)
+        # Checkout detached at default branch
+        checkout_detached_default(default_branch=default_branch)
 
     return PrFlowResult(
         ticket_id=ticket_id,

@@ -11,7 +11,6 @@ This is a port of .claude/scripts/ralph-prd.sh to Python.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import re
@@ -30,13 +29,15 @@ from commands.get_next import get_next_ticket
 from commands.mark_blocked import mark_blocked
 from commands.pr_flow import pr_flow, PrFlowError, MergeError
 from commands.ticket_done import ticket_done
-from core.config import get_pm_tool_type, ConfigError
+from core.claude_cli import parse_stream_json_result
+from core.config import get_pm_tool_type, get_ticket_prefix, ConfigError
 from core.pm import PMTool, GitHubPM, LocalPM
 from core.asana_pm import AsanaPM
 from core.git import stage_files
 from core.state import (
     Ticket,
-    load_workflow_state,
+    WorkflowState,
+    build_workflow_state,
     ensure_state_dir,
     get_latest_attempt,
     write_summary,
@@ -55,6 +56,7 @@ DEFAULT_MAX_ATTEMPTS = 3
 DEFAULT_SONNET_THRESHOLD = 2
 DEFAULT_ENGINEER_TIMEOUT = 30
 DEFAULT_VALIDATOR_TIMEOUT = 10
+DEFAULT_VALIDATOR_MAX_RETRIES = 2
 DEFAULT_WAIT_INTERVAL = 30  # seconds
 DEFAULT_MAX_WAIT_RETRIES = 60  # 60 * 30s = 30 minutes
 
@@ -112,13 +114,14 @@ class OrchestratorConfig:
         validator_model: Model to use for validation analysis (default: "sonnet")
         engineer_timeout: Timeout in minutes for engineer invocation
         validator_timeout: Timeout in minutes for validator invocation
+        validator_max_retries: Max validator-only retries before falling back to engineer re-run
         instance_label: Label for this ralph instance (from RALPH_LABEL env)
         use_assignee: Whether to also assign issues to current user when claiming
         test_command: Command to run tests
         lint_command: Command to run linter
         typecheck_command: Command to run type checker
         build_command: Command to run build
-        default_branch: Default git branch (main/master)
+        default_branch: Default git branch (from config.yaml git.default_branch)
     """
 
     max_attempts: int = DEFAULT_MAX_ATTEMPTS
@@ -127,13 +130,14 @@ class OrchestratorConfig:
     validator_model: str = "sonnet"
     engineer_timeout: int = DEFAULT_ENGINEER_TIMEOUT
     validator_timeout: int = DEFAULT_VALIDATOR_TIMEOUT
+    validator_max_retries: int = DEFAULT_VALIDATOR_MAX_RETRIES
     instance_label: str = ""
     use_assignee: bool = False
     test_command: str = ""
     lint_command: str = ""
     typecheck_command: str = ""
     build_command: str = ""
-    default_branch: str = "main"
+    default_branch: str = ""
 
 
 @dataclass
@@ -145,7 +149,6 @@ class EngineerResult:
         ticket_id: Ticket ID from output
         branch: Branch name from output
         commit: Commit SHA from output
-        state_file: Path to state file (if provided)
         raw_output: Raw output from Claude
     """
 
@@ -153,7 +156,6 @@ class EngineerResult:
     ticket_id: str | None = None
     branch: str | None = None
     commit: str | None = None
-    state_file: str | None = None
     raw_output: str = ""
 
 
@@ -266,6 +268,14 @@ def load_config(
                 instance_label = line.split("=", 1)[1].strip().strip("'\"")
                 break
 
+    default_branch = git_config.get("default_branch", "")
+    if not default_branch:
+        raise ConfigError(
+            "git.default_branch is not set in config.yaml. "
+            "This is required — add e.g.: git:\n  default_branch: develop-working",
+            file_path=config_file,
+        )
+
     return OrchestratorConfig(
         max_attempts=ralph_config.get("max_attempts", DEFAULT_MAX_ATTEMPTS),
         sonnet_threshold=ralph_config.get("sonnet_threshold", DEFAULT_SONNET_THRESHOLD),
@@ -273,13 +283,14 @@ def load_config(
         validator_model=ralph_config.get("validator_model", "sonnet"),
         engineer_timeout=ralph_config.get("engineer_timeout", DEFAULT_ENGINEER_TIMEOUT),
         validator_timeout=ralph_config.get("validator_timeout", DEFAULT_VALIDATOR_TIMEOUT),
+        validator_max_retries=ralph_config.get("validator_max_retries", DEFAULT_VALIDATOR_MAX_RETRIES),
         instance_label=instance_label,
         use_assignee=ralph_config.get("use_assignee", False),
         test_command=dev_config.get("test_command", ""),
         lint_command=dev_config.get("lint_command", ""),
         typecheck_command=dev_config.get("typecheck_command", ""),
         build_command=dev_config.get("build_command", ""),
-        default_branch=git_config.get("default_branch", "main"),
+        default_branch=default_branch,
     )
 
 
@@ -312,8 +323,9 @@ def create_pm_tool(config_file: Path | None = None) -> PMTool:
 
     # Create appropriate PM tool instance
     if pm_tool_type == "github":
-        logger.debug("Initializing GitHubPM")
-        return GitHubPM()
+        ticket_prefix = get_ticket_prefix(config_file)
+        logger.debug(f"Initializing GitHubPM (ticket_prefix={ticket_prefix})")
+        return GitHubPM(ticket_prefix=ticket_prefix)
     elif pm_tool_type == "asana":
         logger.debug("Initializing AsanaPM")
         return AsanaPM()
@@ -321,7 +333,7 @@ def create_pm_tool(config_file: Path | None = None) -> PMTool:
         logger.debug("Initializing LocalPM (degraded mode)")
         return LocalPM()
     else:
-        # For future PM tools (trello, linear), raise ConfigError
+        # For future PM tools (trello), raise ConfigError
         # until they're implemented
         raise ConfigError(
             f"PM tool '{pm_tool_type}' is not yet implemented. "
@@ -391,16 +403,11 @@ def parse_engineer_result(output: str, is_timeout: bool = False) -> EngineerResu
     commit_match = re.search(r"Commit:\s*(\S+)", output)
     commit = commit_match.group(1) if commit_match else None
 
-    # Parse state file
-    state_match = re.search(r"State file:\s*(.+)", output)
-    state_file = state_match.group(1).strip() if state_match else None
-
     return EngineerResult(
         status=status,
         ticket_id=ticket_id,
         branch=branch,
         commit=commit,
-        state_file=state_file,
         raw_output=output,
     )
 
@@ -516,6 +523,9 @@ def invoke_validator(
         "--verbose",
     ]
 
+    # Build clean environment (remove CLAUDECODE to allow nested invocation)
+    env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+
     try:
         # Run with timeout
         result = subprocess.run(
@@ -523,27 +533,11 @@ def invoke_validator(
             capture_output=True,
             text=True,
             timeout=timeout_minutes * 60,
+            env=env,
         )
 
         output = result.stdout + result.stderr
-
-        # Parse result from stream-json output
-        # Look for {"type":"result"} or {"type": "result"} JSON line
-        result_text = ""
-        for line in output.splitlines():
-            if '"type"' in line and '"result"' in line:
-                try:
-                    data = json.loads(line)
-                    if data.get("type") == "result":
-                        result_text = data.get("result", "")
-                        break
-                except json.JSONDecodeError:
-                    continue
-
-        # If no result JSON found, use full output
-        if not result_text:
-            result_text = output
-
+        result_text = parse_stream_json_result(output)
         return parse_validator_result(result_text)
 
     except subprocess.TimeoutExpired:
@@ -562,15 +556,17 @@ def invoke_validator(
 # ============================================================================
 
 
-def _update_system_manifest(
+def update_system_manifest(
     prd_path: Path,
     plan_path: Path,
     result: OrchestratorResult,
+    config: OrchestratorConfig,
 ) -> None:
     """Update docs/SYSTEM.md after tickets have been completed.
 
-    Invokes Claude (haiku) to review what was implemented and update the
-    system manifest if any architectural or structural changes were made.
+    Creates a branch from origin/{default_branch}, invokes Claude (haiku)
+    to review and edit the system manifest, then uses pr_flow to push,
+    create a PR, and merge. Finally returns to detached HEAD.
 
     This is a best-effort operation -- failures are logged but do not
     affect the orchestrator result.
@@ -579,7 +575,11 @@ def _update_system_manifest(
         prd_path: Path to PRD document that was implemented
         plan_path: Path to plan document for the implementation
         result: Orchestrator result containing completed ticket info
+        config: Orchestrator configuration (provides default_branch)
     """
+    from commands.pr_flow import pr_flow as run_pr_flow, checkout_detached_default, PrFlowError
+    from core import git
+
     # Extract completed ticket IDs from results
     completed_ids = [
         tr.ticket_id
@@ -592,7 +592,11 @@ def _update_system_manifest(
         return
 
     completed_ticket_ids = ", ".join(completed_ids)
-    completed_ticket_summary = ", ".join(completed_ids)
+    completed_ids_str = ", ".join(completed_ids[:3])  # Brief summary
+
+    # Create a branch for the SYSTEM.md update
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    branch_name = f"docs/system-manifest-update-{timestamp}"
 
     prompt = f"""You are updating the project's living system manifest after a batch of tickets were implemented.
 
@@ -613,7 +617,7 @@ def _update_system_manifest(
    - Document Index (new documents created)
 6. If changes are needed, edit SYSTEM.md using the Edit tool
 7. If changes were made, update the "Last updated" date comment at the top
-8. If changes were made, commit with: `docs: update SYSTEM.md after {completed_ticket_summary}`
+8. Do NOT commit -- the orchestrator will handle committing and merging
 
 ## Rules
 - ONLY update if there are meaningful system-level changes (new message types, new tables, new stores, etc.)
@@ -624,6 +628,12 @@ def _update_system_manifest(
 """
 
     try:
+        # Create branch from origin/{default_branch}
+        git.fetch(remote="origin")
+        git._run_git_command(
+            ["checkout", "-b", branch_name, f"origin/{config.default_branch}"]
+        )
+
         logger.info(f"Invoking Claude to update SYSTEM.md for tickets: {completed_ticket_ids}")
         invoke_claude(
             prompt=prompt,
@@ -631,9 +641,20 @@ def _update_system_manifest(
             timeout_minutes=5,
             dry_run=False,
         )
+
+        # Use pr_flow to push, create PR, and merge
+        run_pr_flow(
+            ticket_id="docs",
+            commit_message=f"docs: update SYSTEM.md after {completed_ids_str}",
+            default_branch=config.default_branch,
+        )
+
         logger.info("SYSTEM.md update step completed")
     except Exception as e:
         logger.warning(f"SYSTEM.md update failed (non-fatal): {e}")
+    finally:
+        # Always return to detached HEAD at default branch
+        checkout_detached_default(default_branch=config.default_branch)
 
 
 # ============================================================================
@@ -683,6 +704,9 @@ def invoke_claude(
         "--verbose",
     ]
 
+    # Build clean environment (remove CLAUDECODE to allow nested invocation)
+    env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+
     try:
         # Run with timeout
         result = subprocess.run(
@@ -690,27 +714,11 @@ def invoke_claude(
             capture_output=True,
             text=True,
             timeout=timeout_minutes * 60,
+            env=env,
         )
 
         output = result.stdout + result.stderr
-
-        # Parse result from stream-json output
-        # Look for {"type":"result"} or {"type": "result"} JSON line
-        result_text = ""
-        for line in output.splitlines():
-            if '"type"' in line and '"result"' in line:
-                try:
-                    data = json.loads(line)
-                    if data.get("type") == "result":
-                        result_text = data.get("result", "")
-                        break
-                except json.JSONDecodeError:
-                    continue
-
-        # If no result JSON found, use full output
-        if not result_text:
-            result_text = output
-
+        result_text = parse_stream_json_result(output)
         return parse_engineer_result(result_text)
 
     except subprocess.TimeoutExpired:
@@ -729,7 +737,6 @@ def process_ticket(
     config: OrchestratorConfig,
     prd_path: Path,
     plan_path: Path,
-    state_file: Path,
     dry_run: bool = False,
     pm_tool: PMTool | None = None,
     ralph_label: str | None = None,
@@ -741,7 +748,6 @@ def process_ticket(
         config: Orchestrator configuration
         prd_path: Path to PRD document
         plan_path: Path to plan document
-        state_file: Path to workflow state file
         dry_run: If True, don't invoke Claude
         pm_tool: Optional PM tool for ticket operations
         ralph_label: Optional ralph instance label for concurrency control
@@ -823,24 +829,47 @@ def process_ticket(
                 plan_path=plan_path,
                 state_dir=config.state_directory,
                 attempt=current_attempt,
+                default_branch=config.default_branch,
             )
 
-            # Invoke validator with configured model and timeout
-            validator_result = invoke_validator(
-                prompt=validator_prompt,
-                timeout_minutes=config.validator_timeout,
-                model=config.validator_model,
-                dry_run=dry_run,
-            )
+            # SLCA-0083: Validator retry loop
+            # Retry the validator up to validator_max_retries times before
+            # falling back to a full engineer re-run.
+            validator_confirmed = False
+            max_validator_calls = 1 + config.validator_max_retries
 
-            logger.info(f"Validator returned: {validator_result.status} for {ticket_id}")
+            for validator_attempt in range(max_validator_calls):
+                # Invoke validator with configured model and timeout
+                validator_result = invoke_validator(
+                    prompt=validator_prompt,
+                    timeout_minutes=config.validator_timeout,
+                    model=config.validator_model,
+                    dry_run=dry_run,
+                )
 
-            # Check validator result
-            if validator_result.status != VALIDATION_CONFIRMED:
-                # AIUI-0055: Validator rejected or returned unexpected status
-                # Do NOT proceed to pr_flow - increment attempt and retry
+                logger.info(f"Validator returned: {validator_result.status} for {ticket_id}")
+
+                if validator_result.status == VALIDATION_CONFIRMED:
+                    validator_confirmed = True
+                    break
+
+                # Validator did not confirm - log and potentially retry
                 logger.warning(
                     f"Validator rejected {ticket_id}: {validator_result.reason or 'No reason given'}"
+                )
+
+                # If this was the initial call or an earlier retry, log the retry
+                if validator_attempt < config.validator_max_retries:
+                    retry_num = validator_attempt + 1
+                    logger.info(
+                        f"Validator retry {retry_num}/{config.validator_max_retries} for {ticket_id}"
+                    )
+
+            if not validator_confirmed:
+                # All validator retries exhausted - fall back to full engineer re-run
+                logger.warning(
+                    f"All validator retries exhausted for {ticket_id}, "
+                    f"falling back to engineer re-run"
                 )
                 current_attempt += 1
                 continue
@@ -873,7 +902,6 @@ def process_ticket(
                 ticket_done(
                     ticket_id=ticket_id,
                     pr_number=str(pr_result.pr_number) if pr_result.pr_number else None,
-                    state_file=state_file,
                     pm_tool=pm_tool,
                     ralph_label=ralph_label,
                 )
@@ -898,7 +926,6 @@ def process_ticket(
                 mark_blocked(
                     ticket_id=ticket_id,
                     reason=f"Merge failed: {e}",
-                    state_file=state_file,
                     pm_tool=pm_tool,
                     ralph_label=ralph_label,
                 )
@@ -929,7 +956,6 @@ def process_ticket(
                 ticket_done(
                     ticket_id=ticket_id,
                     pr_number=None,
-                    state_file=state_file,
                     pm_tool=pm_tool,
                     ralph_label=ralph_label,
                 )
@@ -962,7 +988,6 @@ def process_ticket(
             ticket_done(
                 ticket_id=ticket_id,
                 pr_number=None,
-                state_file=state_file,
                 pm_tool=pm_tool,
                 ralph_label=ralph_label,
             )
@@ -1005,20 +1030,17 @@ def process_ticket(
     block_reason = f"Exceeded {config.max_attempts} attempts"
     logger.warning(f"Ticket {ticket_id} blocked after {_format_duration(duration)}: {block_reason}")
 
-    # Mark blocked in PM tool and state
+    # Mark blocked in PM tool
     if pm_tool is not None:
         try:
             mark_blocked(
                 ticket_id=ticket_id,
                 reason=block_reason,
-                state_file=state_file,
                 pm_tool=pm_tool,
                 ralph_label=ralph_label,
             )
             logger.debug(f"Marked ticket {ticket_id} as blocked in PM tool")
         except Exception as e:
-            # Log but don't fail - we still want to return blocked status
-            # The state file update in mark_blocked might have succeeded
             logger.error(f"Failed to mark ticket {ticket_id} as blocked in PM tool: {e}")
 
     write_summary(
@@ -1047,7 +1069,7 @@ def _build_initial_prompt(
     prd_path: Path,
     plan_path: Path,
     max_attempts: int,
-    default_branch: str = "main",
+    default_branch: str,
 ) -> str:
     """Build initial implementation prompt for first attempt.
 
@@ -1056,7 +1078,7 @@ def _build_initial_prompt(
         prd_path: Path to PRD document
         plan_path: Path to plan document
         max_attempts: Maximum attempts allowed
-        default_branch: Default git branch from config
+        default_branch: Default git branch from config (required)
 
     Returns:
         Formatted prompt string
@@ -1279,6 +1301,7 @@ def build_validator_prompt(
     plan_path: Path,
     state_dir: Path,
     attempt: int,
+    default_branch: str = "",
 ) -> str:
     """Build validation prompt for the validator agent.
 
@@ -1299,10 +1322,15 @@ def build_validator_prompt(
         plan_path: Path to plan document containing technical approach
         state_dir: Base directory for state files (e.g., "docs/state")
         attempt: Current attempt number
+        default_branch: Default git branch name (required, e.g., "develop-working")
 
     Returns:
         Formatted prompt string for the validation agent
     """
+    if not default_branch:
+        from core.config import get_default_branch
+        default_branch = get_default_branch()
+
     state_path = state_dir / ticket_id / f"attempt-{attempt}"
     engineer_state_file = state_path / "engineer-state.md"
     validation_output = state_path / "validation.md"
@@ -1340,13 +1368,14 @@ For each acceptance criterion in the PRD/plan for {ticket_id}:
 ### Step 2: Verify Upstream Dependencies Are Merged
 
 If the ticket has upstream dependencies listed in the plan (other tickets it depends ON):
-1. Run `git log develop --oneline | grep {{dependency-id}}` for each upstream dependency
-2. Verify each upstream dependency has a merge commit on develop
+1. Run `git log origin/{default_branch} --oneline | grep {{dependency-id}}` for each upstream dependency
+2. Verify each upstream dependency has a merge commit on `{default_branch}`
 3. If any upstream dependency is NOT merged, this is a validation failure
 
-**IMPORTANT:** Do NOT check whether the CURRENT ticket is merged to develop. The current
-ticket is still on its feature branch — merging to develop happens AFTER validation confirms.
-You are only checking that tickets this one DEPENDS ON are already merged.
+**IMPORTANT:** The default branch is `{default_branch}` (NOT necessarily "main").
+Do NOT check whether the CURRENT ticket is merged. The current ticket is still on its
+feature branch — merging to `{default_branch}` happens AFTER validation confirms.
+You are only checking that tickets this one DEPENDS ON are already merged to `{default_branch}`.
 
 ### Step 3: Scan for Bypass Language
 
@@ -1398,7 +1427,7 @@ Reason: [specific reason - criteria not met, bypass detected, dependencies not m
 
 Do NOT return VALIDATION_CONFIRMED if:
 - Any original acceptance criterion is not met
-- Upstream dependencies are not merged to develop
+- Upstream dependencies are not merged to {default_branch}
 - Bypass language is detected without valid justification
 - The engineer's interpretation differs significantly from PRD requirements
 """
@@ -1412,7 +1441,7 @@ Do NOT return VALIDATION_CONFIRMED if:
 def run_orchestrator(
     prd_path: Path,
     plan_path: Path,
-    state_file: Path,
+    workflow_state: WorkflowState,
     config_file: Path | None = None,
     dry_run: bool = False,
     max_wait_retries: int = DEFAULT_MAX_WAIT_RETRIES,
@@ -1425,11 +1454,11 @@ def run_orchestrator(
     Args:
         prd_path: Path to PRD document
         plan_path: Path to plan document
-        state_file: Path to workflow state file
+        workflow_state: In-memory workflow state built from PRD/plan
         config_file: Path to config.yaml
         dry_run: If True, don't invoke Claude
-        max_wait_retries: Maximum retries when waiting for dependencies
-        wait_interval: Seconds to wait between dependency checks
+        max_wait_retries: Maximum retries when waiting for dependencies or claims
+        wait_interval: Seconds to wait between dependency/claims checks
 
     Returns:
         OrchestratorResult with final status
@@ -1458,9 +1487,8 @@ def run_orchestrator(
             "Or add to .env: RALPH_LABEL=ralph-0"
         )
 
-    # Load workflow state
-    state = load_workflow_state(state_file)
-    logger.debug(f"Loaded workflow state from {state_file}")
+    # Use provided workflow state
+    state = workflow_state
 
     # Ticket processing loop
     wait_retry_count = 0
@@ -1485,8 +1513,37 @@ def run_orchestrator(
             if not dry_run:
                 time.sleep(wait_interval)
 
-            # Reload state (might have been updated by another instance)
-            state = load_workflow_state(state_file)
+            # Rebuild state from PRD (gets fresh data)
+            state = build_workflow_state(prd_path, plan_path)
+            continue
+
+        # Handle waiting on claims (all eligible tickets claimed by other instances)
+        if next_result.status == "waiting_on_claims":
+            wait_retry_count += 1
+
+            if wait_retry_count >= max_wait_retries:
+                # Max wait time reached waiting for other instances to complete
+                logger.info(
+                    "Max wait time exceeded: all eligible tickets are claimed by other "
+                    "instances. Exiting loop after %d retries.",
+                    wait_retry_count,
+                )
+                break
+
+            logger.info(
+                "All eligible tickets claimed by other instances (retry %d/%d). "
+                "Waiting %ds before retry...",
+                wait_retry_count,
+                max_wait_retries,
+                wait_interval,
+            )
+
+            # Wait and retry
+            if not dry_run:
+                time.sleep(wait_interval)
+
+            # Rebuild state from PRD (gets fresh data)
+            state = build_workflow_state(prd_path, plan_path)
             continue
 
         # Reset wait counter when we get a ticket
@@ -1503,7 +1560,6 @@ def run_orchestrator(
             config=config,
             prd_path=prd_path,
             plan_path=plan_path,
-            state_file=state_file,
             dry_run=dry_run,
             pm_tool=pm_tool,
             ralph_label=ralph_label,
@@ -1516,13 +1572,12 @@ def run_orchestrator(
         elif ticket_result.status == "blocked":
             result.blocked_count += 1
 
-        # Reload state for next iteration
-        state = load_workflow_state(state_file)
+        # Rebuild state for next iteration
+        state = build_workflow_state(prd_path, plan_path)
 
-    # Post-loop: Update SYSTEM.md if any tickets were completed
-    if result.completed_count > 0 and not dry_run:
-        logger.info("Updating docs/SYSTEM.md with changes from this run...")
-        _update_system_manifest(prd_path, plan_path, result)
+    # Note: SYSTEM.md update has been moved to /ralph-loop (post-loop step).
+    # This ensures it runs exactly once after ALL concurrent loops finish,
+    # rather than each orchestrator instance trying to update independently.
 
     # Determine final status
     result.end_time = datetime.now()
@@ -1546,7 +1601,6 @@ def main(
     prd_path: str,
     plan_path: str,
     dry_run: bool = False,
-    max_attempts: int | None = None,
     verbose: bool = False,
 ) -> int:
     """Main entry point for orchestrator.
@@ -1555,7 +1609,6 @@ def main(
         prd_path: Path to PRD document
         plan_path: Path to plan document
         dry_run: If True, don't invoke Claude
-        max_attempts: Override max attempts from config
         verbose: Show verbose output
 
     Returns:
@@ -1573,16 +1626,13 @@ def main(
             logger.error(f"Plan not found: {plan}")
             return 2
 
-        # Determine state file path
-        state_file = Path("workflow-state.json")
-        if not state_file.exists():
-            logger.error(f"State file not found: {state_file} - run setup first")
-            return 2
+        # Build workflow state from PRD and plan
+        ws = build_workflow_state(prd, plan)
 
         result = run_orchestrator(
             prd_path=prd,
             plan_path=plan,
-            state_file=state_file,
+            workflow_state=ws,
             dry_run=dry_run,
         )
 
@@ -1608,7 +1658,6 @@ if __name__ == "__main__":
     parser.add_argument("prd", help="Path to PRD document")
     parser.add_argument("plan", help="Path to plan document")
     parser.add_argument("--dry-run", action="store_true", help="Preview without invoking Claude")
-    parser.add_argument("--max-attempts", type=int, help="Max attempts per ticket")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
 
     args = parser.parse_args()
@@ -1617,6 +1666,5 @@ if __name__ == "__main__":
         prd_path=args.prd,
         plan_path=args.plan,
         dry_run=args.dry_run,
-        max_attempts=args.max_attempts,
         verbose=args.verbose,
     ))

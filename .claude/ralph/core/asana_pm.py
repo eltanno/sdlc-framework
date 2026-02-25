@@ -145,14 +145,26 @@ class AsanaPM:
             f"Asana API error ({response.status_code}): {error_msg or 'Unknown error'}"
         )
 
-    def _get(self, endpoint: str) -> dict[str, Any]:
-        """Make a GET request to the Asana API with retry logic.
+    def _request(
+        self,
+        method: str,
+        endpoint: str,
+        data: dict[str, Any] | None = None,
+        raw_response: bool = False,
+    ) -> dict[str, Any]:
+        """Make an HTTP request to the Asana API with retry and backoff.
+
+        This is the single implementation for all HTTP methods (GET, POST, PUT).
+        Retries on transient network and timeout errors with exponential backoff.
 
         Args:
+            method: HTTP method ("GET", "POST", or "PUT")
             endpoint: API endpoint path (e.g., "/tasks/12345")
+            data: Optional request body (will be wrapped in {"data": ...} for POST/PUT)
+            raw_response: If True, return the full JSON response instead of just 'data'
 
         Returns:
-            Response data from the 'data' field
+            Response data from the 'data' field, or full JSON if raw_response=True
 
         Raises:
             PMAuthError: For authentication errors
@@ -164,9 +176,28 @@ class AsanaPM:
         for attempt in range(MAX_RETRIES):
             try:
                 with httpx.Client(timeout=REQUEST_TIMEOUT) as client:
-                    response = client.get(url, headers=self._get_headers())
+                    if method == "GET":
+                        response = client.get(url, headers=self._get_headers())
+                    elif method == "POST":
+                        response = client.post(
+                            url,
+                            headers=self._get_headers(),
+                            json={"data": data} if data is not None else None,
+                        )
+                    elif method == "PUT":
+                        response = client.put(
+                            url,
+                            headers=self._get_headers(),
+                            json={"data": data} if data is not None else None,
+                        )
+                    else:
+                        raise ValueError(f"Unsupported HTTP method: {method}")
+
                     self._handle_response_error(response)
-                    return response.json().get("data", {})
+                    response_json = response.json()
+                    if raw_response:
+                        return response_json
+                    return response_json.get("data", {})
             except httpx.ConnectError as e:
                 last_error = e
                 logger.warning(f"Connection error (attempt {attempt + 1}/{MAX_RETRIES}): {e}")
@@ -182,6 +213,21 @@ class AsanaPM:
         if isinstance(last_error, httpx.ConnectError):
             raise PMError(f"Network connection error after {MAX_RETRIES} attempts: {last_error}")
         raise PMError(f"Request timeout after {MAX_RETRIES} attempts: {last_error}")
+
+    def _get(self, endpoint: str) -> dict[str, Any]:
+        """Make a GET request to the Asana API with retry logic.
+
+        Args:
+            endpoint: API endpoint path (e.g., "/tasks/12345")
+
+        Returns:
+            Response data from the 'data' field
+
+        Raises:
+            PMAuthError: For authentication errors
+            PMError: For other API errors
+        """
+        return self._request("GET", endpoint)
 
     def _post(self, endpoint: str, data: dict[str, Any]) -> dict[str, Any]:
         """Make a POST request to the Asana API with retry logic.
@@ -197,34 +243,7 @@ class AsanaPM:
             PMAuthError: For authentication errors
             PMError: For other API errors
         """
-        url = f"{ASANA_API_BASE}{endpoint}"
-        last_error: Exception | None = None
-
-        for attempt in range(MAX_RETRIES):
-            try:
-                with httpx.Client(timeout=REQUEST_TIMEOUT) as client:
-                    response = client.post(
-                        url,
-                        headers=self._get_headers(),
-                        json={"data": data},
-                    )
-                    self._handle_response_error(response)
-                    return response.json().get("data", {})
-            except httpx.ConnectError as e:
-                last_error = e
-                logger.warning(f"Connection error (attempt {attempt + 1}/{MAX_RETRIES}): {e}")
-            except httpx.TimeoutException as e:
-                last_error = e
-                logger.warning(f"Timeout (attempt {attempt + 1}/{MAX_RETRIES}): {e}")
-
-            if attempt < MAX_RETRIES - 1:
-                delay = RETRY_DELAY * (2 ** attempt)
-                logger.info(f"Retrying in {delay}s...")
-                time.sleep(delay)
-
-        if isinstance(last_error, httpx.ConnectError):
-            raise PMError(f"Network connection error after {MAX_RETRIES} attempts: {last_error}")
-        raise PMError(f"Request timeout after {MAX_RETRIES} attempts: {last_error}")
+        return self._request("POST", endpoint, data)
 
     def _put(self, endpoint: str, data: dict[str, Any]) -> dict[str, Any]:
         """Make a PUT request to the Asana API with retry logic.
@@ -240,34 +259,7 @@ class AsanaPM:
             PMAuthError: For authentication errors
             PMError: For other API errors
         """
-        url = f"{ASANA_API_BASE}{endpoint}"
-        last_error: Exception | None = None
-
-        for attempt in range(MAX_RETRIES):
-            try:
-                with httpx.Client(timeout=REQUEST_TIMEOUT) as client:
-                    response = client.put(
-                        url,
-                        headers=self._get_headers(),
-                        json={"data": data},
-                    )
-                    self._handle_response_error(response)
-                    return response.json().get("data", {})
-            except httpx.ConnectError as e:
-                last_error = e
-                logger.warning(f"Connection error (attempt {attempt + 1}/{MAX_RETRIES}): {e}")
-            except httpx.TimeoutException as e:
-                last_error = e
-                logger.warning(f"Timeout (attempt {attempt + 1}/{MAX_RETRIES}): {e}")
-
-            if attempt < MAX_RETRIES - 1:
-                delay = RETRY_DELAY * (2 ** attempt)
-                logger.info(f"Retrying in {delay}s...")
-                time.sleep(delay)
-
-        if isinstance(last_error, httpx.ConnectError):
-            raise PMError(f"Network connection error after {MAX_RETRIES} attempts: {last_error}")
-        raise PMError(f"Request timeout after {MAX_RETRIES} attempts: {last_error}")
+        return self._request("PUT", endpoint, data)
 
     # =========================================================================
     # Tag Management (SDLC-0053)
@@ -339,48 +331,21 @@ class AsanaPM:
             if offset:
                 endpoint += f"&offset={offset}"
 
-            # Make paginated request
-            url = f"{ASANA_API_BASE}{endpoint}"
-            last_error: Exception | None = None
+            # Make paginated request (retry handled by _request)
+            response_json = self._request("GET", endpoint, raw_response=True)
 
-            for attempt in range(MAX_RETRIES):
-                try:
-                    with httpx.Client(timeout=REQUEST_TIMEOUT) as client:
-                        response = client.get(url, headers=self._get_headers())
-                        self._handle_response_error(response)
-                        response_json = response.json()
+            # Extract tags from response
+            tags = response_json.get("data", [])
+            if isinstance(tags, list):
+                all_tags.extend(tags)
 
-                    # Extract tags from response
-                    tags = response_json.get("data", [])
-                    if isinstance(tags, list):
-                        all_tags.extend(tags)
-
-                    # Check for next page
-                    next_page = response_json.get("next_page")
-                    if next_page and next_page.get("offset"):
-                        offset = next_page.get("offset")
-                    else:
-                        # No more pages
-                        return all_tags
-
-                    break  # Success, continue to next page
-
-                except httpx.ConnectError as e:
-                    last_error = e
-                    logger.warning(f"Connection error (attempt {attempt + 1}/{MAX_RETRIES}): {e}")
-                except httpx.TimeoutException as e:
-                    last_error = e
-                    logger.warning(f"Timeout (attempt {attempt + 1}/{MAX_RETRIES}): {e}")
-
-                if attempt < MAX_RETRIES - 1:
-                    delay = RETRY_DELAY * (2 ** attempt)
-                    logger.info(f"Retrying in {delay}s...")
-                    time.sleep(delay)
-                else:
-                    # All retries exhausted
-                    if isinstance(last_error, httpx.ConnectError):
-                        raise PMError(f"Network connection error after {MAX_RETRIES} attempts: {last_error}")
-                    raise PMError(f"Request timeout after {MAX_RETRIES} attempts: {last_error}")
+            # Check for next page
+            next_page = response_json.get("next_page")
+            if next_page and next_page.get("offset"):
+                offset = next_page.get("offset")
+            else:
+                # No more pages
+                return all_tags
 
         return all_tags
 

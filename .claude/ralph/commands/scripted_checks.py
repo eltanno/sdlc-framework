@@ -29,6 +29,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
+from core.claude_cli import parse_stream_json_result
+from core.config import get_default_branch
+
 
 class CheckFunction(Protocol):
     """Protocol for scripted check functions.
@@ -189,6 +192,8 @@ def check_merge_commits(ticket_ids: list[str], state_dir: Path) -> ScriptedCheck
     - FR-8: Given ticket without merge commit, report "FAIL: {ticket} not merged to develop"
     - FR-8: Given all tickets have merge commits, report "PASS: All tickets merged"
     """
+    default_branch = get_default_branch()
+
     # Handle empty ticket list - nothing to check
     if not ticket_ids:
         return ScriptedCheckResult(
@@ -198,9 +203,9 @@ def check_merge_commits(ticket_ids: list[str], state_dir: Path) -> ScriptedCheck
         )
 
     try:
-        # Run git log to get all commits on develop
+        # Run git log to get all commits on the default branch
         result = subprocess.run(
-            ["git", "log", "develop", "--oneline"],
+            ["git", "log", default_branch, "--oneline"],
             capture_output=True,
             text=True,
             check=False,
@@ -230,13 +235,13 @@ def check_merge_commits(ticket_ids: list[str], state_dir: Path) -> ScriptedCheck
             return ScriptedCheckResult(
                 name="merge_commits",
                 passed=False,
-                details=f"FAIL: Tickets not merged to develop: {tickets_str}",
+                details=f"FAIL: Tickets not merged to {default_branch}: {tickets_str}",
             )
 
         return ScriptedCheckResult(
             name="merge_commits",
             passed=True,
-            details="PASS: All tickets merged to develop",
+            details=f"PASS: All tickets merged to {default_branch}",
         )
 
     except Exception as e:
@@ -283,6 +288,8 @@ def check_orphaned_branches(
     - FR-9: Given branch feature/AIUI-XXXX-* not merged, report "FAIL: {branch} not merged"
     - FR-9: Given all branches merged or deleted, report "PASS: No orphaned branches"
     """
+    default_branch = get_default_branch()
+
     # Handle empty ticket list - nothing to check
     if not ticket_ids:
         return ScriptedCheckResult(
@@ -307,9 +314,9 @@ def check_orphaned_branches(
                 details=f"FAIL: Git command failed (exit code {all_branches_result.returncode})",
             )
 
-        # Get list of branches already merged to develop
+        # Get list of branches already merged to the default branch
         merged_branches_result = subprocess.run(
-            ["git", "branch", "--merged", "develop"],
+            ["git", "branch", "--merged", default_branch],
             capture_output=True,
             text=True,
             check=False,
@@ -835,8 +842,6 @@ def run_post_loop_review(
     Raises:
         RuntimeError: If Claude CLI is not found in PATH
     """
-    import json
-
     if dry_run:
         return PostLoopReviewResult(
             status="dry_run",
@@ -876,23 +881,7 @@ def run_post_loop_review(
         )
 
         output = result.stdout + result.stderr
-
-        # Parse result from stream-json output
-        result_text = ""
-        for line in output.splitlines():
-            if '"type"' in line and '"result"' in line:
-                try:
-                    data = json.loads(line)
-                    if data.get("type") == "result":
-                        result_text = data.get("result", "")
-                        break
-                except json.JSONDecodeError:
-                    continue
-
-        # If no result JSON found, use full output
-        if not result_text:
-            result_text = output
-
+        result_text = parse_stream_json_result(output)
         return _parse_review_result(result_text, ticket_count=len(ticket_ids))
 
     except subprocess.TimeoutExpired:

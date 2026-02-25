@@ -566,88 +566,6 @@ class TestTicketStatus:
         data = json.loads(state_file.read_text())
         assert len(data["tickets"]) == 1
 
-    def test_update_ticket_status_changes_status(self, tmp_path: Path):
-        """Given a state file with tickets list, update_ticket_status updates it."""
-        from core.state import load_workflow_state, update_ticket_status
-
-        # State with tickets list
-        state = {
-            "prd_path": "docs/prds/test.md",
-            "plan_path": "docs/plans/test.md",
-            "tickets": [
-                {"id": "TASK-001", "title": "First", "status": "pending", "dependencies": []},
-            ],
-            "ralph": {
-                "tickets": ["TASK-001"],
-                "dependencies": {},
-                "attempts": {},
-                "blocked": {},
-                "source": "github",
-            },
-            "current_ticket": None,
-        }
-
-        state_file = tmp_path / "workflow-state.json"
-        state_file.write_text(json.dumps(state))
-
-        update_ticket_status(state_file, "TASK-001", "in_progress")
-
-        updated_state = load_workflow_state(state_file)
-        assert updated_state.tickets[0].status == "in_progress"
-
-    def test_get_ticket_by_id_returns_ticket(self, tmp_path: Path):
-        """Given a valid ticket ID, get_ticket_by_id returns the ticket."""
-        from core.state import load_workflow_state, get_ticket_by_id
-
-        state = {
-            "prd_path": "docs/prds/test.md",
-            "plan_path": "docs/plans/test.md",
-            "tickets": [
-                {"id": "TASK-001", "title": "First", "status": "pending", "dependencies": []},
-                {"id": "TASK-002", "title": "Second", "status": "pending", "dependencies": []},
-            ],
-            "ralph": {
-                "tickets": ["TASK-001", "TASK-002"],
-                "dependencies": {},
-                "attempts": {},
-                "blocked": {},
-                "source": "github",
-            },
-            "current_ticket": None,
-        }
-
-        state_file = tmp_path / "workflow-state.json"
-        state_file.write_text(json.dumps(state))
-
-        workflow_state = load_workflow_state(state_file)
-        ticket = get_ticket_by_id(workflow_state, "TASK-002")
-
-        assert ticket is not None
-        assert ticket.id == "TASK-002"
-        assert ticket.title == "Second"
-
-    def test_get_ticket_by_id_returns_none_for_invalid_id(self, tmp_path: Path):
-        """Given an invalid ticket ID, get_ticket_by_id returns None."""
-        from core.state import load_workflow_state, get_ticket_by_id
-
-        state = {
-            "prd_path": "docs/prds/test.md",
-            "plan_path": "docs/plans/test.md",
-            "tickets": [
-                {"id": "TASK-001", "title": "First", "status": "pending", "dependencies": []},
-            ],
-            "current_ticket": None,
-        }
-
-        state_file = tmp_path / "workflow-state.json"
-        state_file.write_text(json.dumps(state))
-
-        workflow_state = load_workflow_state(state_file)
-        ticket = get_ticket_by_id(workflow_state, "TASK-INVALID")
-
-        assert ticket is None
-
-
 class TestPromptBuilding:
     """Tests for prompt template building."""
 
@@ -702,6 +620,47 @@ dev:
         result = build_prompt(template_file, config_dir=tmp_path)
 
         assert result == "Run tests with: pytest"
+
+    def test_build_prompt_reads_default_branch_from_git_section(self, tmp_path: Path):
+        """Given config.yaml has git.default_branch, build_prompt substitutes DEFAULT_BRANCH
+        from the git section, not the dev section.
+        """
+        from core.state import build_prompt
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""\
+git:
+  default_branch: "develop-working"
+dev:
+  test_command: "pytest"
+""")
+
+        template_file = tmp_path / "template.md"
+        template_file.write_text("Branch: {DEFAULT_BRANCH}")
+
+        result = build_prompt(template_file, config_dir=tmp_path)
+
+        assert result == "Branch: develop-working"
+
+    def test_build_prompt_default_branch_not_from_dev_section(self, tmp_path: Path):
+        """Given config.yaml has default_branch only under dev (not git),
+        build_prompt does NOT substitute DEFAULT_BRANCH since it reads from git section.
+        """
+        from core.state import build_prompt
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""\
+dev:
+  default_branch: "should-not-be-used"
+""")
+
+        template_file = tmp_path / "template.md"
+        template_file.write_text("Branch: {DEFAULT_BRANCH}")
+
+        result = build_prompt(template_file, config_dir=tmp_path)
+
+        # DEFAULT_BRANCH should remain unsubstituted because git section is missing
+        assert "{DEFAULT_BRANCH}" in result
 
 
 class TestAdditionalCoverage:

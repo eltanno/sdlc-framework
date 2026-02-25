@@ -24,15 +24,13 @@ from commands.orchestrator import (
     run_orchestrator,
     process_ticket,
     parse_engineer_result,
-    parse_validator_result,
-    invoke_validator,
-    build_validator_prompt,
     EngineerResult,
     ValidatorResult,
     VALIDATION_PASSED,
     VALIDATION_FAILED,
     VALIDATION_CONFIRMED,
     VALIDATION_REJECTED,
+    DEFAULT_VALIDATOR_MAX_RETRIES,
 )
 from core.state import WorkflowState, Ticket
 
@@ -54,6 +52,7 @@ ralph:
   validator_model: "haiku"
   engineer_timeout: 30
   validator_timeout: 10
+  validator_max_retries: 2
 
 pm:
   tool: github
@@ -161,17 +160,20 @@ class TestLoadConfig:
         assert config.validator_model == "haiku"
         assert config.engineer_timeout == 30
         assert config.validator_timeout == 10
+        assert config.validator_max_retries == 2
 
     def test_load_config_defaults(self, tmp_path: Path) -> None:
         """Test loading config with missing values uses defaults."""
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("ralph:\n  max_attempts: 5\n")
+        config_file.write_text("ralph:\n  max_attempts: 5\ngit:\n  default_branch: develop-working\n")
 
         config = load_config(config_file=config_file)
 
         assert config.max_attempts == 5
         assert config.sonnet_threshold == 2  # Default
         assert config.engineer_timeout == 30  # Default
+        assert config.validator_max_retries == DEFAULT_VALIDATOR_MAX_RETRIES  # Default
+        assert config.default_branch == "develop-working"
 
     def test_load_config_file_not_found(self, tmp_path: Path) -> None:
         """Test loading non-existent config file raises error."""
@@ -230,20 +232,18 @@ Commit: abc1234
         assert result.commit is None
 
     def test_parse_validation_failed(self) -> None:
-        """Test parsing VALIDATION_FAILED result extracts correct state file path."""
+        """Test parsing VALIDATION_FAILED result extracts ticket and branch."""
         output = """
 VALIDATION_FAILED
 
 Ticket: TASK-002
 Branch: feature/TASK-002-implementation
 Commit: def5678
-State file: docs/state/TASK-002/attempt-1/engineer-state.md
 """
         result = parse_engineer_result(output)
 
         assert result.status == VALIDATION_FAILED
         assert result.ticket_id == "TASK-002"
-        assert result.state_file == "docs/state/TASK-002/attempt-1/engineer-state.md"
         assert result.branch == "feature/TASK-002-implementation"
         assert result.commit == "def5678"
 
@@ -320,7 +320,6 @@ class TestProcessTicket:
             ticket_id="TASK-001",
             branch="feature/TASK-001-implementation",
             commit="abc1234",
-            state_file=None,
         )
 
         # Mock validator prompt and result (AIUI-0055)
@@ -342,7 +341,7 @@ class TestProcessTicket:
             config=config,
             prd_path=tmp_path / "prd.md",
             plan_path=tmp_path / "plan.md",
-            state_file=tmp_path / "state.json",
+
             dry_run=False,
             pm_tool=None,
             ralph_label="ralph-test",
@@ -374,7 +373,6 @@ class TestProcessTicket:
         ticket_done_call = mock_ticket_done.call_args
         assert ticket_done_call[1]["ticket_id"] == "TASK-001"
         assert ticket_done_call[1]["pr_number"] == "42"
-        assert ticket_done_call[1]["state_file"] == tmp_path / "state.json"
         assert ticket_done_call[1]["pm_tool"] is None
         assert ticket_done_call[1]["ralph_label"] == "ralph-test"
 
@@ -430,7 +428,6 @@ class TestProcessTicket:
             ticket_id="TASK-001",
             branch="feature/TASK-001-implementation",
             commit="abc1234",
-            state_file=str(tmp_path / "docs/state/TASK-001/attempt-1/engineer-state.md"),
         )
 
         # Create a mock PM tool to trigger mark_blocked call
@@ -441,7 +438,7 @@ class TestProcessTicket:
             config=config,
             prd_path=tmp_path / "prd.md",
             plan_path=tmp_path / "plan.md",
-            state_file=tmp_path / "state.json",
+
             dry_run=False,
             pm_tool=mock_pm_tool,
             ralph_label="ralph-test",
@@ -455,7 +452,6 @@ class TestProcessTicket:
         mock_mark_blocked.assert_called_once()
         mark_blocked_call = mock_mark_blocked.call_args
         assert mark_blocked_call[1]["ticket_id"] == "TASK-001"
-        assert mark_blocked_call[1]["state_file"] == tmp_path / "state.json"
         assert mark_blocked_call[1]["pm_tool"] == mock_pm_tool
         assert mark_blocked_call[1]["ralph_label"] == "ralph-test"
         reason_lower = mark_blocked_call[1]["reason"].lower()
@@ -496,7 +492,7 @@ class TestProcessTicket:
             config=config,
             prd_path=tmp_path / "prd.md",
             plan_path=tmp_path / "plan.md",
-            state_file=tmp_path / "state.json",
+
             dry_run=True,
         )
 
@@ -521,10 +517,10 @@ class TestRunOrchestrator:
     @patch("commands.orchestrator.create_pm_tool")
     @patch("commands.orchestrator.process_ticket")
     @patch("commands.orchestrator.get_next_ticket")
-    @patch("commands.orchestrator.load_workflow_state")
+    @patch("commands.orchestrator.build_workflow_state")
     def test_run_orchestrator_all_complete(
         self,
-        mock_load_state: MagicMock,
+        mock_build_state: MagicMock,
         mock_get_next: MagicMock,
         mock_process: MagicMock,
         mock_create_pm: MagicMock,
@@ -540,7 +536,7 @@ class TestRunOrchestrator:
                 Ticket(id="TASK-001", title="Task 1", status="pending", dependencies=[]),
             ],
         )
-        mock_load_state.return_value = mock_state
+        mock_build_state.return_value = mock_state
 
         mock_pm_tool = MagicMock()
         mock_create_pm.return_value = mock_pm_tool
@@ -562,7 +558,7 @@ class TestRunOrchestrator:
         result = run_orchestrator(
             prd_path=tmp_path / "prd.md",
             plan_path=tmp_path / "plan.md",
-            state_file=tmp_path / "state.json",
+            workflow_state=mock_state,
             config_file=sample_config_yaml,
             dry_run=False,
         )
@@ -573,10 +569,10 @@ class TestRunOrchestrator:
         assert result.status == "complete"
 
     @patch("commands.orchestrator.get_next_ticket")
-    @patch("commands.orchestrator.load_workflow_state")
+    @patch("commands.orchestrator.build_workflow_state")
     def test_run_orchestrator_no_tickets(
         self,
-        mock_load_state: MagicMock,
+        mock_build_state: MagicMock,
         mock_get_next: MagicMock,
         tmp_path: Path,
         sample_config_yaml: Path,
@@ -588,7 +584,7 @@ class TestRunOrchestrator:
             tickets=[],
         )
 
-        mock_load_state.return_value = mock_state
+        mock_build_state.return_value = mock_state
 
         mock_get_next.return_value = MagicMock(
             ticket=None,
@@ -599,7 +595,7 @@ class TestRunOrchestrator:
         result = run_orchestrator(
             prd_path=tmp_path / "prd.md",
             plan_path=tmp_path / "plan.md",
-            state_file=tmp_path / "state.json",
+            workflow_state=mock_state,
             config_file=sample_config_yaml,
             dry_run=False,
         )
@@ -609,10 +605,10 @@ class TestRunOrchestrator:
 
     @patch("commands.orchestrator.create_pm_tool")
     @patch("commands.orchestrator.get_next_ticket")
-    @patch("commands.orchestrator.load_workflow_state")
+    @patch("commands.orchestrator.build_workflow_state")
     def test_run_orchestrator_waiting_on_dependencies(
         self,
-        mock_load_state: MagicMock,
+        mock_build_state: MagicMock,
         mock_get_next: MagicMock,
         mock_create_pm: MagicMock,
         tmp_path: Path,
@@ -631,7 +627,7 @@ class TestRunOrchestrator:
                 ),
             ],
         )
-        mock_load_state.return_value = mock_state
+        mock_build_state.return_value = mock_state
 
         mock_pm_tool = MagicMock()
         mock_create_pm.return_value = mock_pm_tool
@@ -646,7 +642,7 @@ class TestRunOrchestrator:
         result = run_orchestrator(
             prd_path=tmp_path / "prd.md",
             plan_path=tmp_path / "plan.md",
-            state_file=tmp_path / "state.json",
+            workflow_state=mock_state,
             config_file=sample_config_yaml,
             dry_run=False,
             max_wait_retries=3,
@@ -882,12 +878,12 @@ git:
         assert "ASANA_PROJECT_ID" in error_message
 
     @patch("commands.orchestrator.get_next_ticket")
-    @patch("commands.orchestrator.load_workflow_state")
+    @patch("commands.orchestrator.build_workflow_state")
     @patch("commands.orchestrator.create_pm_tool")
     def test_run_orchestrator_passes_pm_tool_to_get_next(
         self,
         mock_create_pm: MagicMock,
-        mock_load_state: MagicMock,
+        mock_build_state: MagicMock,
         mock_get_next: MagicMock,
         tmp_path: Path,
         github_config_yaml: Path,
@@ -902,7 +898,7 @@ git:
             plan_path=tmp_path / "plan.md",
             tickets=[],
         )
-        mock_load_state.return_value = mock_state
+        mock_build_state.return_value = mock_state
 
         mock_get_next.return_value = MagicMock(
             ticket=None,
@@ -915,7 +911,7 @@ git:
             run_orchestrator(
                 prd_path=tmp_path / "prd.md",
                 plan_path=tmp_path / "plan.md",
-                state_file=tmp_path / "state.json",
+                workflow_state=mock_state,
                 config_file=github_config_yaml,
                 dry_run=False,
             )
@@ -926,109 +922,18 @@ git:
         assert call_kwargs["pm_tool"] == mock_pm_tool
         assert call_kwargs["ralph_label"] == "ralph-1"
 
-    @patch("commands.orchestrator.stage_summary_files")
-    @patch("commands.orchestrator.write_summary")
-    @patch("commands.orchestrator.ensure_state_dir")
-    @patch("commands.orchestrator.get_latest_attempt")
-    @patch("commands.orchestrator.ticket_done")
-    @patch("commands.orchestrator.pr_flow")
-    @patch("commands.orchestrator.invoke_validator")
-    @patch("commands.orchestrator.invoke_claude")
-    @patch("commands.orchestrator.build_validator_prompt")
-    @patch("commands.orchestrator.get_next_ticket")
-    @patch("commands.orchestrator.load_workflow_state")
-    @patch("commands.orchestrator.create_pm_tool")
-    def test_run_orchestrator_passes_pm_tool_to_ticket_done(
-        self,
-        mock_create_pm: MagicMock,
-        mock_load_state: MagicMock,
-        mock_get_next: MagicMock,
-        mock_build_prompt: MagicMock,
-        mock_invoke: MagicMock,
-        mock_invoke_validator: MagicMock,
-        mock_pr_flow: MagicMock,
-        mock_ticket_done: MagicMock,
-        mock_get_latest_attempt: MagicMock,
-        mock_ensure_state_dir: MagicMock,
-        mock_write_summary: MagicMock,
-        mock_stage_summary_files: MagicMock,
-        tmp_path: Path,
-        github_config_yaml: Path,
-    ) -> None:
-        """Test that ticket_done receives correct PM tool, ticket_id, and PR data."""
-        # Setup
-        mock_pm_tool = MagicMock()
-        mock_pm_tool.get_pm_type.return_value = "github"
-        mock_create_pm.return_value = mock_pm_tool
-        mock_get_latest_attempt.return_value = 0  # First attempt
-
-        ticket = Ticket(
-            id="TASK-001",
-            title="Test Ticket",
-            status="pending",
-            dependencies=[],
-        )
-
-        mock_state = WorkflowState(
-            prd_path=tmp_path / "prd.md",
-            plan_path=tmp_path / "plan.md",
-            tickets=[ticket],
-        )
-        mock_load_state.return_value = mock_state
-
-        # First call returns ticket, second returns complete
-        mock_get_next.side_effect = [
-            MagicMock(ticket=ticket, has_more=True, status="ready"),
-            MagicMock(ticket=None, has_more=False, status="complete"),
-        ]
-
-        # Claude returns VALIDATION_PASSED
-        mock_invoke.return_value = EngineerResult(
-            status=VALIDATION_PASSED,
-            ticket_id="TASK-001",
-            branch="feature/TASK-001-impl",
-            commit="abc123",
-        )
-
-        # Validator confirms the work
-        mock_invoke_validator.return_value = ValidatorResult(
-            status=VALIDATION_CONFIRMED,
-            reason="All criteria verified.",
-        )
-
-        # PR flow succeeds
-        mock_pr_flow.return_value = MagicMock(pr_number=42)
-
-        with patch.dict(os.environ, {"RALPH_LABEL": "ralph-1"}):
-            run_orchestrator(
-                prd_path=tmp_path / "prd.md",
-                plan_path=tmp_path / "plan.md",
-                state_file=tmp_path / "state.json",
-                config_file=github_config_yaml,
-                dry_run=False,
-            )
-
-        # Verify ticket_done was called with correct complete data set
-        mock_ticket_done.assert_called_once()
-        call_kwargs = mock_ticket_done.call_args[1]
-        assert call_kwargs["ticket_id"] == "TASK-001"
-        assert call_kwargs["pr_number"] == "42"
-        assert call_kwargs["state_file"] == tmp_path / "state.json"
-        assert call_kwargs["pm_tool"] == mock_pm_tool
-        assert call_kwargs["ralph_label"] == "ralph-1"
-
     @patch("commands.orchestrator.write_summary")
     @patch("commands.orchestrator.ensure_state_dir")
     @patch("commands.orchestrator.get_latest_attempt")
     @patch("commands.orchestrator.mark_blocked")
     @patch("commands.orchestrator.invoke_claude")
     @patch("commands.orchestrator.get_next_ticket")
-    @patch("commands.orchestrator.load_workflow_state")
+    @patch("commands.orchestrator.build_workflow_state")
     @patch("commands.orchestrator.create_pm_tool")
     def test_run_orchestrator_passes_pm_tool_to_mark_blocked(
         self,
         mock_create_pm: MagicMock,
-        mock_load_state: MagicMock,
+        mock_build_state: MagicMock,
         mock_get_next: MagicMock,
         mock_invoke: MagicMock,
         mock_mark_blocked: MagicMock,
@@ -1057,7 +962,7 @@ git:
             plan_path=tmp_path / "plan.md",
             tickets=[ticket],
         )
-        mock_load_state.return_value = mock_state
+        mock_build_state.return_value = mock_state
 
         # First call returns ticket, subsequent calls return complete
         mock_get_next.side_effect = [
@@ -1071,7 +976,6 @@ git:
             ticket_id="TASK-001",
             branch="feature/TASK-001-impl",
             commit="abc123",
-            state_file="docs/state/TASK-001/attempt-1/engineer-state.md",
         )
 
         # Override max attempts to 1 for faster test
@@ -1092,7 +996,7 @@ git:
             run_orchestrator(
                 prd_path=tmp_path / "prd.md",
                 plan_path=tmp_path / "plan.md",
-                state_file=tmp_path / "state.json",
+                workflow_state=mock_state,
                 config_file=config_file,
                 dry_run=False,
             )
@@ -1101,7 +1005,6 @@ git:
         mock_mark_blocked.assert_called_once()
         call_kwargs = mock_mark_blocked.call_args[1]
         assert call_kwargs["ticket_id"] == "TASK-001"
-        assert call_kwargs["state_file"] == tmp_path / "state.json"
         assert call_kwargs["pm_tool"] == mock_pm_tool
         assert call_kwargs["ralph_label"] == "ralph-1"
         # Verify reason explains the failure
@@ -1109,12 +1012,12 @@ git:
         assert "exceeded" in reason_lower and "attempts" in reason_lower
 
     @patch("commands.orchestrator.get_next_ticket")
-    @patch("commands.orchestrator.load_workflow_state")
+    @patch("commands.orchestrator.build_workflow_state")
     @patch("commands.orchestrator.create_pm_tool")
     def test_run_orchestrator_handles_pm_error_gracefully(
         self,
         mock_create_pm: MagicMock,
-        mock_load_state: MagicMock,
+        mock_build_state: MagicMock,
         mock_get_next: MagicMock,
         tmp_path: Path,
         github_config_yaml: Path,
@@ -1129,7 +1032,7 @@ git:
             plan_path=tmp_path / "plan.md",
             tickets=[Ticket(id="TASK-001", title="Test", status="pending", dependencies=[])],
         )
-        mock_load_state.return_value = mock_state
+        mock_build_state.return_value = mock_state
 
         # get_next_ticket returns an error status
         mock_get_next.return_value = MagicMock(
@@ -1143,7 +1046,7 @@ git:
             result = run_orchestrator(
                 prd_path=tmp_path / "prd.md",
                 plan_path=tmp_path / "plan.md",
-                state_file=tmp_path / "state.json",
+                workflow_state=mock_state,
                 config_file=github_config_yaml,
                 dry_run=False,
             )
@@ -1157,12 +1060,12 @@ git:
         assert result.blocked_count == 0
 
     @patch("commands.orchestrator.get_next_ticket")
-    @patch("commands.orchestrator.load_workflow_state")
+    @patch("commands.orchestrator.build_workflow_state")
     @patch("commands.orchestrator.create_pm_tool")
     def test_run_orchestrator_reads_ralph_label_from_env(
         self,
         mock_create_pm: MagicMock,
-        mock_load_state: MagicMock,
+        mock_build_state: MagicMock,
         mock_get_next: MagicMock,
         tmp_path: Path,
         github_config_yaml: Path,
@@ -1177,7 +1080,7 @@ git:
             plan_path=tmp_path / "plan.md",
             tickets=[],
         )
-        mock_load_state.return_value = mock_state
+        mock_build_state.return_value = mock_state
 
         mock_get_next.return_value = MagicMock(
             ticket=None,
@@ -1190,7 +1093,7 @@ git:
             run_orchestrator(
                 prd_path=tmp_path / "prd.md",
                 plan_path=tmp_path / "plan.md",
-                state_file=tmp_path / "state.json",
+                workflow_state=mock_state,
                 config_file=github_config_yaml,
                 dry_run=False,
             )
@@ -1205,7 +1108,7 @@ git:
             run_orchestrator(
                 prd_path=tmp_path / "prd.md",
                 plan_path=tmp_path / "plan.md",
-                state_file=tmp_path / "state.json",
+                workflow_state=mock_state,
                 config_file=github_config_yaml,
                 dry_run=False,
             )
@@ -1235,11 +1138,17 @@ git:
             use_assignee=False,
         )
 
+        mock_ws = WorkflowState(
+            prd_path=tmp_path / "prd.md",
+            plan_path=tmp_path / "plan.md",
+            tickets=[],
+        )
+
         with pytest.raises(RuntimeError) as exc_info:
             run_orchestrator(
                 prd_path=tmp_path / "prd.md",
                 plan_path=tmp_path / "plan.md",
-                state_file=tmp_path / "state.json",
+                workflow_state=mock_ws,
                 config_file=github_config_yaml,
                 dry_run=False,
             )
@@ -1306,182 +1215,6 @@ class TestValidatorIntegration:
 
     FR-1: Invoke Validation Agent After Engineer Completes
     """
-
-    @patch("commands.orchestrator.stage_summary_files")
-    @patch("commands.orchestrator.write_summary")
-    @patch("commands.orchestrator.ensure_state_dir")
-    @patch("commands.orchestrator.get_latest_attempt")
-    @patch("commands.orchestrator.invoke_claude")
-    @patch("commands.orchestrator.invoke_validator")
-    @patch("commands.orchestrator.build_validator_prompt")
-    @patch("commands.orchestrator.pr_flow")
-    @patch("commands.orchestrator.ticket_done")
-    def test_validator_invoked_after_engineer_validation_passed(
-        self,
-        mock_ticket_done: MagicMock,
-        mock_pr_flow: MagicMock,
-        mock_build_prompt: MagicMock,
-        mock_invoke_validator: MagicMock,
-        mock_invoke_claude: MagicMock,
-        mock_get_latest_attempt: MagicMock,
-        mock_ensure_state_dir: MagicMock,
-        mock_write_summary: MagicMock,
-        mock_stage_summary_files: MagicMock,
-        tmp_path: Path,
-    ) -> None:
-        """Given engineer returns VALIDATION_PASSED, when processing ticket, then validator is invoked.
-
-        FR-1: Given an engineer returns VALIDATION_PASSED, when the orchestrator
-        processes the result, then it invokes the validation agent before calling pr_flow().
-        """
-        from commands.orchestrator import (
-            ValidatorResult,
-            VALIDATION_CONFIRMED,
-        )
-
-        ticket = Ticket(
-            id="TASK-001",
-            title="Test Ticket",
-            status="pending",
-            dependencies=[],
-        )
-
-        config = OrchestratorConfig(
-            max_attempts=3,
-            sonnet_threshold=2,
-            state_directory=tmp_path / "docs/state",
-            validator_model="sonnet",
-            engineer_timeout=30,
-            validator_timeout=10,
-        )
-
-        mock_get_latest_attempt.return_value = 0  # First attempt
-
-        # Engineer returns VALIDATION_PASSED
-        mock_invoke_claude.return_value = EngineerResult(
-            status=VALIDATION_PASSED,
-            ticket_id="TASK-001",
-            branch="feature/TASK-001-implementation",
-            commit="abc1234",
-        )
-
-        # Mock validator prompt building
-        mock_build_prompt.return_value = "Validator prompt for TASK-001"
-
-        # Validator returns VALIDATION_CONFIRMED
-        mock_invoke_validator.return_value = ValidatorResult(
-            status=VALIDATION_CONFIRMED,
-            ticket_id="TASK-001",
-        )
-
-        # PR flow succeeds
-        mock_pr_flow.return_value = MagicMock(pr_number=42, merged=True)
-
-        result = process_ticket(
-            ticket=ticket,
-            config=config,
-            prd_path=tmp_path / "prd.md",
-            plan_path=tmp_path / "plan.md",
-            state_file=tmp_path / "state.json",
-            dry_run=False,
-            pm_tool=None,
-            ralph_label="ralph-test",
-        )
-
-        # Verify validator was invoked after engineer passed
-        mock_invoke_validator.assert_called_once()
-        validator_call = mock_invoke_validator.call_args
-        assert validator_call[1]["model"] == "sonnet"
-        assert validator_call[1]["timeout_minutes"] == 10
-
-        # Verify result is completed
-        assert result.status == "completed"
-        assert result.pr_number == 42
-
-    @patch("commands.orchestrator.stage_summary_files")
-    @patch("commands.orchestrator.write_summary")
-    @patch("commands.orchestrator.ensure_state_dir")
-    @patch("commands.orchestrator.get_latest_attempt")
-    @patch("commands.orchestrator.invoke_claude")
-    @patch("commands.orchestrator.invoke_validator")
-    @patch("commands.orchestrator.build_validator_prompt")
-    @patch("commands.orchestrator.pr_flow")
-    @patch("commands.orchestrator.ticket_done")
-    def test_pr_flow_called_when_validator_confirms(
-        self,
-        mock_ticket_done: MagicMock,
-        mock_pr_flow: MagicMock,
-        mock_build_prompt: MagicMock,
-        mock_invoke_validator: MagicMock,
-        mock_invoke_claude: MagicMock,
-        mock_get_latest_attempt: MagicMock,
-        mock_ensure_state_dir: MagicMock,
-        mock_write_summary: MagicMock,
-        mock_stage_summary_files: MagicMock,
-        tmp_path: Path,
-    ) -> None:
-        """Given validator returns VALIDATION_CONFIRMED, when processing ticket, then pr_flow is called.
-
-        FR-1: Given the validation agent runs, when it completes, then it returns
-        either VALIDATION_CONFIRMED or VALIDATION_REJECTED.
-        """
-        from commands.orchestrator import (
-            ValidatorResult,
-            VALIDATION_CONFIRMED,
-        )
-
-        ticket = Ticket(
-            id="TASK-001",
-            title="Test Ticket",
-            status="pending",
-            dependencies=[],
-        )
-
-        config = OrchestratorConfig(
-            max_attempts=3,
-            sonnet_threshold=2,
-            state_directory=tmp_path / "docs/state",
-            validator_model="sonnet",
-            engineer_timeout=30,
-            validator_timeout=10,
-        )
-
-        mock_get_latest_attempt.return_value = 0  # First attempt
-
-        # Engineer returns VALIDATION_PASSED
-        mock_invoke_claude.return_value = EngineerResult(
-            status=VALIDATION_PASSED,
-            ticket_id="TASK-001",
-            branch="feature/TASK-001-implementation",
-            commit="abc1234",
-        )
-
-        mock_build_prompt.return_value = "Validator prompt"
-
-        # Validator returns VALIDATION_CONFIRMED
-        mock_invoke_validator.return_value = ValidatorResult(
-            status=VALIDATION_CONFIRMED,
-            ticket_id="TASK-001",
-        )
-
-        # PR flow succeeds
-        mock_pr_flow.return_value = MagicMock(pr_number=42, merged=True)
-
-        result = process_ticket(
-            ticket=ticket,
-            config=config,
-            prd_path=tmp_path / "prd.md",
-            plan_path=tmp_path / "plan.md",
-            state_file=tmp_path / "state.json",
-            dry_run=False,
-            pm_tool=None,
-            ralph_label="ralph-test",
-        )
-
-        # Verify ticket_done was called
-        mock_ticket_done.assert_called_once()
-
-        assert result.status == "completed"
 
     @patch("commands.orchestrator.write_summary")
     @patch("commands.orchestrator.ensure_state_dir")
@@ -1551,7 +1284,7 @@ class TestValidatorIntegration:
             config=config,
             prd_path=tmp_path / "prd.md",
             plan_path=tmp_path / "plan.md",
-            state_file=tmp_path / "state.json",
+
             dry_run=False,
             pm_tool=None,
             ralph_label="ralph-test",
@@ -1634,7 +1367,7 @@ class TestValidatorIntegration:
             config=config,
             prd_path=tmp_path / "prd.md",
             plan_path=tmp_path / "plan.md",
-            state_file=tmp_path / "state.json",
+
             dry_run=False,
             pm_tool=mock_pm_tool,
             ralph_label="ralph-test",
@@ -1645,89 +1378,6 @@ class TestValidatorIntegration:
 
         # Verify mark_blocked was called
         mock_mark_blocked.assert_called_once()
-
-    @patch("commands.orchestrator.stage_summary_files")
-    @patch("commands.orchestrator.write_summary")
-    @patch("commands.orchestrator.ensure_state_dir")
-    @patch("commands.orchestrator.get_latest_attempt")
-    @patch("commands.orchestrator.invoke_claude")
-    @patch("commands.orchestrator.invoke_validator")
-    @patch("commands.orchestrator.build_validator_prompt")
-    @patch("commands.orchestrator.pr_flow")
-    @patch("commands.orchestrator.ticket_done")
-    def test_validator_uses_configured_model(
-        self,
-        mock_ticket_done: MagicMock,
-        mock_pr_flow: MagicMock,
-        mock_build_prompt: MagicMock,
-        mock_invoke_validator: MagicMock,
-        mock_invoke_claude: MagicMock,
-        mock_get_latest_attempt: MagicMock,
-        mock_ensure_state_dir: MagicMock,
-        mock_write_summary: MagicMock,
-        mock_stage_summary_files: MagicMock,
-        tmp_path: Path,
-    ) -> None:
-        """Given validator_model in config, when validator is invoked, then it uses the configured model.
-
-        FR-6: Given validator_model is set in config.yaml, when the validator
-        is invoked, then it uses the configured model.
-        """
-        from commands.orchestrator import (
-            ValidatorResult,
-            VALIDATION_CONFIRMED,
-        )
-
-        ticket = Ticket(
-            id="TASK-001",
-            title="Test Ticket",
-            status="pending",
-            dependencies=[],
-        )
-
-        config = OrchestratorConfig(
-            max_attempts=3,
-            sonnet_threshold=2,
-            state_directory=tmp_path / "docs/state",
-            validator_model="haiku",  # Specific model configured
-            engineer_timeout=30,
-            validator_timeout=15,  # Custom timeout
-        )
-
-        mock_get_latest_attempt.return_value = 0
-
-        mock_invoke_claude.return_value = EngineerResult(
-            status=VALIDATION_PASSED,
-            ticket_id="TASK-001",
-            branch="feature/TASK-001-implementation",
-            commit="abc1234",
-        )
-
-        mock_build_prompt.return_value = "Validator prompt"
-
-        mock_invoke_validator.return_value = ValidatorResult(
-            status=VALIDATION_CONFIRMED,
-            ticket_id="TASK-001",
-        )
-
-        mock_pr_flow.return_value = MagicMock(pr_number=42, merged=True)
-
-        process_ticket(
-            ticket=ticket,
-            config=config,
-            prd_path=tmp_path / "prd.md",
-            plan_path=tmp_path / "plan.md",
-            state_file=tmp_path / "state.json",
-            dry_run=False,
-            pm_tool=None,
-            ralph_label="ralph-test",
-        )
-
-        # Verify validator was called with configured model and timeout
-        mock_invoke_validator.assert_called_once()
-        validator_call = mock_invoke_validator.call_args
-        assert validator_call[1]["model"] == "haiku"
-        assert validator_call[1]["timeout_minutes"] == 15
 
     @patch("commands.orchestrator.write_summary")
     @patch("commands.orchestrator.ensure_state_dir")
@@ -1793,19 +1443,110 @@ class TestValidatorIntegration:
             config=config,
             prd_path=tmp_path / "prd.md",
             plan_path=tmp_path / "plan.md",
-            state_file=tmp_path / "state.json",
+
             dry_run=False,
             pm_tool=None,
             ralph_label="ralph-test",
         )
 
-        # Verify both engineer and validator were called multiple times
+        # With validator_max_retries=2 (default), validator is retried 2 extra times
+        # before falling back to a full engineer re-run.
+        # Attempt 1: engineer(1) -> validator rejects -> validator retry 1 -> validator retry 2
+        # All validator retries exhausted -> engineer attempt 2
+        # Attempt 2: engineer(2) -> validator rejects -> validator retry 1 -> validator retry 2
+        # All validator retries exhausted -> max_attempts exceeded -> blocked
         assert mock_invoke_claude.call_count == 2
-        assert mock_invoke_validator.call_count == 2
+        # Each engineer attempt triggers 1 initial + 2 retries = 3 validator calls, x2 attempts = 6
+        assert mock_invoke_validator.call_count == 6
 
         # Ticket should be blocked after exhausting attempts
         assert result.status == "blocked"
         assert result.attempts == 2
+
+
+class TestValidatorRetry:
+    """Tests for validator-only retry logic (SLCA-0083).
+
+    When the validator fails (timeout, rejection, unknown), the orchestrator
+    should retry JUST the validator before falling back to a full engineer re-run.
+    This saves tokens when the engineer's work was correct but the validator had issues.
+    """
+
+    @patch("commands.orchestrator.write_summary")
+    @patch("commands.orchestrator.ensure_state_dir")
+    @patch("commands.orchestrator.get_latest_attempt")
+    @patch("commands.orchestrator.invoke_claude")
+    @patch("commands.orchestrator.invoke_validator")
+    @patch("commands.orchestrator.build_validator_prompt")
+    def test_validator_timeout_retries_validator_not_engineer(
+        self,
+        mock_build_prompt: MagicMock,
+        mock_invoke_validator: MagicMock,
+        mock_invoke_claude: MagicMock,
+        mock_get_latest_attempt: MagicMock,
+        mock_ensure_state_dir: MagicMock,
+        mock_write_summary: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Given validator times out, when retrying, then only the validator is retried (not engineer).
+
+        SLCA-0083: Validator timeout should trigger validator-only retry, not a full engineer re-run.
+        With max_attempts=1 and validator_max_retries=2, the engineer should run exactly once,
+        while the validator should run 3 times (1 initial + 2 retries).
+        """
+        ticket = Ticket(
+            id="TASK-001",
+            title="Test Ticket",
+            status="pending",
+            dependencies=[],
+        )
+
+        config = OrchestratorConfig(
+            max_attempts=1,
+            sonnet_threshold=2,
+            state_directory=tmp_path / "docs/state",
+            validator_model="sonnet",
+            engineer_timeout=30,
+            validator_timeout=10,
+            validator_max_retries=2,
+        )
+
+        mock_get_latest_attempt.return_value = 0
+
+        # Engineer returns VALIDATION_PASSED (once)
+        mock_invoke_claude.return_value = EngineerResult(
+            status=VALIDATION_PASSED,
+            ticket_id="TASK-001",
+            branch="feature/TASK-001-implementation",
+            commit="abc1234",
+        )
+
+        mock_build_prompt.return_value = "Validator prompt"
+
+        # Validator always times out
+        mock_invoke_validator.return_value = ValidatorResult(
+            status="timeout",
+            raw_output="Validator invocation timed out",
+        )
+
+        result = process_ticket(
+            ticket=ticket,
+            config=config,
+            prd_path=tmp_path / "prd.md",
+            plan_path=tmp_path / "plan.md",
+            dry_run=False,
+            pm_tool=None,
+            ralph_label="ralph-test",
+        )
+
+        # Engineer should only be called ONCE - validator retries don't re-run engineer
+        assert mock_invoke_claude.call_count == 1
+
+        # Validator should be called 3 times: 1 initial + 2 retries
+        assert mock_invoke_validator.call_count == 3
+
+        # With max_attempts=1, after exhausting validator retries, ticket is blocked
+        assert result.status == "blocked"
 
     @patch("commands.orchestrator.stage_summary_files")
     @patch("commands.orchestrator.write_summary")
@@ -1816,7 +1557,7 @@ class TestValidatorIntegration:
     @patch("commands.orchestrator.build_validator_prompt")
     @patch("commands.orchestrator.pr_flow")
     @patch("commands.orchestrator.ticket_done")
-    def test_validator_prompt_built_with_correct_paths(
+    def test_validator_passes_on_retry_completes_with_one_attempt(
         self,
         mock_ticket_done: MagicMock,
         mock_pr_flow: MagicMock,
@@ -1829,12 +1570,11 @@ class TestValidatorIntegration:
         mock_stage_summary_files: MagicMock,
         tmp_path: Path,
     ) -> None:
-        """Given PRD and plan paths, when validator prompt is built, then it includes correct paths."""
-        from commands.orchestrator import (
-            ValidatorResult,
-            VALIDATION_CONFIRMED,
-        )
+        """Given validator fails then passes on retry, when processing, then ticket completes with attempts=1.
 
+        SLCA-0083: If the validator initially rejects but succeeds on retry,
+        the ticket should complete with attempts=1 since the engineer only ran once.
+        """
         ticket = Ticket(
             id="TASK-001",
             title="Test Ticket",
@@ -1849,6 +1589,249 @@ class TestValidatorIntegration:
             validator_model="sonnet",
             engineer_timeout=30,
             validator_timeout=10,
+            validator_max_retries=2,
+        )
+
+        mock_get_latest_attempt.return_value = 0
+
+        # Engineer returns VALIDATION_PASSED
+        mock_invoke_claude.return_value = EngineerResult(
+            status=VALIDATION_PASSED,
+            ticket_id="TASK-001",
+            branch="feature/TASK-001-implementation",
+            commit="abc1234",
+        )
+
+        mock_build_prompt.return_value = "Validator prompt"
+
+        # Validator: first call rejects, second call confirms
+        mock_invoke_validator.side_effect = [
+            ValidatorResult(
+                status=VALIDATION_REJECTED,
+                ticket_id="TASK-001",
+                reason="Flaky check",
+            ),
+            ValidatorResult(
+                status=VALIDATION_CONFIRMED,
+                ticket_id="TASK-001",
+            ),
+        ]
+
+        mock_pr_flow.return_value = MagicMock(pr_number=42, merged=True)
+
+        result = process_ticket(
+            ticket=ticket,
+            config=config,
+            prd_path=tmp_path / "prd.md",
+            plan_path=tmp_path / "plan.md",
+            dry_run=False,
+            pm_tool=None,
+            ralph_label="ralph-test",
+        )
+
+        # Engineer only called once
+        assert mock_invoke_claude.call_count == 1
+
+        # Validator called twice (initial rejection + retry that confirms)
+        assert mock_invoke_validator.call_count == 2
+
+        # Ticket completes with attempts=1 (engineer only ran once)
+        assert result.status == "completed"
+        assert result.attempts == 1
+        assert result.pr_number == 42
+
+    @patch("commands.orchestrator.write_summary")
+    @patch("commands.orchestrator.ensure_state_dir")
+    @patch("commands.orchestrator.get_latest_attempt")
+    @patch("commands.orchestrator.invoke_claude")
+    @patch("commands.orchestrator.invoke_validator")
+    @patch("commands.orchestrator.build_validator_prompt")
+    def test_validator_exhausts_retries_falls_back_to_engineer(
+        self,
+        mock_build_prompt: MagicMock,
+        mock_invoke_validator: MagicMock,
+        mock_invoke_claude: MagicMock,
+        mock_get_latest_attempt: MagicMock,
+        mock_ensure_state_dir: MagicMock,
+        mock_write_summary: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Given validator exhausts all retries, when processing, then falls back to full engineer re-run.
+
+        SLCA-0083: When all validator retries are exhausted, the orchestrator should
+        increment the engineer attempt counter and do a full engineer re-run.
+        With max_attempts=2 and validator_max_retries=1:
+        - Attempt 1: engineer -> validator rejects -> 1 validator retry (rejects) -> exhausted
+        - Attempt 2: engineer -> validator rejects -> 1 validator retry (rejects) -> exhausted
+        - max_attempts exceeded -> blocked
+        """
+        ticket = Ticket(
+            id="TASK-001",
+            title="Test Ticket",
+            status="pending",
+            dependencies=[],
+        )
+
+        config = OrchestratorConfig(
+            max_attempts=2,
+            sonnet_threshold=2,
+            state_directory=tmp_path / "docs/state",
+            validator_model="sonnet",
+            engineer_timeout=30,
+            validator_timeout=10,
+            validator_max_retries=1,  # Only 1 validator retry
+        )
+
+        mock_get_latest_attempt.return_value = 0
+
+        # Engineer always returns VALIDATION_PASSED
+        mock_invoke_claude.return_value = EngineerResult(
+            status=VALIDATION_PASSED,
+            ticket_id="TASK-001",
+            branch="feature/TASK-001-implementation",
+            commit="abc1234",
+        )
+
+        mock_build_prompt.return_value = "Validator prompt"
+
+        # Validator always rejects
+        mock_invoke_validator.return_value = ValidatorResult(
+            status=VALIDATION_REJECTED,
+            ticket_id="TASK-001",
+            reason="Criteria not met",
+        )
+
+        result = process_ticket(
+            ticket=ticket,
+            config=config,
+            prd_path=tmp_path / "prd.md",
+            plan_path=tmp_path / "plan.md",
+            dry_run=False,
+            pm_tool=None,
+            ralph_label="ralph-test",
+        )
+
+        # Engineer called twice (once per attempt)
+        assert mock_invoke_claude.call_count == 2
+
+        # Validator called 4 times: 2 attempts x (1 initial + 1 retry) = 4
+        assert mock_invoke_validator.call_count == 4
+
+        # Ticket blocked after exhausting all attempts
+        assert result.status == "blocked"
+        assert result.attempts == 2
+
+    @patch("commands.orchestrator.write_summary")
+    @patch("commands.orchestrator.ensure_state_dir")
+    @patch("commands.orchestrator.get_latest_attempt")
+    @patch("commands.orchestrator.invoke_claude")
+    @patch("commands.orchestrator.invoke_validator")
+    @patch("commands.orchestrator.build_validator_prompt")
+    def test_validator_unknown_status_triggers_validator_retry(
+        self,
+        mock_build_prompt: MagicMock,
+        mock_invoke_validator: MagicMock,
+        mock_invoke_claude: MagicMock,
+        mock_get_latest_attempt: MagicMock,
+        mock_ensure_state_dir: MagicMock,
+        mock_write_summary: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Given validator returns unknown status, when retrying, then only validator is retried.
+
+        SLCA-0083: Unknown validator status should trigger validator-only retry,
+        same as timeout and rejection.
+        """
+        ticket = Ticket(
+            id="TASK-001",
+            title="Test Ticket",
+            status="pending",
+            dependencies=[],
+        )
+
+        config = OrchestratorConfig(
+            max_attempts=1,
+            sonnet_threshold=2,
+            state_directory=tmp_path / "docs/state",
+            validator_model="sonnet",
+            engineer_timeout=30,
+            validator_timeout=10,
+            validator_max_retries=2,
+        )
+
+        mock_get_latest_attempt.return_value = 0
+
+        mock_invoke_claude.return_value = EngineerResult(
+            status=VALIDATION_PASSED,
+            ticket_id="TASK-001",
+            branch="feature/TASK-001-implementation",
+            commit="abc1234",
+        )
+
+        mock_build_prompt.return_value = "Validator prompt"
+
+        # Validator returns unknown status every time
+        mock_invoke_validator.return_value = ValidatorResult(
+            status="unknown",
+            raw_output="Garbled output",
+        )
+
+        result = process_ticket(
+            ticket=ticket,
+            config=config,
+            prd_path=tmp_path / "prd.md",
+            plan_path=tmp_path / "plan.md",
+            dry_run=False,
+            pm_tool=None,
+            ralph_label="ralph-test",
+        )
+
+        # Engineer only called once
+        assert mock_invoke_claude.call_count == 1
+
+        # Validator called 3 times: 1 initial + 2 retries
+        assert mock_invoke_validator.call_count == 3
+
+        assert result.status == "blocked"
+
+    @patch("commands.orchestrator.write_summary")
+    @patch("commands.orchestrator.ensure_state_dir")
+    @patch("commands.orchestrator.get_latest_attempt")
+    @patch("commands.orchestrator.invoke_claude")
+    @patch("commands.orchestrator.invoke_validator")
+    @patch("commands.orchestrator.build_validator_prompt")
+    def test_validator_retry_logs_correctly(
+        self,
+        mock_build_prompt: MagicMock,
+        mock_invoke_validator: MagicMock,
+        mock_invoke_claude: MagicMock,
+        mock_get_latest_attempt: MagicMock,
+        mock_ensure_state_dir: MagicMock,
+        mock_write_summary: MagicMock,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Given validator retry occurs, when logging, then log includes retry count.
+
+        SLCA-0083: Log messages should clearly indicate validator retry number.
+        """
+        import logging
+
+        ticket = Ticket(
+            id="TASK-001",
+            title="Test Ticket",
+            status="pending",
+            dependencies=[],
+        )
+
+        config = OrchestratorConfig(
+            max_attempts=1,
+            sonnet_threshold=2,
+            state_directory=tmp_path / "docs/state",
+            validator_model="sonnet",
+            engineer_timeout=30,
+            validator_timeout=10,
+            validator_max_retries=2,
         )
 
         mock_get_latest_attempt.return_value = 0
@@ -1863,31 +1846,25 @@ class TestValidatorIntegration:
         mock_build_prompt.return_value = "Validator prompt"
 
         mock_invoke_validator.return_value = ValidatorResult(
-            status=VALIDATION_CONFIRMED,
+            status=VALIDATION_REJECTED,
             ticket_id="TASK-001",
+            reason="Criteria not met",
         )
 
-        mock_pr_flow.return_value = MagicMock(pr_number=42, merged=True)
+        with caplog.at_level(logging.INFO, logger="commands.orchestrator"):
+            process_ticket(
+                ticket=ticket,
+                config=config,
+                prd_path=tmp_path / "prd.md",
+                plan_path=tmp_path / "plan.md",
+                    dry_run=False,
+                pm_tool=None,
+                ralph_label="ralph-test",
+            )
 
-        prd_path = tmp_path / "docs/prds/feature.md"
-        plan_path = tmp_path / "docs/plans/feature.md"
-
-        process_ticket(
-            ticket=ticket,
-            config=config,
-            prd_path=prd_path,
-            plan_path=plan_path,
-            state_file=tmp_path / "state.json",
-            dry_run=False,
-            pm_tool=None,
-            ralph_label="ralph-test",
-        )
-
-        # Verify build_validator_prompt was called with correct arguments
-        mock_build_prompt.assert_called_once()
-        prompt_call = mock_build_prompt.call_args
-        assert prompt_call[1]["ticket_id"] == "TASK-001"
-        assert prompt_call[1]["prd_path"] == prd_path
-        assert prompt_call[1]["plan_path"] == plan_path
-        assert prompt_call[1]["state_dir"] == tmp_path / "docs/state"
-        assert prompt_call[1]["attempt"] == 1
+        # Check that validator retry log messages appear
+        retry_logs = [r for r in caplog.records if "Validator retry" in r.message]
+        assert len(retry_logs) == 2  # 2 retries
+        assert "1/2" in retry_logs[0].message
+        assert "2/2" in retry_logs[1].message
+        assert "TASK-001" in retry_logs[0].message

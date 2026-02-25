@@ -58,6 +58,9 @@ workflow-state.json
 # Ralph runtime state (generated during orchestration runs)
 .claude/ralph/docs/
 
+# Ralph concurrent loop worktrees (SLCA-0076)
+.git-worktrees/
+
 ### LEGACY .gitignore CONTENTS - MAY BE DELETED AFTER REVIEW ###
 
 # Database files
@@ -149,3 +152,20 @@ coverage/
 # NPM debug logs
 npm-debug.log*
 yarn-error.log*
+
+.db-data/
+.db-data2/
+.db_data/
+*.sql
+
+# Caddy data
+caddy/.data/
+caddy/.config/
+
+# MCP config
+.mcp.json
+
+.playwright-mcp/
+
+scripts/drafts/*                                                                                                                                         
+!scripts/drafts/.keepme   

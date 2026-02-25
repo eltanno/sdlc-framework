@@ -352,11 +352,10 @@ def _get_next_ticket_with_pm_tool(
     open_ticket_map: dict[str, TicketInfo] = {t.id: t for t in open_tickets}
     open_ticket_ids = set(open_ticket_map.keys())
 
-    # Count tickets by status (check both PM tool label and local state)
-    locally_blocked = state.ralph.blocked or {} if state.ralph else {}
+    # Count tickets by status (PM tool labels are source of truth for blocked)
     blocked_count = sum(
         1 for t in open_tickets
-        if t.status == TicketStatus.BLOCKED or t.id in locally_blocked
+        if t.status == TicketStatus.BLOCKED
     )
     completed_count = len(ticket_ids) - len(open_tickets)
     pending_count = len(open_tickets) - blocked_count
@@ -374,8 +373,6 @@ def _get_next_ticket_with_pm_tool(
                 continue
             ticket_info = open_ticket_map[ticket_id]
             if ticket_info.status == TicketStatus.BLOCKED:
-                continue
-            if ticket_id in locally_blocked:
                 continue
 
             # Check if this ticket is claimed by us
@@ -416,10 +413,8 @@ def _get_next_ticket_with_pm_tool(
 
         ticket_info = open_ticket_map[ticket_id]
 
-        # Skip blocked tickets (check both PM tool label and local state)
+        # Skip blocked tickets (PM tool labels are source of truth)
         if ticket_info.status == TicketStatus.BLOCKED:
-            continue
-        if ticket_id in locally_blocked:
             continue
 
         # Skip tickets claimed by OTHER instances
@@ -457,7 +452,7 @@ def _get_next_ticket_with_pm_tool(
             for remaining_id in ticket_ids:
                 if remaining_id != ticket_id and remaining_id in open_ticket_ids:
                     remaining_info = open_ticket_map[remaining_id]
-                    if remaining_info.status != TicketStatus.BLOCKED and remaining_id not in locally_blocked:
+                    if remaining_info.status != TicketStatus.BLOCKED:
                         remaining_deps = dependencies.get(remaining_id, [])
                         if remaining_deps:
                             deps_met = _check_dependencies_via_pm_tool(

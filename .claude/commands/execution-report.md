@@ -45,7 +45,7 @@ This creates a record for the `/system-review` process improvement phase.
 Identify:
 - The plan that was followed (`docs/plans/YYYY-MM-DD-*.md`)
 - The commits made (`git log --oneline` since branch creation)
-- The files changed (`git diff --stat main..HEAD`)
+- The files changed (`git diff --stat <default_branch>..HEAD` — read `git.default_branch` from config.yaml)
 
 ### Step 1b: Check PM Tool for Ticket Status
 
@@ -265,7 +265,7 @@ Create `docs/execution-reports/YYYY-MM-DD-{feature-slug}.md`:
 ---
 
 ```
-[output of git diff --stat main..HEAD]
+[output of git diff --stat <default_branch>..HEAD]
 ```
 
 ---
