@@ -114,17 +114,25 @@ def stage_and_commit(ticket_id: str, commit_message: str) -> str | None:
         raise PrFlowError(f"Failed to commit: {e}")
 
 
-def push_branch(branch: str) -> None:
+def push_branch(branch: str, refspec: bool = False) -> None:
     """Push branch to remote with upstream tracking.
 
     Args:
         branch: Branch name to push
+        refspec: If True, push using HEAD:refs/heads/<branch> refspec.
+                 Required when on detached HEAD (e.g. in worktrees).
 
     Raises:
         PrFlowError: If push fails
     """
     try:
-        git.push(remote="origin", branch=branch, set_upstream=True)
+        if refspec:
+            # Push detached HEAD to a named remote branch via refspec
+            git._run_git_command(
+                ["push", "-u", "origin", f"HEAD:refs/heads/{branch}"]
+            )
+        else:
+            git.push(remote="origin", branch=branch, set_upstream=True)
     except git.GitError as e:
         raise PrFlowError(f"Failed to push: {e}")
 
@@ -336,6 +344,14 @@ def pr_flow(
 
     current_branch = git.get_current_branch()
 
+    # Handle detached HEAD (common in worktrees after checkout_detached_default).
+    # Set current_branch to a target name for PR operations. We stay on
+    # detached HEAD and push via refspec later — avoids git worktree
+    # constraints that prevent checking out a branch used elsewhere.
+    _detached = current_branch == "HEAD"
+    if _detached:
+        current_branch = f"feature/{ticket_id}-implementation"
+
     # Check if already merged (handles the case where we're on default branch and ticket is done)
     if current_branch == default_branch:
         merged_pr = check_already_merged(ticket_id)
@@ -376,8 +392,8 @@ def pr_flow(
     # This ensures the PR will be fast-forward mergeable
     sync_with_default(default_branch=default_branch)
 
-    # Push to remote
-    push_branch(current_branch)
+    # Push to remote (use refspec when on detached HEAD to avoid worktree constraints)
+    push_branch(current_branch, refspec=_detached)
 
     # Check if PR already exists
     existing_pr = find_existing_pr(current_branch)

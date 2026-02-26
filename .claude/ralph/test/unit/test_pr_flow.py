@@ -465,6 +465,40 @@ class TestPrFlow:
 
         assert "develop-working" in str(exc_info.value).lower() or "default branch" in str(exc_info.value).lower()
 
+    def test_pr_flow_uses_refspec_push_when_detached_head(self, mock_git_module, mock_github_module):
+        """Given detached HEAD (common in worktrees), when running flow, then push uses refspec to avoid worktree constraints."""
+        from commands import pr_flow
+        from core.github import PullRequestResult
+
+        # Simulate detached HEAD — get_current_branch returns "HEAD"
+        mock_git_module.get_current_branch.return_value = "HEAD"
+        mock_git_module.is_dirty.return_value = True
+        mock_git_module.stage_all.return_value = None
+        mock_git_module.commit.return_value = "abc1234"
+        mock_git_module.fetch.return_value = None
+        mock_git_module.merge.return_value = None
+        mock_git_module._run_git_command.return_value = None
+
+        mock_github_module.find_merged_pr.return_value = None
+        mock_github_module.list_pull_requests.return_value = []
+        mock_github_module.find_issue_by_title.return_value = None
+        mock_github_module.create_pull_request.return_value = PullRequestResult(
+            url="https://github.com/owner/repo/pull/42",
+            number=42,
+        )
+        mock_github_module.merge_pull_request.return_value = None
+
+        result = pr_flow.pr_flow("TASK-001", "Implementation complete", default_branch="develop-working")
+
+        # Verify push used refspec (HEAD:refs/heads/...), not regular push
+        mock_git_module._run_git_command.assert_any_call(
+            ["push", "-u", "origin", "HEAD:refs/heads/feature/TASK-001-implementation"]
+        )
+        # Regular push should NOT have been called
+        mock_git_module.push.assert_not_called()
+        assert result.branch == "feature/TASK-001-implementation"
+        assert result.merged is True
+
 
 
 
