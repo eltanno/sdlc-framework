@@ -2,6 +2,89 @@
 
 A repeatable software development lifecycle for Claude Code that enforces quality gates, maintains traceability, and produces working software through structured planning and automated execution.
 
+## Quick Start
+
+You plan it. Claude builds it. Six commands from idea to shipped software:
+
+```
+/discover          Tell Claude what you want to build. Interactive Q&A
+                   produces a structured requirements document.
+
+/prd               Generates a formal PRD with acceptance criteria
+                   from the approved discovery.
+
+/plan              Creates the technical implementation plan — architecture,
+                   tickets, test strategy, dependency order.
+
+/ticket            Creates actionable tickets in your PM tool from the
+                   approved plan. One ticket per unit of work.
+
+/ralph-loop        Executes the plan autonomously. Implements all tickets
+                   in parallel, creates PRs, validates, and merges.
+
+/execution-report  Documents what was built vs what was planned.
+
+/system-review     Analyzes the process and captures lessons learned.
+```
+
+Before starting, configure `config.yaml` with your PM tool and dev commands, and `.env` with your API keys (copy from `.env.example`). Then run `/discover` to start.
+
+---
+
+## Commands Reference
+
+### Core SDLC Commands
+
+These are the main commands that drive the framework. They follow the workflow in order:
+
+| Command | Phase | What It Does |
+|---------|-------|-------------|
+| `/discover` | Planning | Interactive conversation to gather requirements. You describe what you want to build, and it produces a structured discovery document capturing scope, users, features, and constraints. |
+| `/prd {name}` | Planning | Generates a formal Product Requirements Document from the approved discovery. Includes user stories, acceptance criteria, and scope boundaries. |
+| `/plan {name}` | Planning | Creates a technical implementation plan from the approved PRD. Breaks work into tickets with architecture decisions, file changes, test strategy, and dependency order. |
+| `/ticket` | Planning | Creates actionable tickets in your PM tool (Trello/Asana/GitHub Issues) from the approved plan. One ticket per logical unit of work. |
+| `/ralph-loop` | Execution | Launches the Ralph autonomous orchestrator. Takes the PRD and plan, implements all tickets in parallel (1-4 concurrent loops), creates PRs, validates, and merges. This is the primary execution method. |
+| `/execution-report` | Finalize | Documents what was actually implemented vs what was planned. Records completed tasks, divergences, challenges, and modified approaches. |
+| `/system-review` | Finalize | Analyzes the process itself — what worked, what didn't, template improvements, and lessons learned for the next cycle. |
+| `/release` | Finalize | Updates the project README with shipped features and tags the git release. |
+
+### Testing & Bug Fix Commands
+
+| Command | What It Does |
+|---------|-------------|
+| `/playtest` | Runs a full Playwright browser playtest — page loads, auth, core features, state persistence, edge cases. Produces a cumulative bug report at `docs/todo/playtest-bugs.md`. Requires Playwright MCP. |
+| `/playtest-loop` | Automated loop: playtest, fix bugs, retest. Repeats until no critical/major bugs remain (max 5 iterations). The primary way to find and fix bugs. Requires Playwright MCP. |
+| `/fix-manual-bugs` | Reads annotated screenshots from `docs/todo/manual-test/` and fixes all reported issues. For when you've done manual QA and documented bugs with screenshots. Requires Playwright MCP. |
+| `/rca {issue}` | Root cause analysis. Investigates an issue systematically before fixing — reproduces, identifies root cause, assesses impact, proposes fix. Creates `docs/rca/YYYY-MM-DD-{issue}.md`. |
+| `/audit-tests` | Audits test files for meaningfulness. Classifies each test as meaningful, weak, tautological, implementation-coupled, or redundant. Produces a report with recommendations. |
+
+### Utility Commands
+
+| Command | What It Does |
+|---------|-------------|
+| `/whats-next` | Workflow dashboard — shows document status, git state, progress checklist, and recommends the next action. |
+| `/research {topic}` | Autonomous technical research on any topic. Can be used anytime. Saves findings to `docs/research/`. |
+| `/prime` | Loads comprehensive project context (structure, docs, git state, active work) before starting a task. |
+| `/handover` | Generates a session handover document at `tmp/handover.md` to preserve context for the next session. |
+| `/ticket-reset {id}` | Resets a blocked Ralph ticket back to pending so it can be retried. |
+| `/analyze-codebase` | Deep read-only analysis of an existing codebase. Produces 8 structured documents covering architecture, patterns, tech debt, and more. For brownfield/legacy projects. |
+| `/new-project {path}` | Creates a new project from the framework template. Sets up directory structure, config files, and git. |
+| `/sync-framework {path}` | Updates an existing project with the latest framework files (commands, scripts, templates). |
+
+### Manual Fallback Commands
+
+These are the original per-ticket commands, now superseded by `/ralph-loop` and `/playtest-loop`. Still available if you need direct control over individual tickets or Ralph gets stuck mid-ticket.
+
+| Command | What It Does |
+|---------|-------------|
+| `/implement {ticket}` | Manual TDD implementation of a single ticket. |
+| `/pr {ticket}` | Creates a pull request for a completed ticket. |
+| `/validate {ticket}` | Pre-merge validation — tests, lint, build, plan alignment. |
+| `/bugfix {description}` | Manual single bug fix using TDD. |
+| `/hotfix` | Emergency production fix with abbreviated workflow. |
+
+---
+
 ## The Problem
 
 Software development often suffers from:
@@ -35,7 +118,12 @@ This framework enforces a **two-stage development cycle** that separates thinkin
 │                            EXECUTION                                     │
 │                      (Build, Review & Ship)                              │
 │                                                                          │
-│   For each ticket:                                                       │
+│   Primary — Autonomous (all tickets):                                    │
+│   ┌─────────────────────────────────────────────────────────────────┐   │
+│   │ /ralph-loop ──→ implements all tickets ──→ PRs ──→ merges       │   │
+│   └─────────────────────────────────────────────────────────────────┘   │
+│                                                                          │
+│   Fallback — Manual (per ticket):                                        │
 │   ┌─────────────────────────────────────────────────────────────────┐   │
 │   │ Branch ──→ TDD ──→ Implement ──→ PR ──→ Validate ──→ Merge     │   │
 │   └─────────────────────────────────────────────────────────────────┘   │
@@ -114,9 +202,56 @@ You can run multiple planning cycles to incrementally build your product. Each c
 
 ## Execution Cycle
 
-Execution builds **what was planned**. It follows gitflow and TDD practices, producing one PR per ticket.
+Execution builds **what was planned**. The primary execution method is Ralph, the autonomous orchestrator. Manual execution is available as a fallback for individual tickets.
 
-### For Each Ticket
+### Autonomous Execution with Ralph (`/ralph-loop`)
+
+Ralph is the autonomous orchestrator that implements **all tickets from a plan** without human intervention. It takes a PRD and plan, iterates through every ticket, invokes Claude for implementation, validates the work, creates PRs, and merges them.
+
+```
+/ralph-loop
+    │
+    ├── Detect PRD and Plan (auto or from arguments)
+    ├── Launch 1-4 parallel loops (configurable)
+    │
+    │   Each loop:
+    │   ┌─────────────────────────────────────────┐
+    │   │  Get next ticket (dependency-aware)       │
+    │   │  → Invoke Claude engineer (TDD)           │
+    │   │  → Validate against acceptance criteria   │
+    │   │  → Create PR and auto-merge               │
+    │   │  → Mark ticket done                       │
+    │   │  → Repeat until no tickets remain         │
+    │   └─────────────────────────────────────────┘
+    │
+    ├── Monitor progress (log files, stall detection)
+    ├── Update docs/SYSTEM.md with completed work
+    └── Cleanup (worktrees, git state)
+```
+
+**Key features:**
+- **Concurrency** — Run 1-4 parallel loops using git worktrees with label-based ticket claiming (no collisions)
+- **Smart model selection** — Routes simple tickets to Sonnet, complex ones to Opus based on configurable complexity threshold
+- **Retry logic** — Validator-only retries before full engineer re-runs, up to N max attempts per ticket
+- **Dependency awareness** — Respects ticket dependencies, processes in correct order
+- **Crash recovery** — See `docs/guides/ralph-loop-crash-recovery.md` for recovery procedures
+
+**Configuration** in `config.yaml`:
+```yaml
+ralph:
+  sonnet_threshold: 2           # Complexity ≤2 = Sonnet, >2 = Opus
+  max_attempts: 3               # Retries before blocking a ticket
+  max_concurrent_loops: 4       # Parallel instances (1-4)
+  engineer_timeout: 30          # Minutes per implementation
+  validator_timeout: 10         # Minutes per validation
+```
+
+**Related commands:**
+- `/ticket-reset {id}` — Reset a blocked ticket so Ralph can retry it
+
+### Manual Execution (Per Ticket)
+
+For individual tickets or when you want direct control:
 
 ```
 1. CREATE BRANCH
@@ -247,14 +382,14 @@ Finalize the iteration:
 # → TICKET-103: Login endpoint
 # → TICKET-104: Session management
 
-# EXECUTION (for each ticket)
-/implement TICKET-101       # TDD implementation
-# → Branch, test, implement, PR, validate, merge
+# EXECUTION
+/ralph-loop                 # Ralph implements all tickets
+# → Launches parallel loops, implements, PRs, merges
+# → Monitors progress, reports when done
 
-/implement TICKET-102       # Next ticket
-# → Branch, test, implement, PR, validate, merge
-
-# ... continue until all tickets complete
+# Or manually (fallback):
+# /implement TICKET-101     # One ticket at a time
+# /implement TICKET-102     # Next ticket
 
 # FINALIZE
 /execution-report           # Document what was built
@@ -279,9 +414,7 @@ Finalize the iteration:
 # → TICKET-203: GitHub OAuth flow
 
 # EXECUTION
-/implement TICKET-201
-/implement TICKET-202
-/implement TICKET-203
+/ralph-loop                 # Ralph handles all three tickets
 
 # FINALIZE
 /execution-report
@@ -290,53 +423,6 @@ Finalize the iteration:
 
 # v1.1 shipped!
 ```
-
----
-
-## Commands Reference
-
-### Planning Commands
-
-| Command | Purpose | Output |
-|---------|---------|--------|
-| `/discover` | Interactive requirements gathering | `docs/discovery/YYYY-MM-DD-{version}.md` |
-| `/prd {name}` | Generate PRD with acceptance criteria | `docs/prds/YYYY-MM-DD-{name}.md` |
-| `/plan {name}` | Generate technical implementation plan | `docs/plans/YYYY-MM-DD-{name}.md` |
-| `/ticket` | Create tickets in PM tool | Ticket IDs in PM tool |
-
-### Execution Commands
-
-| Command | Purpose | Output |
-|---------|---------|--------|
-| `/implement {ticket}` | TDD implementation of ticket | Feature branch + PR |
-| `/pr {ticket}` | Create pull request | Open PR linked to ticket |
-| `/validate {ticket}` | Pre-merge validation | Pass/fail status |
-| `/execution-report` | Document what was implemented | `docs/execution-reports/*.md` |
-| `/system-review` | Analyze process effectiveness | `docs/system-reviews/*.md` |
-| `/release` | Update README, tag release | Updated README.md |
-
-### Utility Commands
-
-| Command | Purpose |
-|---------|---------|
-| `/status` | Show current workflow state |
-| `/whats-next` | Recommend next action |
-| `/research {topic}` | Technical research (anytime) |
-| `/hotfix` | Emergency fix (abbreviated flow) |
-| `/guide` | Help and orientation |
-
----
-
-## Quick Start
-
-1. Clone/copy this framework into your project
-2. Run the setup script:
-   ```bash
-   ./claude-setup.sh
-   ```
-3. Edit `.env` with your API keys
-4. Configure your PM tool MCP in Claude Code
-5. Run `/discover` to start your first planning cycle
 
 ---
 
@@ -351,6 +437,13 @@ Finalize the iteration:
 | `node` | Runtime | Via nvm or apt |
 | `bun` | Hooks runtime | `curl -fsSL https://bun.sh/install \| bash` |
 | `jq` | JSON parsing | `apt install jq` |
+| `python3` | Ralph orchestrator | 3.10+ required |
+
+### Optional Tools
+
+| Tool | Purpose | Install |
+|------|---------|---------|
+| Playwright MCP | Browser playtesting (`/playtest`, `/playtest-loop`) | Configure in `.mcp.json` |
 
 ### PM Tool Configuration
 
@@ -389,6 +482,13 @@ git:
   default_branch: main
   branch_prefix:
     feature: "feature/"
+
+ralph:
+  sonnet_threshold: 2          # Complexity ≤2 = Sonnet, >2 = Opus
+  max_attempts: 3              # Retries before blocking
+  max_concurrent_loops: 4      # Parallel instances (1-4)
+  engineer_timeout: 30         # Minutes per implementation
+  validator_timeout: 10        # Minutes per validation
 ```
 
 ### .env
@@ -405,16 +505,26 @@ cp .env.example .env
 ```
 .
 ├── .claude/
+│   ├── agents/             # Agent definitions (architect, engineer)
 │   ├── commands/           # Slash command definitions
 │   ├── hooks/              # Security and audit hooks
-│   └── scripts/            # Utility scripts
+│   ├── ralph/              # Ralph autonomous orchestrator
+│   │   ├── ralph           # Entry point (bash wrapper)
+│   │   ├── cli.py          # CLI interface
+│   │   ├── commands/       # Orchestrator, concurrency, PR flow, validation
+│   │   └── core/           # State, PM tools, git, config
+│   └── scripts/            # Utility scripts (create-project, sync-framework)
 ├── docs/
 │   ├── discovery/          # Versioned discovery docs (one per iteration)
 │   ├── prds/               # PRD documents (one per feature)
 │   ├── plans/              # Technical plans (one per feature)
 │   ├── execution-reports/  # Implementation vs plan records
 │   ├── system-reviews/     # Process improvement analysis
-│   └── research/           # Research findings
+│   ├── research/           # Research findings
+│   ├── rca/                # Root cause analysis documents
+│   ├── guides/             # How-to guides (crash recovery, multi-instance Ralph)
+│   ├── templates/          # Document templates
+│   └── state/              # Ralph state files (per ticket)
 ├── config.yaml             # Project configuration
 ├── .env                    # Secrets (gitignored)
 ├── CLAUDE.md               # Orchestrator instructions
@@ -432,6 +542,7 @@ cp .env.example .env
 4. **Repeatability** - Same process for v1, v2, v3...
 5. **Quality enforcement** - TDD and automated review catch issues early
 6. **Reduced bottlenecks** - Claude reviews mean no waiting for humans on routine PRs
+7. **Autonomous execution** - Ralph can implement entire plans unattended with parallel processing
 
 ---
 
