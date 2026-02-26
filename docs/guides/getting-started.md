@@ -250,10 +250,8 @@ Configure the threshold in `config.yaml` → `ralph.sonnet_threshold`
 | `/prd` | Generate PRD from discovery |
 | `/plan` | Create implementation plan |
 | `/ticket` | Create tickets from plan |
-| `/implement` | Implement a ticket |
-| `/validate` | Validate implementation |
-| `/status` | Check workflow state |
-| `/whats-next` | Get recommended next action |
+| `/ralph-loop` | Autonomous parallel implementation |
+| `/whats-next` | Workflow status and next action |
 
 ### Utility Commands
 
@@ -371,7 +369,6 @@ cd .claude/ralph && pip install -r requirements.txt
 
 ## Getting Help
 
-1. Run `/guide` in Claude for interactive help
-2. Run `/status` to see current workflow state
-3. Run `/whats-next` for recommended actions
+1. Run `/whats-next` for workflow status and recommended actions
+2. Check `WORKFLOW.md` for full reference documentation
 4. Check logs in `.logs/ralph/` for debugging

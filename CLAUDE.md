@@ -112,16 +112,17 @@ PLANNING:
     ▼         ▼       ▼        ▼
  (self)  architect architect haiku
 
-EXECUTION:
-/implement → /pr → /validate → /execution-report → /system-review → /release
-     │        │        │              │                   │              │
-     ▼        ▼        ▼              ▼                   ▼              ▼
- engineer  haiku  engineer         (self)              (self)         (self)
+EXECUTION (autonomous):
+/ralph-loop → /execution-report → /system-review → /release
+     │               │                  │               │
+     ▼               ▼                  ▼               ▼
+  ralph           (self)             (self)          (self)
+ parallel        document        process review   update README
 ```
 
 **Discovery is interactive** - you conduct it yourself as a conversation with the user.
+**Ralph runs autonomously** - parallel implementation with worktrees.
 **Report/Review/Release are self-executed** - document, analyze, then update README.
-**All other phases delegate** to specialist agents.
 
 **Agent definitions**: See `.claude/agents/` for detailed agent responsibilities and standards.
 
@@ -186,10 +187,10 @@ See [WORKFLOW.md](WORKFLOW.md) for detailed prerequisites.
 - `/prd` - Requires approved discovery (or explicit skip)
 - `/plan` - Requires approved PRD
 - `/ticket` - Requires approved plan
-- `/implement` - Requires plan with ticket IDs
-- `/pr` - Requires passing tests, committed code
-- `/validate` - Requires open PR
-- `/release` - Requires all PRs merged, validation passed
+- `/ralph-loop` - Requires plan with ticket IDs, clean git state
+- `/execution-report` - Requires all tickets complete
+- `/system-review` - Requires execution report
+- `/release` - Requires system review complete
 
 **Check prerequisites before delegating. If missing, guide user to correct phase.**
 
@@ -206,11 +207,11 @@ See [WORKFLOW.md](WORKFLOW.md) for detailed phase documentation.
 | `/prd` | architect | Generate PRD with acceptance criteria |
 | `/plan` | architect | Create implementation plan |
 | `/ticket` | (haiku) | Create tasks from plan |
-| `/implement` | engineer | TDD implementation |
-| `/pr` | (haiku) | Create GitHub pull request |
-| `/validate` | engineer | Pre-merge validation |
+| `/ralph-loop` | ralph orchestrator | Autonomous parallel implementation |
+| `/execution-report` | **(self)** | Document what was implemented vs planned |
+| `/system-review` | **(self)** | Analyze process effectiveness |
 | `/release` | **(self)** | Update README with shipped features |
-| `/status` | (self) | Check workflow status |
+| `/whats-next` | **(self)** | Workflow status and next action |
 | `/hotfix` | engineer | Emergency fix (abbreviated workflow) |
 
 ---

@@ -443,7 +443,5 @@ docs/
 
 ## Getting Help
 
-- `/guide` - Interactive help for new users
-- `/status` - Check current workflow state
-- `/whats-next` - Get recommendations for next step
+- `/whats-next` - Workflow status and recommended next action
 - `WORKFLOW.md` - Full reference documentation
