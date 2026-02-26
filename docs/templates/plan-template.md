@@ -211,7 +211,7 @@
 - [ ] This plan committed: `git log --oneline docs/plans/`
 - [ ] `git status docs/` shows "nothing to commit"
 
-> **Why this matters:** Untracked files can be lost during branch operations. Documents ARE the state - if they're not committed, implementation has no foundation. See WORKFLOW.md "Artifact Commit Rule" for details.
+> **Why this matters:** Untracked files can be lost during branch operations. Documents ARE the state - if they're not committed, implementation has no foundation. See docs/WORKFLOW.md "Artifact Commit Rule" for details.
 
 ---
 

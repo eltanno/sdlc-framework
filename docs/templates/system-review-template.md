@@ -86,7 +86,7 @@
 #### Update Command: `/plan`
 [What to change and why]
 
-#### Update Command: `/implement`
+#### Update Command: `/ralph-loop`
 [What to change and why]
 
 #### Update Templates

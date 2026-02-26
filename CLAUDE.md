@@ -97,11 +97,11 @@ Return a brief summary when complete.
 
 ## Workflow Reference
 
-**The complete workflow is documented in `WORKFLOW.md`.**
+**The complete workflow is documented in `docs/WORKFLOW.md`.**
 
 - Guide users through this process phase by phase
 - Check prerequisites before allowing each phase to proceed
-- Reference WORKFLOW.md for phase details, document locations, and requirements
+- Reference docs/WORKFLOW.md for phase details, document locations, and requirements
 
 ### Quick Workflow Overview
 
@@ -128,7 +128,7 @@ EXECUTION (autonomous):
 
 Optional: `/research` can be used anytime for autonomous technical investigation.
 
-**For detailed phase documentation, prerequisites, and workflow principles, see [WORKFLOW.md](WORKFLOW.md).**
+**For detailed phase documentation, prerequisites, and workflow principles, see [WORKFLOW.md](docs/WORKFLOW.md).**
 
 ---
 
@@ -165,7 +165,7 @@ Task({
 
 ## Artifact Locations (State Persistence)
 
-Workflow state persists in files, not context. See [WORKFLOW.md](WORKFLOW.md) for complete document hierarchy and locations.
+Workflow state persists in files, not context. See [WORKFLOW.md](docs/WORKFLOW.md) for complete document hierarchy and locations.
 
 **Quick Reference:**
 - Discovery: `docs/discovery/YYYY-MM-DD-{version}.md` (one per iteration - v1, v1.1, v2)
@@ -180,7 +180,7 @@ Workflow state persists in files, not context. See [WORKFLOW.md](WORKFLOW.md) fo
 
 ## Phase Prerequisites (Enforced)
 
-See [WORKFLOW.md](WORKFLOW.md) for detailed prerequisites.
+See [WORKFLOW.md](docs/WORKFLOW.md) for detailed prerequisites.
 
 **Quick Reference:**
 - `/discover` and `/research` - No prerequisites
@@ -198,7 +198,7 @@ See [WORKFLOW.md](WORKFLOW.md) for detailed prerequisites.
 
 ## Slash Commands
 
-See [WORKFLOW.md](WORKFLOW.md) for detailed phase documentation.
+See [WORKFLOW.md](docs/WORKFLOW.md) for detailed phase documentation.
 
 | Command | Delegates To | Purpose |
 |---------|--------------|---------|
@@ -252,7 +252,7 @@ When an agent returns:
 
 ## Git Conventions
 
-See [WORKFLOW.md](WORKFLOW.md) for complete git conventions.
+See [WORKFLOW.md](docs/WORKFLOW.md) for complete git conventions.
 
 **Quick Reference:**
 - Branch: `feature/TASK-{id}-{short-description}`
@@ -262,7 +262,7 @@ See [WORKFLOW.md](WORKFLOW.md) for complete git conventions.
 
 ## Emergency Procedures
 
-For production emergencies, use `/hotfix` with abbreviated workflow. See [WORKFLOW.md](WORKFLOW.md) for details.
+For production emergencies, use `/hotfix` with abbreviated workflow. See [WORKFLOW.md](docs/WORKFLOW.md) for details.
 
 ---
 

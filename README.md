@@ -524,11 +524,11 @@ cp .env.example .env
 │   ├── rca/                # Root cause analysis documents
 │   ├── guides/             # How-to guides (crash recovery, multi-instance Ralph)
 │   ├── templates/          # Document templates
-│   └── state/              # Ralph state files (per ticket)
+│   ├── state/              # Ralph state files (per ticket)
+│   └── WORKFLOW.md         # Detailed workflow reference
 ├── config.yaml             # Project configuration
 ├── .env                    # Secrets (gitignored)
 ├── CLAUDE.md               # Orchestrator instructions
-├── WORKFLOW.md             # Detailed workflow reference
 └── README.md               # This file (updated after each release)
 ```
 

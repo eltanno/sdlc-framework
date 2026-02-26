@@ -31,9 +31,9 @@ git worktree list
 
 Example output:
 ```
-/home/jim/workspace/getstirrup.com/main     d8a7e32 [main]
-/home/jim/workspace/getstirrup.com/ralph-1  967516f [feature/AUCT-0162-implementation]
-/home/jim/workspace/getstirrup.com/ralph-2  d1eff99 [feature/AUCT-0163-implementation]
+~/workspace/myproject/main     d8a7e32 [main]
+~/workspace/myproject/ralph-1  967516f [feature/TICKET-0162-implementation]
+~/workspace/myproject/ralph-2  d1eff99 [feature/TICKET-0163-implementation]
 ```
 
 Note which worktrees are on feature branches - these were likely active during the crash.
@@ -59,7 +59,7 @@ For each ralph worktree, check the current state:
 
 ```bash
 # Check uncommitted changes
-cd /home/jim/workspace/getstirrup.com/ralph-1
+cd ~/workspace/myproject/ralph-1
 git status
 
 # Check the current branch
@@ -69,7 +69,7 @@ git branch --show-current
 git log --oneline -5
 
 # Check state files for the ticket
-ls -la docs/state/AUCT-XXXX/
+ls -la docs/state/TICKET-XXXX/
 ```
 
 ### Step 4: Evaluate the Work Quality
@@ -78,8 +78,8 @@ Before deciding how to proceed, assess what was accomplished:
 
 1. **Read the state files** to understand progress:
    ```bash
-   cat docs/state/AUCT-XXXX/attempt-N/engineer-state.json
-   cat docs/state/AUCT-XXXX/summary.md
+   cat docs/state/TICKET-XXXX/attempt-N/engineer-state.json
+   cat docs/state/TICKET-XXXX/summary.md
    ```
 
 2. **Check if tests pass** (if there's code):
@@ -104,7 +104,7 @@ If the implementation looks good and tests pass:
 1. **Commit the changes properly**:
    ```bash
    git add -A
-   git commit -m "[AUCT-XXXX] Complete implementation (recovered from crash)
+   git commit -m "[TICKET-XXXX] Complete implementation (recovered from crash)
 
    Co-Authored-By: Claude <noreply@anthropic.com>"
    ```
@@ -118,7 +118,7 @@ If the implementation looks good and tests pass:
 
 3. **Create PR if ready**:
    ```bash
-   gh pr create --title "[AUCT-XXXX] Feature description" --body "..."
+   gh pr create --title "[TICKET-XXXX] Feature description" --body "..."
    ```
 
 4. **Release the GitHub label**:
@@ -133,16 +133,16 @@ If there's useful progress but it's incomplete:
 1. **Commit as WIP**:
    ```bash
    git add -A
-   git commit -m "[AUCT-XXXX] WIP - recovered from crash
+   git commit -m "[TICKET-XXXX] WIP - recovered from crash
 
    Co-Authored-By: Claude <noreply@anthropic.com>"
    ```
 
 2. **Option 1: Continue manually** - Start a Claude session in that worktree and finish the work:
    ```bash
-   cd /home/jim/workspace/getstirrup.com/ralph-1
+   cd ~/workspace/myproject/ralph-1
    claude
-   # Then: "Continue implementing AUCT-XXXX based on the existing work"
+   # Then: "Continue implementing TICKET-XXXX based on the existing work"
    ```
 
 3. **Option 2: Let ralph retry** - Leave the label in place and restart the loop. Ralph will see the in-progress ticket and continue from where it left off.
@@ -187,7 +187,7 @@ Before restarting loops, ensure branches are up to date:
 
 ```bash
 # For each worktree
-cd /home/jim/workspace/getstirrup.com/ralph-1
+cd ~/workspace/myproject/ralph-1
 git fetch origin
 git merge origin/main -m "Merge main before restart"
 git push origin HEAD
@@ -199,11 +199,11 @@ Once everything is clean:
 
 ```bash
 # In ralph-1 terminal
-cd /home/jim/workspace/getstirrup.com/ralph-1
+cd ~/workspace/myproject/ralph-1
 .claude/ralph/ralph run docs/prds/YYYY-MM-DD-feature.md docs/plans/YYYY-MM-DD-feature.md
 
 # In ralph-2 terminal
-cd /home/jim/workspace/getstirrup.com/ralph-2
+cd ~/workspace/myproject/ralph-2
 .claude/ralph/ralph run docs/prds/YYYY-MM-DD-feature.md docs/plans/YYYY-MM-DD-feature.md
 ```
 
@@ -239,7 +239,7 @@ cat workflow-state.json | jq '.ralph'
 git checkout -- . && git clean -fd
 
 # Commit WIP
-git add -A && git commit -m "[AUCT-XXXX] WIP - crash recovery"
+git add -A && git commit -m "[TICKET-XXXX] WIP - crash recovery"
 
 # Sync with main
 git fetch origin && git merge origin/main
@@ -251,7 +251,7 @@ git fetch origin && git merge origin/main
 
 1. **Use UPS** - Uninterruptible power supply prevents sudden shutdowns
 2. **Frequent commits** - Ralph commits after each successful validation
-3. **State files** - Check `docs/state/AUCT-XXXX/` for progress tracking
+3. **State files** - Check `docs/state/TICKET-XXXX/` for progress tracking
 4. **Monitor logs** - Logs are in `.logs/ralph/` with timestamps
 
 ---
@@ -299,7 +299,7 @@ gh issue list --label "ralph-1" --state open
 gh issue list --label "ralph-2" --state open
 
 # Check if a PR exists for a ticket
-gh pr list --search "AUCT-XXXX in:title" --state merged
+gh pr list --search "TICKET-XXXX in:title" --state merged
 ```
 
 **To fix:**
@@ -341,13 +341,12 @@ git merge --abort
 # To start fresh on the ticket
 git checkout main
 git pull
-git checkout -b feature/AUCT-XXXX-implementation
+git checkout -b feature/TICKET-XXXX-implementation
 ```
 
 ---
 
 ## Related Documentation
 
-- [Multi-Instance Setup Guide](./multi-instance-setup.md)
-- [Ralph PRD Loop Analysis](./ralph-prd-loop-analysis.md)
+- [Running Multiple Ralph Instances](./running-multiple-ralph-instances.md)
 - [Workflow Guide](./workflow-guide.md)

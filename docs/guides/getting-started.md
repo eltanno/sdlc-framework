@@ -9,7 +9,7 @@ Welcome to the SDLC automation framework. This guide will help you understand th
 This is an AI-assisted software development lifecycle (SDLC) framework that automates the journey from idea to shipped code. It uses Claude as the AI backbone with specialized agents for different phases of development.
 
 **Key Features:**
-- Phase-based workflow (discover → prd → plan → ticket → implement → validate → release)
+- Phase-based workflow (discover → prd → plan → ticket → ralph-loop → release)
 - Automated ticket creation and tracking
 - TDD-based implementation with validation
 - Multi-instance parallel execution (ralph loops)
@@ -133,16 +133,16 @@ This begins an interactive discovery session to define what you're building.
 
 **Human approval required** at Discovery, PRD, and Plan phases.
 
-### Execution Stage (Can Be Automated)
+### Execution Stage (Autonomous)
 
 | Phase | Command | What Happens | Output |
 |-------|---------|--------------|--------|
-| **Implement** | `/implement` | TDD implementation | Code on feature branch |
-| **PR** | `/pr` | Create pull request | GitHub PR |
-| **Validate** | `/validate` | Pre-merge validation | Validation report |
+| **Ralph Loop** | `/ralph-loop` | Autonomous parallel implementation | Merged code |
+| **Exec Report** | `/execution-report` | Document what was built vs planned | `docs/execution-reports/*.md` |
+| **System Review** | `/system-review` | Analyze process effectiveness | `docs/system-reviews/*.md` |
 | **Release** | `/release` | Update README, close loop | Updated docs |
 
-Execution can run manually (one ticket at a time) or via **ralph loops** (automated parallel execution).
+Ralph handles the full implement → PR → validate → merge cycle per ticket, running 1-4 parallel instances.
 
 ---
 
@@ -203,7 +203,7 @@ For faster execution, run multiple ralph instances:
    cd ralph-2 && .claude/ralph/ralph docs/prds/feature.md docs/plans/feature.md
    ```
 
-See [Multi-Instance Setup Guide](./multi-instance-setup.md) for details.
+See [Running Multiple Ralph Instances](./running-multiple-ralph-instances.md) for details.
 
 ---
 
@@ -351,14 +351,13 @@ cd .claude/ralph && pip install -r requirements.txt
 ## Further Reading
 
 ### Core Documentation
-- [WORKFLOW.md](../../WORKFLOW.md) - Complete workflow reference
+- [WORKFLOW.md](../WORKFLOW.md) - Complete workflow reference
 - [CLAUDE.md](../../CLAUDE.md) - Orchestrator instructions
 
 ### Guides
 - [Workflow Guide](./workflow-guide.md) - Detailed workflow walkthrough
-- [Multi-Instance Setup](./multi-instance-setup.md) - Running parallel ralph loops
+- [Running Multiple Ralph Instances](./running-multiple-ralph-instances.md) - Parallel execution setup
 - [Crash Recovery](./ralph-loop-crash-recovery.md) - Recovering from failures
-- [Ralph Loop Analysis](./ralph-prd-loop-analysis.md) - How ralph works internally
 
 ### Templates
 - [Discovery Template](../templates/discovery-template.md)
@@ -370,5 +369,5 @@ cd .claude/ralph && pip install -r requirements.txt
 ## Getting Help
 
 1. Run `/whats-next` for workflow status and recommended actions
-2. Check `WORKFLOW.md` for full reference documentation
+2. Check `docs/WORKFLOW.md` for full reference documentation
 4. Check logs in `.logs/ralph/` for debugging

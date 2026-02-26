@@ -7,9 +7,11 @@ A practical guide to the SDLC workflow process - from idea to shipped code.
 The workflow has two stages:
 
 ```
-PLANNING (What & How)          EXECUTION (Build & Ship)
-─────────────────────          ─────────────────────────
-discover → prd → plan → ticket → implement → pr → validate → release
+PLANNING (human approval at each gate):
+discover → prd → plan → ticket
+
+EXECUTION (autonomous):
+ralph-loop → execution-report → system-review → release
 ```
 
 **Planning** defines what you're building. **Execution** builds and ships it.
@@ -23,9 +25,9 @@ discover → prd → plan → ticket → implement → pr → validate → relea
 | PRD | `/prd` | Architect agent | `docs/prds/*.md` |
 | Plan | `/plan` | Architect agent | `docs/plans/*.md` |
 | Ticket | `/ticket` | Haiku agent | Tickets in PM tool |
-| Implement | `/implement` | Engineer agent | Code on feature branch |
-| PR | `/pr` | Haiku agent | Pull request |
-| Validate | `/validate` | Engineer agent | Validation report |
+| Ralph Loop | `/ralph-loop` | Ralph orchestrator | Feature branches, PRs, merged code |
+| Exec Report | `/execution-report` | Self | `docs/execution-reports/*.md` |
+| System Review | `/system-review` | Self | `docs/system-reviews/*.md` |
 | Release | `/release` | Self | Updated README |
 
 ---
@@ -163,75 +165,72 @@ Creates tickets from the plan's ticket table in:
 
 ## Execution Phases
 
-### 6. Implement (`/implement`)
+### 6. Ralph Loop (`/ralph-loop`)
 
-**What:** Build the feature using TDD.
+**What:** Autonomous parallel implementation of all tickets.
 
-**When:** After tickets are created.
+**When:** After tickets are created and plan has ticket IDs.
 
 **How:**
 ```
-/implement
+/ralph-loop
 ```
 
-Or for a specific ticket:
+Ralph automatically:
+1. Detects the PRD and plan
+2. Launches 1-4 parallel loops using git worktrees
+3. Each loop: claims a ticket → implements with TDD → validates → creates PR → auto-merges → repeats
+4. Handles retries, blocks tickets that exceed max attempts
+5. Cleans up worktrees when done
+
+**Output:** Feature branches, PRs, and merged code for all tickets.
+
+**Configuration** in `config.yaml`:
+```yaml
+ralph:
+  sonnet_threshold: 2       # Complexity 1-2 = Sonnet, 3-5 = Opus
+  max_attempts: 3           # Retries before blocking a ticket
+  max_concurrent_loops: 4   # Parallel instances (1-4)
+  engineer_timeout: 30      # Minutes per implementation attempt
 ```
-/implement TICKET-123
-```
 
-The engineer agent:
-1. Creates a feature branch
-2. Writes failing tests (RED)
-3. Writes code to pass tests (GREEN)
-4. Refactors while keeping tests green (REFACTOR)
-5. Runs all validation (lint, tests, build)
-6. Commits the work
-
-**Output:** Code and tests on `feature/TICKET-{id}-{description}` branch.
-
-**Key point:** Tests are written BEFORE implementation code.
+**Key point:** Ralph handles the full implement → PR → validate → merge cycle per ticket.
 
 ---
 
-### 7. PR (`/pr`)
+### 7. Execution Report (`/execution-report`)
 
-**What:** Create a pull request.
+**What:** Document what was implemented vs what was planned.
 
-**When:** After implementation passes validation.
+**When:** After all tickets are complete.
 
 **How:**
 ```
-/pr
+/execution-report
 ```
 
-Creates a GitHub PR with:
-- Description of changes
-- Link to ticket
-- Test results
+**Output:** `docs/execution-reports/YYYY-MM-DD-{feature}.md`
 
-**Output:** Open pull request.
+Documents completed tasks, modified tasks, skipped tasks, challenges, and divergences from the plan.
 
 ---
 
-### 8. Validate (`/validate`)
+### 8. System Review (`/system-review`)
 
-**What:** Final pre-merge validation.
+**What:** Analyze process effectiveness.
 
-**When:** After PR is created.
+**When:** After the execution report.
 
 **How:**
 ```
-/validate
+/system-review
 ```
 
-The engineer agent checks:
-- All tests pass
-- Linting passes
-- Acceptance criteria from PRD are met
-- No security issues
-- Documentation is complete
+**Output:** `docs/system-reviews/YYYY-MM-DD-{feature}.md`
 
-**Output:** Validation report (pass/fail with details).
+Analyzes good/bad divergences, root causes, and generates process improvements.
+
+**Key point:** "You're not looking for bugs in the code — you're looking for bugs in the process."
 
 ---
 
@@ -239,7 +238,7 @@ The engineer agent checks:
 
 **What:** Update documentation to reflect what was shipped.
 
-**When:** After PR is merged.
+**When:** After system review is complete.
 
 **How:**
 ```
@@ -251,7 +250,7 @@ Updates README.md with:
 - Changed behaviors
 - Configuration options
 
-**Output:** Updated README.md.
+**Output:** Updated README.md, git tag.
 
 **Key point:** README should always reflect the current state of the software.
 
@@ -320,29 +319,6 @@ The agent:
 
 ---
 
-## Autonomous Mode (Ralph)
-
-For hands-off implementation of an entire PRD:
-
-```
-/ralph-prd docs/prds/YYYY-MM-DD-feature.md
-```
-
-Ralph loops through:
-1. Find next ticket
-2. Implement it
-3. Validate
-4. Commit and PR
-5. Repeat until done
-
-**Best for:** Well-defined features with clear acceptance criteria.
-
-**Not for:** Unclear requirements, new patterns, or debugging.
-
-See `docs/guides/multiple-ralph-loops.md` for running multiple ralph instances.
-
----
-
 ## Typical Workflow Example
 
 Building a user profile feature:
@@ -369,25 +345,33 @@ Building a user profile feature:
 
 # 5. Create tickets (delegated to haiku)
 /ticket
-# Creates AUCT-0161, AUCT-0162, AUCT-0163 in GitHub Issues
+# Creates PROJ-0001 through PROJ-0008 in PM tool
 
-# 6. Implement each ticket (delegated to engineer)
-/implement AUCT-0161
-# ... engineer builds and tests ...
+# 6. Execute all tickets (autonomous)
+/ralph-loop
+# Ralph implements all tickets in parallel, creates PRs, auto-merges
 
-# 7. Create PR (delegated to haiku)
-/pr
+# 7. Document results
+/execution-report
 
-# 8. Validate (delegated to engineer)
-/validate
+# 8. Review process
+/system-review
 
-# 9. Merge PR (you do this in GitHub)
-
-# 10. Repeat 6-9 for remaining tickets
-
-# 11. Update README (self)
+# 9. Update README
 /release
 ```
+
+### Manual Fallback
+
+If Ralph isn't suitable (debugging, unclear requirements), individual tickets can be implemented manually:
+
+```bash
+/implement PROJ-0001    # TDD implementation
+/pr                     # Create pull request
+/validate               # Pre-merge validation
+```
+
+See [Running Multiple Ralph Instances](./running-multiple-ralph-instances.md) for parallel execution setup.
 
 ---
 
@@ -444,4 +428,4 @@ docs/
 ## Getting Help
 
 - `/whats-next` - Workflow status and recommended next action
-- `WORKFLOW.md` - Full reference documentation
+- `docs/WORKFLOW.md` - Full reference documentation

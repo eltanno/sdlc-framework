@@ -27,7 +27,7 @@
 | `.claude/` | Auto-synced (commands, scripts, agents) |
 | `docs/templates/` | Auto-synced |
 | `docs/guides/` | Auto-synced |
-| `WORKFLOW.md` | Prompted if different |
+| `docs/WORKFLOW.md` | Prompted if different |
 | `CLAUDE.md` | Prompted if different |
 | `config.yaml` | Prompted if different |
 | `docs/coding-standards.md` | Prompted if different |

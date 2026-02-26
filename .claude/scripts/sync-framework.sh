@@ -270,7 +270,7 @@ echo "=== Checking project root files ==="
 echo ""
 
 EXTERNAL_FILES=(
-    "WORKFLOW.md"
+    "docs/WORKFLOW.md"
     "CLAUDE.md"
     "config.yaml"
     "docs/coding-standards.md"

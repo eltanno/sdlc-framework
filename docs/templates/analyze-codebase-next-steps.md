@@ -75,9 +75,7 @@ After discovery, the SDLC workflow guides you through:
 - `/prd` - Create detailed requirements
 - `/plan` - Design the technical approach
 - `/ticket` - Break into actionable tasks
-- `/implement` - TDD implementation
-- `/pr` - Code review
-- `/validate` - Pre-merge verification
+- `/ralph-loop` - Autonomous parallel implementation
 
 ### Step 4: Iterate
 After your first improvement, pick the next P1 item. Work through priorities systematically.
