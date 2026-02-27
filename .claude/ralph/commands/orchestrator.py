@@ -947,35 +947,32 @@ def process_ticket(
                 )
 
             except PrFlowError as e:
-                # Other PR flow errors (e.g., nothing to commit, branch issues)
-                # Validation passed, so the work is done - close the ticket
+                # PR flow failed - push failed, PR couldn't be created, sync conflict, etc.
+                # Code never made it to the target branch, don't close the ticket
                 duration = time.time() - start_time
-                logger.info(f"Ticket {ticket_id} completed with PR flow note in {_format_duration(duration)}: {e}")
+                logger.error(f"Ticket {ticket_id} PR flow failed after {_format_duration(duration)}: {e}")
 
-                # Still mark ticket done in PM tool
-                ticket_done(
+                # Mark as blocked so it can be retried or manually fixed
+                mark_blocked(
                     ticket_id=ticket_id,
-                    pr_number=None,
+                    reason=f"PR flow failed: {e}",
                     pm_tool=pm_tool,
                     ralph_label=ralph_label,
                 )
 
                 write_summary(
                     ticket_id=ticket_id,
-                    status="SUCCESS",
+                    status="BLOCKED",
                     total_attempts=current_attempt,
                     pr_number=None,
                     base_dir=config.state_directory,
                 )
 
-                # Note: Summary files left uncommitted in this edge case
-                # (detached HEAD prevents pushing, no PR to include them)
-
                 return TicketResult(
                     ticket_id=ticket_id,
-                    status="completed",
+                    status="blocked",
                     attempts=current_attempt,
-                    block_reason=f"PR flow note: {e}",
+                    block_reason=f"PR flow failed: {e}",
                     duration_seconds=duration,
                 )
 

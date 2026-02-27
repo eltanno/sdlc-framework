@@ -181,6 +181,44 @@ class TestCreatePullRequest:
         args, _ = mock_gh.call_args
         assert args[0] == ["gh", "pr", "create", "--title", "Test PR", "--body", "Body", "--base", "develop"]
 
+    def test_create_pull_request_with_head_branch(self, mock_gh: MagicMock):
+        """Given head branch specified, when creating PR, then --head flag is passed."""
+        from core import github
+
+        mock_gh.return_value.stdout = "https://github.com/owner/repo/pull/55"
+
+        result = github.create_pull_request(
+            title="Test PR",
+            body="Body",
+            head="feature/TASK-001-implementation",
+        )
+
+        # Verify result
+        assert result.number == 55
+        # Verify exact command structure includes --head
+        args, _ = mock_gh.call_args
+        assert args[0] == [
+            "gh", "pr", "create",
+            "--title", "Test PR",
+            "--body", "Body",
+            "--head", "feature/TASK-001-implementation",
+        ]
+
+    def test_create_pull_request_without_head_branch(self, mock_gh: MagicMock):
+        """Given no head branch specified, when creating PR, then --head flag is NOT passed."""
+        from core import github
+
+        mock_gh.return_value.stdout = "https://github.com/owner/repo/pull/56"
+
+        result = github.create_pull_request(
+            title="Test PR",
+            body="Body",
+        )
+
+        # Verify command does NOT contain --head
+        args, _ = mock_gh.call_args
+        assert "--head" not in args[0]
+
     def test_create_pull_request_extracts_pr_number_from_url(self, mock_gh: MagicMock):
         """Given PR URL returned, when parsing, then number is extracted correctly."""
         from core import github

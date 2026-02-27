@@ -214,6 +214,7 @@ def create_pull_request(
     title: str,
     body: str,
     base: str | None = None,
+    head: str | None = None,
     draft: bool = False,
 ) -> PullRequestResult:
     """Create a pull request.
@@ -222,6 +223,8 @@ def create_pull_request(
         title: PR title
         body: PR body/description
         base: Base branch (default: repository default)
+        head: Source branch name. Required when on detached HEAD
+              (e.g. in git worktrees) so gh can determine the source branch.
         draft: Create as draft PR
 
     Returns:
@@ -234,6 +237,9 @@ def create_pull_request(
 
     if base:
         args.extend(["--base", base])
+
+    if head:
+        args.extend(["--head", head])
 
     if draft:
         args.append("--draft")

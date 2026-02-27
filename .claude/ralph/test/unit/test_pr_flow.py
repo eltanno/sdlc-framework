@@ -173,6 +173,38 @@ class TestCreateMr:
         assert result.number == 123
         assert result.url == "https://github.com/owner/repo/pull/123"
 
+    def test_create_mr_passes_head_to_github(self, mock_github_module):
+        """Given head parameter, when creating MR via GitHub, then head is passed through."""
+        from commands import pr_flow
+        from core.github import PullRequestResult
+
+        mock_github_module.find_issue_by_title.return_value = None
+        mock_github_module.create_pull_request.return_value = PullRequestResult(
+            url="https://github.com/owner/repo/pull/55",
+            number=55,
+        )
+
+        pr_flow.create_mr("TASK-001", "Test", head="feature/TASK-001-implementation")
+
+        create_call = mock_github_module.create_pull_request.call_args
+        assert create_call[1].get("head") == "feature/TASK-001-implementation"
+
+    def test_create_mr_does_not_pass_head_when_none(self, mock_github_module):
+        """Given no head parameter, when creating MR, then head is not passed."""
+        from commands import pr_flow
+        from core.github import PullRequestResult
+
+        mock_github_module.find_issue_by_title.return_value = None
+        mock_github_module.create_pull_request.return_value = PullRequestResult(
+            url="https://github.com/owner/repo/pull/56",
+            number=56,
+        )
+
+        pr_flow.create_mr("TASK-001", "Test")
+
+        create_call = mock_github_module.create_pull_request.call_args
+        assert create_call[1].get("head") is None
+
     def test_create_mr_handles_creation_failure(self, mock_github_module):
         """Given MR creation fails, when create_mr called, then PrFlowError is raised with details."""
         from commands import pr_flow
@@ -498,6 +530,63 @@ class TestPrFlow:
         mock_git_module.push.assert_not_called()
         assert result.branch == "feature/TASK-001-implementation"
         assert result.merged is True
+
+    def test_pr_flow_passes_head_when_detached(self, mock_git_module, mock_github_module):
+        """Given detached HEAD, when creating PR, then head parameter is passed to create_mr so gh pr create gets --head flag."""
+        from commands import pr_flow
+        from core.github import PullRequestResult
+
+        # Simulate detached HEAD
+        mock_git_module.get_current_branch.return_value = "HEAD"
+        mock_git_module.is_dirty.return_value = True
+        mock_git_module.stage_all.return_value = None
+        mock_git_module.commit.return_value = "abc1234"
+        mock_git_module.fetch.return_value = None
+        mock_git_module.merge.return_value = None
+        mock_git_module._run_git_command.return_value = None
+
+        mock_github_module.find_merged_pr.return_value = None
+        mock_github_module.list_pull_requests.return_value = []
+        mock_github_module.find_issue_by_title.return_value = None
+        mock_github_module.create_pull_request.return_value = PullRequestResult(
+            url="https://github.com/owner/repo/pull/42",
+            number=42,
+        )
+        mock_github_module.merge_pull_request.return_value = None
+
+        pr_flow.pr_flow("TASK-001", "Implementation complete", default_branch="develop-working")
+
+        # Verify create_pull_request was called with head= the computed branch name
+        create_call = mock_github_module.create_pull_request.call_args
+        assert create_call[1].get("head") == "feature/TASK-001-implementation"
+
+    def test_pr_flow_does_not_pass_head_when_not_detached(self, mock_git_module, mock_github_module):
+        """Given normal branch (not detached), when creating PR, then head parameter is NOT passed."""
+        from commands import pr_flow
+        from core.github import PullRequestResult
+
+        mock_git_module.get_current_branch.return_value = "feature/TASK-001-test"
+        mock_git_module.is_dirty.return_value = True
+        mock_git_module.stage_all.return_value = None
+        mock_git_module.commit.return_value = "abc1234"
+        mock_git_module.push.return_value = None
+        mock_git_module.fetch.return_value = None
+        mock_git_module.merge.return_value = None
+
+        mock_github_module.find_merged_pr.return_value = None
+        mock_github_module.list_pull_requests.return_value = []
+        mock_github_module.find_issue_by_title.return_value = None
+        mock_github_module.create_pull_request.return_value = PullRequestResult(
+            url="https://github.com/owner/repo/pull/42",
+            number=42,
+        )
+        mock_github_module.merge_pull_request.return_value = None
+
+        pr_flow.pr_flow("TASK-001", "Implementation complete", default_branch="develop-working")
+
+        # Verify create_pull_request was called with head=None
+        create_call = mock_github_module.create_pull_request.call_args
+        assert create_call[1].get("head") is None
 
 
 

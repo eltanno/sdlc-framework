@@ -25,6 +25,7 @@ input=$(cat)
 current_dir=$(echo "$input" | jq -r '.workspace.current_dir')
 model_name=$(echo "$input" | jq -r '.model.display_name')
 cc_version=$(echo "$input" | jq -r '.version // "unknown"')
+context_pct=$(echo "$input" | jq -r '.context_window.used_percentage // 0' | awk '{printf "%.0f", $1}')
 
 # Get directory name
 dir_name=$(basename "$current_dir")
@@ -207,6 +208,10 @@ LINE2_ACCENT='\033[38;2;110;150;210m'
 LINE3_PRIMARY="$DARK_GREEN"
 LINE3_ACCENT='\033[38;2;140;180;100m'
 COST_COLOR="$LINE3_ACCENT"
+CTX_LOW='\033[38;2;158;206;106m'      # Green  (0-59%)
+CTX_MED='\033[38;2;224;175;104m'      # Amber  (60-79%)
+CTX_HIGH='\033[38;2;247;118;142m'     # Red    (80-100%)
+CTX_BAR_BG='\033[38;2;80;80;100m'     # Dim grey for empty bar
 
 SEPARATOR_COLOR='\033[38;2;140;152;180m'
 DIR_COLOR='\033[38;2;135;206;250m'
@@ -243,6 +248,10 @@ if [ "${SIMPLE_COLORS:-0}" = "1" ]; then
     MCP_DEFAULT='\033[34m'
     PLUGIN_COLOR='\033[33m'
     GIT_BRANCH_COLOR='\033[33m'
+    CTX_LOW='\033[32m'
+    CTX_MED='\033[33m'
+    CTX_HIGH='\033[31m'
+    CTX_BAR_BG='\033[90m'
     WORKFLOW_COMPLETED='\033[32m'
     WORKFLOW_ACTIVE='\033[1;37m'
     WORKFLOW_PENDING='\033[90m'
@@ -305,7 +314,20 @@ cost_display="${daily_cost:-N/A}"
 if [ -z "$daily_tokens" ]; then tokens_display="N/A"; fi
 if [ -z "$daily_cost" ]; then cost_display="N/A"; fi
 
-printf "${LINE3_PRIMARY}💎 Tokens${RESET}${SEPARATOR_COLOR}: ${RESET}${LINE3_ACCENT}${tokens_display}${RESET}  ${LINE3_PRIMARY}Cost${RESET}${SEPARATOR_COLOR}: ${RESET}${COST_COLOR}${cost_display}${RESET}"
+# Build context bar: 10 chars wide, filled proportionally
+ctx_color="$CTX_LOW"
+if [ "$context_pct" -ge 80 ] 2>/dev/null; then ctx_color="$CTX_HIGH"
+elif [ "$context_pct" -ge 60 ] 2>/dev/null; then ctx_color="$CTX_MED"; fi
+
+ctx_filled=$(( (context_pct + 5) / 10 ))  # round to nearest 10th
+[ "$ctx_filled" -gt 10 ] && ctx_filled=10
+ctx_empty=$(( 10 - ctx_filled ))
+ctx_bar="${ctx_color}"
+for ((i=0; i<ctx_filled; i++)); do ctx_bar="${ctx_bar}█"; done
+ctx_bar="${ctx_bar}${CTX_BAR_BG}"
+for ((i=0; i<ctx_empty; i++)); do ctx_bar="${ctx_bar}░"; done
+
+printf "${LINE3_PRIMARY}💎 Tokens${RESET}${SEPARATOR_COLOR}: ${RESET}${LINE3_ACCENT}${tokens_display}${RESET}  ${LINE3_PRIMARY}Cost${RESET}${SEPARATOR_COLOR}: ${RESET}${COST_COLOR}${cost_display}${RESET}  ${LINE3_PRIMARY}Ctx${RESET}${SEPARATOR_COLOR}: ${RESET}${ctx_bar}${RESET} ${ctx_color}${context_pct}%%${RESET}"
 
 # Rate limit info
 BLOCK_CACHE_FILE="/tmp/.claude_block_cache"

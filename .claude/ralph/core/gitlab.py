@@ -124,6 +124,7 @@ def create_merge_request(
     title: str,
     body: str,
     base: str | None = None,
+    head: str | None = None,
     draft: bool = False,
 ) -> MergeRequestResult:
     """Create a merge request.
@@ -132,6 +133,8 @@ def create_merge_request(
         title: MR title
         body: MR body/description
         base: Base/target branch (default: repository default)
+        head: Source branch name. Required when on detached HEAD
+              (e.g. in git worktrees) so glab can determine the source branch.
         draft: Create as draft MR
 
     Returns:
@@ -144,6 +147,9 @@ def create_merge_request(
 
     if base:
         args.extend(["--target-branch", base])
+
+    if head:
+        args.extend(["--source-branch", head])
 
     if draft:
         args.append("--draft")

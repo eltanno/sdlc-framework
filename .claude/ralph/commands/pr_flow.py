@@ -137,12 +137,14 @@ def push_branch(branch: str, refspec: bool = False) -> None:
         raise PrFlowError(f"Failed to push: {e}")
 
 
-def create_mr(ticket_id: str, commit_message: str):
+def create_mr(ticket_id: str, commit_message: str, head: str | None = None):
     """Create a pull request (GitHub) or merge request (GitLab) for the ticket.
 
     Args:
         ticket_id: Ticket ID (used in title)
         commit_message: Description for the PR/MR
+        head: Source branch name. Required when on detached HEAD
+              (e.g. in git worktrees) so the CLI can determine the source branch.
 
     Returns:
         PullRequestResult (GitHub) or MergeRequestResult (GitLab) with URL and number
@@ -202,9 +204,9 @@ def create_mr(ticket_id: str, commit_message: str):
     try:
         # Both modules have create_pull_request/create_merge_request with same signature
         if hasattr(repo, "create_merge_request"):
-            return repo.create_merge_request(title=title, body=body)
+            return repo.create_merge_request(title=title, body=body, head=head)
         else:
-            return repo.create_pull_request(title=title, body=body)
+            return repo.create_pull_request(title=title, body=body, head=head)
     except Exception as e:
         raise PrFlowError(f"Failed to create PR/MR: {e}")
 
@@ -410,8 +412,11 @@ def pr_flow(
             pr_url = pr_info.get("url") or pr_info.get("web_url")
         pr_number = existing_pr
     else:
-        # Create new PR/MR
-        pr_result = create_mr(ticket_id, commit_message)
+        # Create new PR/MR (pass head when on detached HEAD so CLI knows the source branch)
+        pr_result = create_mr(
+            ticket_id, commit_message,
+            head=current_branch if _detached else None,
+        )
         pr_number = pr_result.number
         pr_url = pr_result.url
 

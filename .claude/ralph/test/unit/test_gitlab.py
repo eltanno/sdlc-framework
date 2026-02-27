@@ -157,6 +157,45 @@ class TestCreateMergeRequest:
 
         assert result.number == 456
 
+    def test_create_merge_request_with_head_branch(self, mock_glab: MagicMock):
+        """Given head branch specified, when creating MR, then --source-branch flag is passed."""
+        from core import gitlab
+
+        mock_glab.return_value.stdout = "https://gitlab.example.com/group/repo/-/merge_requests/55"
+
+        result = gitlab.create_merge_request(
+            title="Test MR",
+            body="Body",
+            head="feature/TASK-001-implementation",
+        )
+
+        # Verify result
+        assert result.number == 55
+        # Verify exact command structure includes --source-branch
+        expected_cmd = [
+            "glab", "mr", "create",
+            "--title", "Test MR",
+            "--description", "Body",
+            "--source-branch", "feature/TASK-001-implementation",
+        ]
+        mock_glab.assert_called_once()
+        assert mock_glab.call_args[0][0] == expected_cmd
+
+    def test_create_merge_request_without_head_branch(self, mock_glab: MagicMock):
+        """Given no head branch specified, when creating MR, then --source-branch flag is NOT passed."""
+        from core import gitlab
+
+        mock_glab.return_value.stdout = "https://gitlab.example.com/group/repo/-/merge_requests/56"
+
+        gitlab.create_merge_request(
+            title="Test MR",
+            body="Body",
+        )
+
+        # Verify command does NOT contain --source-branch
+        cmd = mock_glab.call_args[0][0]
+        assert "--source-branch" not in cmd
+
     def test_create_merge_request_with_draft_flag(self, mock_glab: MagicMock):
         """Given draft flag set, when creating MR, then draft MR is created."""
         from core import gitlab

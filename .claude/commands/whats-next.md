@@ -3,15 +3,13 @@
 > **⚠️ MANDATORY: READ THIS ENTIRE FILE BEFORE PROCEEDING.**
 > **You must confirm you have read and understood all sections.**
 
-**You are the orchestrator. This is a coordination task - do it yourself.**
-
-Analyze current state, show workflow progress, and recommend next actions.
+**Analyze current state and recommend next actions.**
 
 ## Purpose
 
 This command works from a fresh context to:
 1. Discover where we are in the SDLC workflow
-2. Show a status dashboard of all artifacts and git state
+2. Find outstanding or incomplete work
 3. Recommend the next action to take
 
 **Run this when:** Starting a new session, unsure what to work on, or need to orient yourself.
@@ -28,13 +26,8 @@ git status --short
 # Recent commits
 git log --oneline -5
 
-# Open PRs/MRs (check repo.type in config.yaml)
-REPO_TYPE=$(grep -E "^\s*type:" config.yaml 2>/dev/null | grep -E "github|gitlab" | awk '{print $2}' || echo "github")
-if [ "$REPO_TYPE" = "gitlab" ]; then
-  glab mr list 2>/dev/null || echo "No GitLab remote"
-else
-  gh pr list 2>/dev/null || echo "No GitHub remote"
-fi
+# Open PRs
+gh pr list --state open 2>/dev/null || echo "No GitHub CLI or not a repo"
 ```
 
 ### Step 2: Check Document State
@@ -55,6 +48,7 @@ Read and assess status of each artifact type:
 - List all plans
 - Check status of each (DRAFT / APPROVED)
 - Do approved plans have ticket IDs populated?
+- Check `PROGRESS.md` for in-progress work
 
 **RCAs** (`docs/rca/`):
 - Any open RCAs? (status = ANALYZING or FIX PROPOSED)
@@ -79,50 +73,34 @@ Based on artifacts, determine:
 | PRD = APPROVED, no plan | Pre-planning | `/plan` |
 | Plan = DRAFT | Plan review | Get approval or revise |
 | Plan = APPROVED, no ticket IDs | Pre-tickets | `/ticket` |
-| Plan has tickets, none started | Ready to execute | `/ralph-loop` |
-| Ralph in progress / tickets open | Implementation | Monitor `/ralph-loop` or `/ticket-reset` if blocked |
-| All tickets merged, no exec report | Post-merge | `/execution-report` |
+| Plan has tickets, none started | Pre-implement | `/implement [ticket-id]` |
+| Work in progress | Implementation | Continue `/implement` |
+| Tests passing, no PR | Pre-PR | `/pr` |
+| PR open | Validation | `/validate` |
+| PR merged, no exec report | Post-merge | `/execution-report` |
 | Exec report exists, no review | Post-report | `/system-review` |
-| Review done, no release | Pre-release | `/release` |
-| Bugs reported | Bug workflow | `/playtest-loop` or `/rca` then fix |
+| Open RCA | Bug workflow | `/hotfix` or continue RCA |
 
-### Step 4: Output
+### Step 4: Output Recommendations
 
 ## Output Format
 
 ```markdown
-# Workflow Status
+## Current State
 
-**Generated:** YYYY-MM-DD HH:MM
 **Branch:** [current branch]
-**Active Phase:** [Discovery / PRD / Plan / Tickets / Execution (Ralph) / Report / Review / Release / None]
+**Uncommitted Changes:** [yes/no - summary]
+**Open PRs:** [count and titles]
 
-## Workflow Progress
+## Document Status
 
-```
-[x] Discovery   → document.md (APPROVED)
-[x] PRD         → prd.md (APPROVED)
-[x] Plan        → plan.md (APPROVED)
-[x] Tickets     → TASK-123, TASK-124
-[ ] Ralph Loop  → not started
-[ ] Exec Report → not started
-[ ] Review      → not started
-[ ] Release     → not started
-```
-
-## Documents
-
-| Type | Document | Status | Notes |
-|------|----------|--------|-------|
-| Discovery | topic.md | DRAFT/APPROVED | |
-| PRD | feature.md | DRAFT/APPROVED | |
-| Plan | feature.md | DRAFT/APPROVED | Tickets: TASK-XXX |
-
-## Git
-
-- **Uncommitted Changes:** Yes/No
-- **Open PRs:** [list or none]
-- **Recent Commits:** [last 3-5]
+| Document | Status | Notes |
+|----------|--------|-------|
+| Discovery | [status] | [notes] |
+| PRDs | [count] DRAFT / [count] APPROVED | [notes] |
+| Plans | [count] DRAFT / [count] APPROVED | [notes] |
+| Active Tickets | [list from PROGRESS.md] | |
+| Open RCAs | [count] | [notes] |
 
 ## Outstanding Work
 
@@ -139,42 +117,7 @@ Based on artifacts, determine:
 
 - `/alternative-1` - [when you'd choose this instead]
 - `/alternative-2` - [when you'd choose this instead]
-
-## Quick Commands
-
-| Action | Command |
-|--------|---------|
-| Start discovery | `/discover {topic}` |
-| Create PRD | `/prd {feature}` |
-| Create plan | `/plan {feature}` |
-| Create tickets | `/ticket` |
-| Execute all tickets | `/ralph-loop` |
-| Reset blocked ticket | `/ticket-reset {id}` |
-| Document results | `/execution-report` |
-| Review process | `/system-review` |
-| Ship it | `/release` |
-| Find & fix bugs | `/playtest-loop` |
 ```
-
-## What to Watch For
-
-### Red Flags
-- DRAFT documents older than a week
-- PRDs without ticket IDs
-- Multiple features in progress simultaneously
-- Blocked tickets with no resolution
-
-### Good Signs
-- Clear linear progression through phases
-- All documents approved before moving on
-- Tickets linked in plans
-- Commits reference ticket IDs
-
-## Tone
-
-- Be conversational, not robotic — explain the "why" behind recommendations
-- If this looks like a fresh project or new user, briefly explain what each phase does
-- Keep it concise but helpful — don't dump the entire workflow docs
 
 ## DO NOT
 
