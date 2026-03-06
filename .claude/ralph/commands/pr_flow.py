@@ -137,7 +137,7 @@ def push_branch(branch: str, refspec: bool = False) -> None:
         raise PrFlowError(f"Failed to push: {e}")
 
 
-def create_mr(ticket_id: str, commit_message: str, head: str | None = None):
+def create_mr(ticket_id: str, commit_message: str, head: str | None = None, default_branch: str = ""):
     """Create a pull request (GitHub) or merge request (GitLab) for the ticket.
 
     Args:
@@ -145,6 +145,7 @@ def create_mr(ticket_id: str, commit_message: str, head: str | None = None):
         commit_message: Description for the PR/MR
         head: Source branch name. Required when on detached HEAD
               (e.g. in git worktrees) so the CLI can determine the source branch.
+        default_branch: Target branch for the PR/MR. If empty, uses repo default.
 
     Returns:
         PullRequestResult (GitHub) or MergeRequestResult (GitLab) with URL and number
@@ -203,10 +204,11 @@ def create_mr(ticket_id: str, commit_message: str, head: str | None = None):
 
     try:
         # Both modules have create_pull_request/create_merge_request with same signature
+        base = default_branch or None
         if hasattr(repo, "create_merge_request"):
-            return repo.create_merge_request(title=title, body=body, head=head)
+            return repo.create_merge_request(title=title, body=body, head=head, base=base)
         else:
-            return repo.create_pull_request(title=title, body=body, head=head)
+            return repo.create_pull_request(title=title, body=body, head=head, base=base)
     except Exception as e:
         raise PrFlowError(f"Failed to create PR/MR: {e}")
 
@@ -416,6 +418,7 @@ def pr_flow(
         pr_result = create_mr(
             ticket_id, commit_message,
             head=current_branch if _detached else None,
+            default_branch=default_branch,
         )
         pr_number = pr_result.number
         pr_url = pr_result.url
