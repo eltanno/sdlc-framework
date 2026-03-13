@@ -260,7 +260,18 @@ PRD: docs/prds/YYYY-MM-DD-feature.md
 
 ## Estimate
 
-{estimate}" \
+{estimate}
+
+## Dependencies
+
+{list each dependency as an explicit ticket ID, e.g.:
+- CSD-0001 (Short title)
+- CSD-0002 (Short title)
+
+If no dependencies, write: None
+
+NEVER use prose like 'All previous tickets' or 'All above' — Ralph's
+dependency parser only matches explicit ticket ID patterns (e.g. CSD-XXXX).}" \
   --label "task"
 ```
 

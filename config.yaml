@@ -26,7 +26,7 @@ git:
   pr:
     auto_merge: true                  # Auto-merge PRs when validation passes
     delete_branch_after_merge: true   # Delete feature branch after PR merge
-    merge_method: squash              # merge | squash | rebase
+    merge_method: merge               # merge | squash | rebase
 
 # Repository Provider
 repo:

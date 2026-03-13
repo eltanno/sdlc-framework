@@ -20,6 +20,7 @@ When a PM tool is provided, ticket status is queried from the PM tool
 from __future__ import annotations
 
 import logging
+import subprocess
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -202,18 +203,65 @@ def claim_ticket_with_race_detection(
     return True
 
 
+def _check_dependency_merged_to_branch(
+    dep_id: str,
+    default_branch: str,
+) -> bool:
+    """Check if a dependency ticket has a merge commit on the default branch.
+
+    Uses `git log` to search for the dependency ticket ID in commit messages
+    on origin/{default_branch}. This ensures the dependency's changes are
+    actually available, not just that the PM tool issue is closed.
+
+    Args:
+        dep_id: The dependency ticket ID to search for (e.g., "CSD-0018")
+        default_branch: The default git branch name (e.g., "develop-working")
+
+    Returns:
+        True if a commit mentioning dep_id exists on origin/{default_branch},
+        False otherwise.
+
+    Raises:
+        No exceptions — returns False on any subprocess error and logs a warning.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "log", f"origin/{default_branch}", "--oneline", "--grep", dep_id],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode != 0:
+            logger.warning(
+                f"git log failed for dependency {dep_id} on origin/{default_branch}: "
+                f"exit code {result.returncode}, stderr: {result.stderr.strip()}"
+            )
+            return False
+        # If there's any output, the dep_id was found in commit messages
+        return bool(result.stdout.strip())
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
+        logger.warning(
+            f"Failed to run git log for dependency {dep_id}: {e}. "
+            "Falling back to PM-tool-only check."
+        )
+        # Return True to fall back to PM-tool-only behavior
+        return True
+
+
 def _check_dependencies_via_pm_tool(
     ticket_id: str,
     ticket_deps: list[str],
     ticket_ids: list[str],
     open_ticket_ids: set[str],
     pm_tool: PMTool,
+    default_branch: str | None = None,
 ) -> bool:
-    """Check if all dependencies are satisfied by querying PM tool status.
+    """Check if all dependencies are satisfied by querying PM tool status and git.
 
     A dependency is satisfied only if:
     1. It exists in the workflow ticket list (ticket_ids)
     2. It is CLOSED in the PM tool (not in open_ticket_ids, or status is CLOSED)
+    3. It has a merge commit on origin/{default_branch} (if default_branch is provided)
 
     If a dependency doesn't exist in the workflow (not in ticket_ids), it is
     logged as a warning and treated as unmet.
@@ -224,6 +272,9 @@ def _check_dependencies_via_pm_tool(
         ticket_ids: List of all known ticket IDs in the workflow
         open_ticket_ids: Set of ticket IDs that are currently open
         pm_tool: PM tool for querying ticket status
+        default_branch: Default git branch name for merge verification (optional).
+            If provided, closed dependencies must also have merge commits on
+            origin/{default_branch} to be considered satisfied.
 
     Returns:
         True if all dependencies are satisfied, False otherwise
@@ -258,7 +309,17 @@ def _check_dependencies_via_pm_tool(
                     "Treating as unmet dependency."
                 )
                 return False
+
         # If not in open_ticket_ids but in ticket_ids, it's closed (completed)
+        # Now verify the dependency is actually merged to the default branch
+        if default_branch:
+            if not _check_dependency_merged_to_branch(dep_id, default_branch):
+                logger.warning(
+                    f"Dependency {dep_id} for ticket {ticket_id} is closed in PM tool "
+                    f"but not found in merge commits on origin/{default_branch}. "
+                    "Treating as unmet dependency."
+                )
+                return False
 
     return True
 
@@ -267,6 +328,7 @@ def get_next_ticket(
     state: WorkflowState,
     pm_tool: PMTool | None = None,
     ralph_label: str | None = None,
+    default_branch: str | None = None,
 ) -> GetNextResult:
     """Find the next eligible ticket to work on.
 
@@ -286,13 +348,16 @@ def get_next_ticket(
         state: The current workflow state
         pm_tool: Optional PM tool for querying ticket status
         ralph_label: This Ralph instance's label (e.g., "ralph-1") for concurrency control
+        default_branch: Default git branch name for merge verification (optional).
+            When provided, dependencies must have merge commits on
+            origin/{default_branch} in addition to being closed in the PM tool.
 
     Returns:
         GetNextResult containing the next ticket and status information
     """
     # If pm_tool is provided and we have ralph state, use PM tool
     if pm_tool is not None and state.ralph is not None:
-        return _get_next_ticket_with_pm_tool(state, pm_tool, ralph_label)
+        return _get_next_ticket_with_pm_tool(state, pm_tool, ralph_label, default_branch)
 
     # Otherwise, fall back to local state
     return _get_next_ticket_from_local_state(state)
@@ -302,6 +367,7 @@ def _get_next_ticket_with_pm_tool(
     state: WorkflowState,
     pm_tool: PMTool,
     ralph_label: str | None = None,
+    default_branch: str | None = None,
 ) -> GetNextResult:
     """Find the next eligible ticket using PM tool for status.
 
@@ -309,6 +375,7 @@ def _get_next_ticket_with_pm_tool(
         state: The current workflow state with ralph field
         pm_tool: PM tool for querying ticket status
         ralph_label: This Ralph instance's label for concurrency control
+        default_branch: Default git branch for merge verification (optional)
 
     Returns:
         GetNextResult containing the next ticket and status information
@@ -431,6 +498,7 @@ def _get_next_ticket_with_pm_tool(
             ticket_ids=ticket_ids,
             open_ticket_ids=open_ticket_ids,
             pm_tool=pm_tool,
+            default_branch=default_branch,
         )
 
         if deps_satisfied:
@@ -461,6 +529,7 @@ def _get_next_ticket_with_pm_tool(
                                 ticket_ids=ticket_ids,
                                 open_ticket_ids=open_ticket_ids,
                                 pm_tool=pm_tool,
+                                default_branch=default_branch,
                             )
                             if not deps_met:
                                 skipped_for_deps += 1

@@ -6,7 +6,8 @@ based on status and dependency satisfaction.
 
 from __future__ import annotations
 
-from unittest.mock import Mock
+from unittest.mock import Mock, patch, MagicMock
+import subprocess
 
 import pytest
 
@@ -15,6 +16,8 @@ from commands.get_next import (
     GetNextResult,
     is_ticket_eligible,
     get_ticket_counts,
+    _check_dependency_merged_to_branch,
+    _check_dependencies_via_pm_tool,
 )
 from core.pm import PMTool, TicketInfo, TicketStatus, PMError
 from core.state import WorkflowState, RalphState, Ticket
@@ -1490,3 +1493,310 @@ class TestDependencyCheckingViaPMTool:
         assert result.ticket.id == "TASK-001"  # Returns the one without deps
         # Verify get_ticket_status was called to check dependency
         assert mock_pm.get_ticket_status.called or result.skipped_for_deps >= 1
+
+
+# ============================================================================
+# Tests: _check_dependency_merged_to_branch
+# ============================================================================
+
+
+class TestCheckDependencyMergedToBranch:
+    """Test git-based merge verification for dependencies."""
+
+    @patch("commands.get_next.subprocess.run")
+    def test_returns_true_when_dep_found_in_git_log(self, mock_run):
+        """Given a dep ID appears in git log output, when checking merge, then returns True."""
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout="abc1234 feat(auth): implement login [CSD-0018]\n",
+            stderr="",
+        )
+
+        result = _check_dependency_merged_to_branch("CSD-0018", "develop-working")
+
+        assert result is True
+        mock_run.assert_called_once_with(
+            ["git", "log", "origin/develop-working", "--oneline", "--grep", "CSD-0018"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+    @patch("commands.get_next.subprocess.run")
+    def test_returns_false_when_dep_not_found_in_git_log(self, mock_run):
+        """Given a dep ID does NOT appear in git log output, when checking merge, then returns False."""
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout="",
+            stderr="",
+        )
+
+        result = _check_dependency_merged_to_branch("CSD-0018", "develop-working")
+
+        assert result is False
+
+    @patch("commands.get_next.subprocess.run")
+    def test_returns_false_when_git_log_fails(self, mock_run):
+        """Given git log returns non-zero exit code, when checking merge, then returns False."""
+        mock_run.return_value = MagicMock(
+            returncode=128,
+            stdout="",
+            stderr="fatal: bad revision 'origin/develop-working'",
+        )
+
+        result = _check_dependency_merged_to_branch("CSD-0018", "develop-working")
+
+        assert result is False
+
+    @patch("commands.get_next.subprocess.run")
+    def test_returns_true_on_subprocess_exception(self, mock_run):
+        """Given subprocess raises an exception, when checking merge, then returns True (fallback)."""
+        mock_run.side_effect = FileNotFoundError("git not found")
+
+        result = _check_dependency_merged_to_branch("CSD-0018", "develop-working")
+
+        # Falls back to PM-tool-only behavior (returns True)
+        assert result is True
+
+    @patch("commands.get_next.subprocess.run")
+    def test_returns_true_on_timeout(self, mock_run):
+        """Given git log times out, when checking merge, then returns True (fallback)."""
+        mock_run.side_effect = subprocess.TimeoutExpired(cmd="git", timeout=30)
+
+        result = _check_dependency_merged_to_branch("CSD-0018", "develop-working")
+
+        assert result is True
+
+    @patch("commands.get_next.subprocess.run")
+    def test_uses_correct_branch_name(self, mock_run):
+        """Given a custom default branch, when checking merge, then uses that branch."""
+        mock_run.return_value = MagicMock(returncode=0, stdout="abc1234 commit\n", stderr="")
+
+        _check_dependency_merged_to_branch("TASK-001", "main")
+
+        assert mock_run.call_args[0][0][2] == "origin/main"
+
+
+# ============================================================================
+# Tests: _check_dependencies_via_pm_tool with default_branch
+# ============================================================================
+
+
+class TestCheckDependenciesWithMergeVerification:
+    """Test that dependency checks include git merge verification."""
+
+    @patch("commands.get_next._check_dependency_merged_to_branch")
+    def test_dep_closed_and_merged_is_satisfied(self, mock_merge_check):
+        """Given a dep is closed in PM tool AND merged to default branch,
+        when checking dependencies, then it is satisfied."""
+        mock_merge_check.return_value = True
+        mock_pm = Mock(spec=PMTool)
+
+        result = _check_dependencies_via_pm_tool(
+            ticket_id="TASK-002",
+            ticket_deps=["TASK-001"],
+            ticket_ids=["TASK-001", "TASK-002"],
+            open_ticket_ids=set(),  # TASK-001 is closed (not in open set)
+            pm_tool=mock_pm,
+            default_branch="develop-working",
+        )
+
+        assert result is True
+        mock_merge_check.assert_called_once_with("TASK-001", "develop-working")
+
+    @patch("commands.get_next._check_dependency_merged_to_branch")
+    def test_dep_closed_but_not_merged_is_unsatisfied(self, mock_merge_check):
+        """Given a dep is closed in PM tool but NOT merged to default branch,
+        when checking dependencies, then it is unsatisfied."""
+        mock_merge_check.return_value = False
+        mock_pm = Mock(spec=PMTool)
+
+        result = _check_dependencies_via_pm_tool(
+            ticket_id="TASK-002",
+            ticket_deps=["TASK-001"],
+            ticket_ids=["TASK-001", "TASK-002"],
+            open_ticket_ids=set(),  # TASK-001 is closed
+            pm_tool=mock_pm,
+            default_branch="develop-working",
+        )
+
+        assert result is False
+
+    @patch("commands.get_next._check_dependency_merged_to_branch")
+    def test_no_default_branch_skips_merge_check(self, mock_merge_check):
+        """Given no default_branch is provided, when checking dependencies,
+        then merge check is skipped (PM-tool-only)."""
+        mock_pm = Mock(spec=PMTool)
+
+        result = _check_dependencies_via_pm_tool(
+            ticket_id="TASK-002",
+            ticket_deps=["TASK-001"],
+            ticket_ids=["TASK-001", "TASK-002"],
+            open_ticket_ids=set(),  # TASK-001 is closed
+            pm_tool=mock_pm,
+            default_branch=None,  # No branch specified
+        )
+
+        assert result is True
+        mock_merge_check.assert_not_called()
+
+    @patch("commands.get_next._check_dependency_merged_to_branch")
+    def test_multiple_deps_all_must_be_merged(self, mock_merge_check):
+        """Given multiple dependencies, when one is not merged,
+        then the check fails."""
+        # First dep is merged, second is not
+        mock_merge_check.side_effect = [True, False]
+        mock_pm = Mock(spec=PMTool)
+
+        result = _check_dependencies_via_pm_tool(
+            ticket_id="TASK-003",
+            ticket_deps=["TASK-001", "TASK-002"],
+            ticket_ids=["TASK-001", "TASK-002", "TASK-003"],
+            open_ticket_ids=set(),  # Both closed
+            pm_tool=mock_pm,
+            default_branch="develop-working",
+        )
+
+        assert result is False
+        assert mock_merge_check.call_count == 2
+
+    @patch("commands.get_next._check_dependency_merged_to_branch")
+    def test_open_dep_skips_merge_check(self, mock_merge_check):
+        """Given a dependency is still open in PM tool, when checking,
+        then merge check is not reached (fails on PM status first)."""
+        mock_pm = Mock(spec=PMTool)
+        mock_pm.get_ticket_status.return_value = TicketStatus.OPEN
+
+        result = _check_dependencies_via_pm_tool(
+            ticket_id="TASK-002",
+            ticket_deps=["TASK-001"],
+            ticket_ids=["TASK-001", "TASK-002"],
+            open_ticket_ids={"TASK-001"},  # TASK-001 is open
+            pm_tool=mock_pm,
+            default_branch="develop-working",
+        )
+
+        assert result is False
+        mock_merge_check.assert_not_called()
+
+
+# ============================================================================
+# Tests: get_next_ticket with default_branch
+# ============================================================================
+
+
+class TestGetNextTicketWithDefaultBranch:
+    """Test that get_next_ticket passes default_branch through correctly."""
+
+    @patch("commands.get_next._check_dependency_merged_to_branch")
+    def test_default_branch_passed_to_dependency_check(self, mock_merge_check):
+        """Given default_branch is provided, when getting next ticket with deps,
+        then merge check is performed for each dependency."""
+        mock_merge_check.return_value = True
+
+        mock_pm = Mock(spec=PMTool)
+        # TASK-001 is closed, TASK-002 is open with deps on TASK-001
+        mock_pm.get_open_tickets.return_value = [
+            TicketInfo(id="TASK-002", title="Second", status=TicketStatus.OPEN, labels=[]),
+        ]
+        # First call: during "skip claimed by OTHER" check -> not claimed
+        # Second call: during race detection after claim_ticket -> we won
+        mock_pm.is_ticket_claimed.side_effect = [
+            (False, None),      # Initial claimed check
+            (True, "ralph-1"),  # Race detection re-query (we won)
+        ]
+        mock_pm.claim_ticket.return_value = True
+
+        workflow = WorkflowState(
+            prd_path="docs/prds/test.md",
+            plan_path="docs/plans/test.md",
+            tickets=[],
+            ralph=RalphState(
+                source="github",
+                tickets=["TASK-001", "TASK-002"],
+                dependencies={"TASK-002": ["TASK-001"]},
+            ),
+        )
+
+        result = get_next_ticket(
+            workflow,
+            pm_tool=mock_pm,
+            ralph_label="ralph-1",
+            default_branch="develop-working",
+        )
+
+        assert result.ticket is not None
+        assert result.ticket.id == "TASK-002"
+        mock_merge_check.assert_any_call("TASK-001", "develop-working")
+
+    @patch("commands.get_next._check_dependency_merged_to_branch")
+    def test_ticket_skipped_when_dep_not_merged(self, mock_merge_check):
+        """Given a dep is closed but not merged, when getting next ticket,
+        then the dependent ticket is skipped."""
+        mock_merge_check.return_value = False
+
+        mock_pm = Mock(spec=PMTool)
+        # Both TASK-001 and TASK-002 are open; TASK-003 depends on closed TASK-000
+        mock_pm.get_open_tickets.return_value = [
+            TicketInfo(id="TASK-001", title="First", status=TicketStatus.OPEN, labels=[]),
+        ]
+        mock_pm.is_ticket_claimed.return_value = (False, None)
+        mock_pm.claim_ticket.return_value = True
+
+        workflow = WorkflowState(
+            prd_path="docs/prds/test.md",
+            plan_path="docs/plans/test.md",
+            tickets=[],
+            ralph=RalphState(
+                source="github",
+                tickets=["TASK-000", "TASK-001"],
+                dependencies={"TASK-001": ["TASK-000"]},
+            ),
+        )
+
+        result = get_next_ticket(
+            workflow,
+            pm_tool=mock_pm,
+            ralph_label="ralph-1",
+            default_branch="develop-working",
+        )
+
+        # TASK-001 has dep on TASK-000 which is closed (not in open tickets)
+        # but not merged, so TASK-001 should be skipped
+        assert result.ticket is None
+        assert result.skipped_for_deps >= 1
+
+    @patch("commands.get_next._check_dependency_merged_to_branch")
+    def test_no_default_branch_skips_merge_verification(self, mock_merge_check):
+        """Given no default_branch, when getting next ticket, then no merge check is done."""
+        mock_pm = Mock(spec=PMTool)
+        mock_pm.get_open_tickets.return_value = [
+            TicketInfo(id="TASK-002", title="Second", status=TicketStatus.OPEN, labels=[]),
+        ]
+        mock_pm.is_ticket_claimed.side_effect = [
+            (False, None),      # Initial claimed check
+            (True, "ralph-1"),  # Race detection re-query
+        ]
+        mock_pm.claim_ticket.return_value = True
+
+        workflow = WorkflowState(
+            prd_path="docs/prds/test.md",
+            plan_path="docs/plans/test.md",
+            tickets=[],
+            ralph=RalphState(
+                source="github",
+                tickets=["TASK-001", "TASK-002"],
+                dependencies={"TASK-002": ["TASK-001"]},
+            ),
+        )
+
+        result = get_next_ticket(
+            workflow,
+            pm_tool=mock_pm,
+            ralph_label="ralph-1",
+            default_branch=None,
+        )
+
+        assert result.ticket is not None
+        assert result.ticket.id == "TASK-002"
+        mock_merge_check.assert_not_called()

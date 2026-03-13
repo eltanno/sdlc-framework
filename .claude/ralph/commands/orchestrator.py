@@ -1492,10 +1492,21 @@ def run_orchestrator(
 
     while True:
         # Get next ticket using PM tool for status queries
+        # Fetch origin to ensure we have latest branch state for merge checks
+        try:
+            subprocess.run(
+                ["git", "fetch", "origin", config.default_branch],
+                capture_output=True,
+                timeout=30,
+            )
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
+            logger.warning(f"Failed to fetch origin/{config.default_branch}: {e}")
+
         next_result = get_next_ticket(
             state,
             pm_tool=pm_tool,
             ralph_label=ralph_label,
+            default_branch=config.default_branch or None,
         )
 
         # Handle waiting on dependencies
