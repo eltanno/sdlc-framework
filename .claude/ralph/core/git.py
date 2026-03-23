@@ -383,3 +383,23 @@ def merge(branch: str, no_edit: bool = True, message: str | None = None) -> None
         args.extend(["-m", message])
 
     _run_git_command(args)
+
+
+def rebase(onto: str) -> None:
+    """Rebase the current branch onto another branch or ref.
+
+    Args:
+        onto: Branch or ref to rebase onto (e.g., "origin/develop-working")
+
+    Raises:
+        GitError: If rebase fails (including conflicts)
+    """
+    _run_git_command(["rebase", onto])
+
+
+def rebase_abort() -> None:
+    """Abort an in-progress rebase.
+
+    Safe to call even if no rebase is in progress (check=False).
+    """
+    _run_git_command(["rebase", "--abort"], check=False)

@@ -2,16 +2,26 @@
 
 Tests cover:
 - Committing staged changes
-- Pushing to remote
+- Pushing to remote (including force-push)
 - Creating pull requests with proper linking
-- Merging pull requests
+- Merging pull requests (including retry on failure)
 - The complete PR flow from commit to merge
+- Rebase-based sync with default branch
+- Retry logic for sync+push
 - Repo tool abstraction (GitHub vs GitLab)
 """
 
+import subprocess
 from unittest.mock import MagicMock
 
 import pytest
+
+
+def _make_completed_process(returncode=0, stdout="", stderr=""):
+    """Helper to create a subprocess.CompletedProcess for mocking _run_git_command."""
+    return subprocess.CompletedProcess(
+        args=["git"], returncode=returncode, stdout=stdout, stderr=stderr
+    )
 
 
 @pytest.fixture
@@ -270,33 +280,84 @@ class TestCheckoutDetachedDefault:
 class TestSyncWithDefault:
     """Tests for sync_with_default function."""
 
-    def test_sync_with_default_fetches_and_merges(self, mock_git_module):
-        """Given default branch exists remotely, when syncing, then fetch and merge are called."""
+    def _make_completed_process(self, returncode=0, stdout="", stderr=""):
+        """Helper to create a mock CompletedProcess."""
+        import subprocess
+        return subprocess.CompletedProcess(
+            args=["git"], returncode=returncode, stdout=stdout, stderr=stderr
+        )
+
+    def test_sync_with_default_fetches_and_rebases(self, mock_git_module):
+        """Given branch is behind default, when syncing, then fetch is called and rebase is performed."""
         from commands import pr_flow
 
         mock_git_module.fetch.return_value = None
-        mock_git_module.merge.return_value = None
+        mock_git_module.GitError = __import__("core.git", fromlist=["GitError"]).GitError
+        # merge-base --is-ancestor returns 1 (not ancestor, rebase needed)
+        # rebase returns 0 (success)
+        mock_git_module._run_git_command.side_effect = [
+            self._make_completed_process(returncode=1),  # merge-base: not ancestor
+            self._make_completed_process(returncode=0),  # rebase: success
+        ]
 
         pr_flow.sync_with_default("main")
 
         mock_git_module.fetch.assert_called_once_with(remote="origin")
-        mock_git_module.merge.assert_called_once_with("origin/main")
+        calls = mock_git_module._run_git_command.call_args_list
+        assert calls[0][0][0] == ["merge-base", "--is-ancestor", "origin/main", "HEAD"]
+        assert calls[1][0][0] == ["rebase", "origin/main"]
 
-    def test_sync_with_default_raises_on_conflict(self, mock_git_module):
-        """Given merge has conflicts, when syncing, then PrFlowError is raised."""
+    def test_sync_with_default_skips_rebase_when_up_to_date(self, mock_git_module):
+        """Given branch is already up to date, when syncing, then rebase is skipped."""
+        from commands import pr_flow
+
+        mock_git_module.fetch.return_value = None
+        mock_git_module.GitError = __import__("core.git", fromlist=["GitError"]).GitError
+        # merge-base --is-ancestor returns 0 (already ancestor, up to date)
+        mock_git_module._run_git_command.return_value = self._make_completed_process(returncode=0)
+
+        pr_flow.sync_with_default("main")
+
+        mock_git_module.fetch.assert_called_once_with(remote="origin")
+        # Only one call: merge-base check. No rebase call.
+        assert mock_git_module._run_git_command.call_count == 1
+
+    def test_sync_with_default_raises_on_rebase_conflict(self, mock_git_module):
+        """Given rebase has conflicts, when syncing, then PrFlowError is raised and rebase is aborted."""
         from commands import pr_flow
         from commands.pr_flow import PrFlowError
         from core.git import GitError
 
         mock_git_module.fetch.return_value = None
-        mock_git_module.merge.side_effect = GitError("CONFLICT")
-        # Ensure GitError is the real exception class, not mocked
         mock_git_module.GitError = GitError
+        # merge-base: not ancestor, rebase: conflict, rebase --abort
+        mock_git_module._run_git_command.side_effect = [
+            self._make_completed_process(returncode=1),  # merge-base: not ancestor
+            self._make_completed_process(returncode=1, stderr="CONFLICT"),  # rebase: failed
+            self._make_completed_process(returncode=0),  # rebase --abort
+        ]
 
         with pytest.raises(PrFlowError) as exc_info:
             pr_flow.sync_with_default(default_branch="develop-working")
 
-        assert "Merge conflicts" in str(exc_info.value) or "sync with" in str(exc_info.value).lower()
+        assert "rebase" in str(exc_info.value).lower() or "conflicts" in str(exc_info.value).lower()
+        # Verify rebase --abort was called
+        calls = mock_git_module._run_git_command.call_args_list
+        assert calls[2][0][0] == ["rebase", "--abort"]
+
+    def test_sync_with_default_raises_on_fetch_failure(self, mock_git_module):
+        """Given fetch fails, when syncing, then PrFlowError is raised."""
+        from commands import pr_flow
+        from commands.pr_flow import PrFlowError
+        from core.git import GitError
+
+        mock_git_module.fetch.side_effect = GitError("network error")
+        mock_git_module.GitError = GitError
+
+        with pytest.raises(PrFlowError) as exc_info:
+            pr_flow.sync_with_default(default_branch="main")
+
+        assert "fetch" in str(exc_info.value).lower()
 
 
 
@@ -365,6 +426,8 @@ class TestPrFlow:
         mock_git_module.commit.return_value = "abc1234"
         mock_git_module.push.return_value = None
         mock_git_module.fetch.return_value = None
+        # sync_with_default uses _run_git_command for merge-base check (already up to date)
+        mock_git_module._run_git_command.return_value = _make_completed_process(returncode=0)
 
         mock_github_module.find_merged_pr.return_value = None
         mock_github_module.list_pull_requests.return_value = []
@@ -446,6 +509,8 @@ class TestPrFlow:
         mock_git_module.is_dirty.return_value = False
         mock_git_module.push.return_value = None
         mock_git_module.fetch.return_value = None
+        # sync_with_default: already up to date
+        mock_git_module._run_git_command.return_value = _make_completed_process(returncode=0)
 
         mock_github_module.find_merged_pr.return_value = None
         mock_github_module.list_pull_requests.return_value = [{"number": 50}]
@@ -469,6 +534,9 @@ class TestPrFlow:
         mock_git_module.is_dirty.return_value = True
         mock_git_module.commit.return_value = "abc1234"
         mock_git_module.push.return_value = None
+        mock_git_module.fetch.return_value = None
+        # sync_with_default: already up to date
+        mock_git_module._run_git_command.return_value = _make_completed_process(returncode=0)
 
         mock_github_module.find_merged_pr.return_value = None
         mock_github_module.list_pull_requests.return_value = []
@@ -502,14 +570,16 @@ class TestPrFlow:
         from commands import pr_flow
         from core.github import PullRequestResult
 
-        # Simulate detached HEAD — get_current_branch returns "HEAD"
+        # Simulate detached HEAD -- get_current_branch returns "HEAD"
         mock_git_module.get_current_branch.return_value = "HEAD"
         mock_git_module.is_dirty.return_value = True
         mock_git_module.stage_all.return_value = None
         mock_git_module.commit.return_value = "abc1234"
         mock_git_module.fetch.return_value = None
-        mock_git_module.merge.return_value = None
-        mock_git_module._run_git_command.return_value = None
+        # sync_with_default: already up to date (merge-base returns 0)
+        # push_branch refspec: success
+        # checkout_detached_default also calls _run_git_command
+        mock_git_module._run_git_command.return_value = _make_completed_process(returncode=0)
 
         mock_github_module.find_merged_pr.return_value = None
         mock_github_module.list_pull_requests.return_value = []
@@ -542,8 +612,8 @@ class TestPrFlow:
         mock_git_module.stage_all.return_value = None
         mock_git_module.commit.return_value = "abc1234"
         mock_git_module.fetch.return_value = None
-        mock_git_module.merge.return_value = None
-        mock_git_module._run_git_command.return_value = None
+        # sync_with_default: already up to date, push refspec: success
+        mock_git_module._run_git_command.return_value = _make_completed_process(returncode=0)
 
         mock_github_module.find_merged_pr.return_value = None
         mock_github_module.list_pull_requests.return_value = []
@@ -571,7 +641,8 @@ class TestPrFlow:
         mock_git_module.commit.return_value = "abc1234"
         mock_git_module.push.return_value = None
         mock_git_module.fetch.return_value = None
-        mock_git_module.merge.return_value = None
+        # sync_with_default: already up to date
+        mock_git_module._run_git_command.return_value = _make_completed_process(returncode=0)
 
         mock_github_module.find_merged_pr.return_value = None
         mock_github_module.list_pull_requests.return_value = []
@@ -664,7 +735,8 @@ class TestPrFlowWithGitLab:
         mock_git_module.commit.return_value = "abc1234"
         mock_git_module.push.return_value = None
         mock_git_module.fetch.return_value = None
-        mock_git_module.merge.return_value = None
+        # sync_with_default: already up to date
+        mock_git_module._run_git_command.return_value = _make_completed_process(returncode=0)
 
         result = pr_flow.pr_flow("TASK-001", "Implementation complete", default_branch="develop-working")
 
@@ -740,3 +812,285 @@ class TestPrFlowWithGitLab:
 
         mock_gitlab.find_merged_mr.assert_called_once_with("TASK-001")
         assert result == 99
+
+
+class TestPushBranchForce:
+    """Tests for push_branch force-push behavior."""
+
+    def test_push_branch_force_refspec_includes_force_with_lease(self, mock_git_module):
+        """Given force=True and refspec=True, when pushing, then --force-with-lease is included."""
+        from commands import pr_flow
+
+        mock_git_module._run_git_command.return_value = None
+
+        pr_flow.push_branch("feature/test", refspec=True, force=True)
+
+        mock_git_module._run_git_command.assert_called_once_with(
+            ["push", "--force-with-lease", "-u", "origin", "HEAD:refs/heads/feature/test"]
+        )
+
+    def test_push_branch_force_no_refspec_includes_force_with_lease(self, mock_git_module):
+        """Given force=True and refspec=False, when pushing, then --force-with-lease is used."""
+        from commands import pr_flow
+
+        mock_git_module._run_git_command.return_value = None
+
+        pr_flow.push_branch("feature/test", refspec=False, force=True)
+
+        mock_git_module._run_git_command.assert_called_once_with(
+            ["push", "--force-with-lease", "-u", "origin", "feature/test"]
+        )
+
+    def test_push_branch_no_force_refspec_no_force_flag(self, mock_git_module):
+        """Given force=False and refspec=True, when pushing, then no --force-with-lease."""
+        from commands import pr_flow
+
+        mock_git_module._run_git_command.return_value = None
+
+        pr_flow.push_branch("feature/test", refspec=True, force=False)
+
+        mock_git_module._run_git_command.assert_called_once_with(
+            ["push", "-u", "origin", "HEAD:refs/heads/feature/test"]
+        )
+
+    def test_push_branch_no_force_no_refspec_uses_git_push(self, mock_git_module):
+        """Given force=False and refspec=False, when pushing, then standard git.push is used."""
+        from commands import pr_flow
+
+        mock_git_module.push.return_value = None
+
+        pr_flow.push_branch("feature/test", refspec=False, force=False)
+
+        mock_git_module.push.assert_called_once_with(
+            remote="origin", branch="feature/test", set_upstream=True
+        )
+
+
+class TestSyncRetryLogic:
+    """Tests for the retry loop around sync_with_default + push_branch in pr_flow."""
+
+    def test_sync_retry_succeeds_on_second_attempt(self, mock_git_module, mock_github_module, mocker):
+        """Given first sync fails and second succeeds, when running pr_flow, then result is success."""
+        from commands import pr_flow
+        from commands.pr_flow import PrFlowError
+        from core.github import PullRequestResult
+
+        mock_git_module.get_current_branch.return_value = "feature/TASK-001-test"
+        mock_git_module.is_dirty.return_value = True
+        mock_git_module.stage_all.return_value = None
+        mock_git_module.commit.return_value = "abc1234"
+        mock_git_module.push.return_value = None
+        mock_git_module.fetch.return_value = None
+
+        # First sync call fails, second succeeds
+        call_count = {"sync": 0}
+        original_sync = pr_flow.sync_with_default
+
+        def mock_sync(default_branch):
+            call_count["sync"] += 1
+            if call_count["sync"] == 1:
+                raise PrFlowError("Rebase conflict on first try")
+            # Second call succeeds (no-op)
+
+        mocker.patch.object(pr_flow, "sync_with_default", side_effect=mock_sync)
+        mocker.patch.object(pr_flow, "push_branch")
+
+        mock_github_module.find_merged_pr.return_value = None
+        mock_github_module.list_pull_requests.return_value = []
+        mock_github_module.find_issue_by_title.return_value = None
+        mock_github_module.create_pull_request.return_value = PullRequestResult(
+            url="https://github.com/owner/repo/pull/42",
+            number=42,
+        )
+        mock_github_module.merge_pull_request.return_value = None
+
+        result = pr_flow.pr_flow("TASK-001", "Test", default_branch="develop-working")
+
+        assert result.merged is True
+        assert call_count["sync"] == 2
+        # On retry (attempt 2), force=True
+        push_calls = pr_flow.push_branch.call_args_list
+        assert push_calls[0][1]["force"] is True  # second attempt uses force
+
+    def test_sync_retry_fails_after_max_retries(self, mock_git_module, mock_github_module, mocker):
+        """Given all 3 sync attempts fail, when running pr_flow, then PrFlowError is raised."""
+        from commands import pr_flow
+        from commands.pr_flow import PrFlowError
+        from core.github import PullRequestResult
+
+        mock_git_module.get_current_branch.return_value = "feature/TASK-001-test"
+        mock_git_module.is_dirty.return_value = True
+        mock_git_module.stage_all.return_value = None
+        mock_git_module.commit.return_value = "abc1234"
+
+        # All sync calls fail
+        mocker.patch.object(
+            pr_flow, "sync_with_default",
+            side_effect=PrFlowError("Persistent conflict"),
+        )
+
+        mock_github_module.find_merged_pr.return_value = None
+
+        with pytest.raises(PrFlowError) as exc_info:
+            pr_flow.pr_flow("TASK-001", "Test", default_branch="develop-working")
+
+        assert "Persistent conflict" in str(exc_info.value)
+        assert pr_flow.sync_with_default.call_count == 3
+
+    def test_sync_retry_uses_force_push_on_retry(self, mock_git_module, mock_github_module, mocker):
+        """Given sync succeeds on first attempt, when pushing, then force=False."""
+        from commands import pr_flow
+        from core.github import PullRequestResult
+
+        mock_git_module.get_current_branch.return_value = "feature/TASK-001-test"
+        mock_git_module.is_dirty.return_value = True
+        mock_git_module.stage_all.return_value = None
+        mock_git_module.commit.return_value = "abc1234"
+        mock_git_module.push.return_value = None
+        mock_git_module.fetch.return_value = None
+
+        mocker.patch.object(pr_flow, "sync_with_default")  # succeeds
+        mocker.patch.object(pr_flow, "push_branch")  # succeeds
+
+        mock_github_module.find_merged_pr.return_value = None
+        mock_github_module.list_pull_requests.return_value = []
+        mock_github_module.find_issue_by_title.return_value = None
+        mock_github_module.create_pull_request.return_value = PullRequestResult(
+            url="https://github.com/owner/repo/pull/42",
+            number=42,
+        )
+        mock_github_module.merge_pull_request.return_value = None
+
+        pr_flow.pr_flow("TASK-001", "Test", default_branch="develop-working")
+
+        # First attempt: force=False (sync_attempt == 1, so sync_attempt > 1 is False)
+        push_call = pr_flow.push_branch.call_args
+        assert push_call[1]["force"] is False
+
+
+class TestMergeRetryLogic:
+    """Tests for merge retry logic in pr_flow when merge_mr fails."""
+
+    def test_merge_retry_succeeds_after_branch_update(self, mock_git_module, mock_github_module, mocker):
+        """Given merge fails first time but succeeds after branch update, then result is merged."""
+        from commands import pr_flow
+        from commands.pr_flow import MergeError
+        from core.github import PullRequestResult
+
+        mock_git_module.get_current_branch.return_value = "feature/TASK-001-test"
+        mock_git_module.is_dirty.return_value = True
+        mock_git_module.stage_all.return_value = None
+        mock_git_module.commit.return_value = "abc1234"
+        mock_git_module.push.return_value = None
+        mock_git_module.fetch.return_value = None
+        # sync_with_default: already up to date
+        mock_git_module._run_git_command.return_value = _make_completed_process(returncode=0)
+
+        mock_github_module.find_merged_pr.return_value = None
+        mock_github_module.list_pull_requests.return_value = []
+        mock_github_module.find_issue_by_title.return_value = None
+        mock_github_module.create_pull_request.return_value = PullRequestResult(
+            url="https://github.com/owner/repo/pull/42",
+            number=42,
+        )
+
+        # Mock merge_mr at the pr_flow module level (not the github module)
+        merge_call_count = {"count": 0}
+
+        def mock_merge_mr(pr_number):
+            merge_call_count["count"] += 1
+            if merge_call_count["count"] == 1:
+                raise MergeError("PR not mergeable")
+            # Second call succeeds
+
+        mocker.patch.object(pr_flow, "merge_mr", side_effect=mock_merge_mr)
+
+        result = pr_flow.pr_flow("TASK-001", "Test", default_branch="develop-working")
+
+        assert result.merged is True
+        assert merge_call_count["count"] == 2
+
+    def test_merge_retry_fails_after_branch_update(self, mock_git_module, mock_github_module, mocker):
+        """Given merge fails even after branch update, then MergeError is raised."""
+        from commands import pr_flow
+        from commands.pr_flow import MergeError
+        from core.github import PullRequestResult
+
+        mock_git_module.get_current_branch.return_value = "feature/TASK-001-test"
+        mock_git_module.is_dirty.return_value = True
+        mock_git_module.stage_all.return_value = None
+        mock_git_module.commit.return_value = "abc1234"
+        mock_git_module.push.return_value = None
+        mock_git_module.fetch.return_value = None
+        # sync_with_default: already up to date
+        mock_git_module._run_git_command.return_value = _make_completed_process(returncode=0)
+
+        mock_github_module.find_merged_pr.return_value = None
+        mock_github_module.list_pull_requests.return_value = []
+        mock_github_module.find_issue_by_title.return_value = None
+        mock_github_module.create_pull_request.return_value = PullRequestResult(
+            url="https://github.com/owner/repo/pull/42",
+            number=42,
+        )
+
+        # Mock merge_mr at the pr_flow module level -- always fails
+        mocker.patch.object(
+            pr_flow, "merge_mr",
+            side_effect=MergeError("Conflict"),
+        )
+
+        with pytest.raises(MergeError) as exc_info:
+            pr_flow.pr_flow("TASK-001", "Test", default_branch="develop-working")
+
+        assert "even after branch update" in str(exc_info.value)
+
+    def test_merge_retry_does_force_push_on_retry(self, mock_git_module, mock_github_module, mocker):
+        """Given merge fails first time, when retrying, then force-push is used for the branch update."""
+        from commands import pr_flow
+        from commands.pr_flow import MergeError
+        from core.github import PullRequestResult
+
+        mock_git_module.get_current_branch.return_value = "feature/TASK-001-test"
+        mock_git_module.is_dirty.return_value = True
+        mock_git_module.stage_all.return_value = None
+        mock_git_module.commit.return_value = "abc1234"
+        mock_git_module.push.return_value = None
+        mock_git_module.fetch.return_value = None
+        # sync_with_default: already up to date
+        mock_git_module._run_git_command.return_value = _make_completed_process(returncode=0)
+
+        mock_github_module.find_merged_pr.return_value = None
+        mock_github_module.list_pull_requests.return_value = []
+        mock_github_module.find_issue_by_title.return_value = None
+        mock_github_module.create_pull_request.return_value = PullRequestResult(
+            url="https://github.com/owner/repo/pull/42",
+            number=42,
+        )
+
+        # Mock merge_mr at the pr_flow module level: fails first, succeeds second
+        merge_call_count = {"count": 0}
+
+        def mock_merge_mr(pr_number):
+            merge_call_count["count"] += 1
+            if merge_call_count["count"] == 1:
+                raise MergeError("Not mergeable")
+
+        mocker.patch.object(pr_flow, "merge_mr", side_effect=mock_merge_mr)
+
+        # Track push_branch calls to verify force parameter
+        push_calls = []
+
+        def tracking_push(branch, refspec=False, force=False):
+            push_calls.append({"branch": branch, "refspec": refspec, "force": force})
+
+        mocker.patch.object(pr_flow, "push_branch", side_effect=tracking_push)
+
+        result = pr_flow.pr_flow("TASK-001", "Test", default_branch="develop-working")
+
+        assert result.merged is True
+        # The merge-retry push should have force=True
+        # push_calls[0] is from the sync+push loop (force=False, first attempt)
+        # push_calls[1] is from the merge retry (force=True)
+        assert len(push_calls) == 2
+        assert push_calls[0]["force"] is False
+        assert push_calls[1]["force"] is True

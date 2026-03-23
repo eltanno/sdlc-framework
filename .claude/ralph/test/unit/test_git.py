@@ -583,3 +583,60 @@ class TestMerge:
             git.merge("origin/main")
 
         assert "CONFLICT" in str(exc_info.value) or "Git command failed" in str(exc_info.value)
+
+
+class TestRebase:
+    """Tests for rebase function."""
+
+    def test_rebase_calls_git_rebase(self, mock_git: MagicMock):
+        """Given a target ref, when rebasing, then git rebase is called."""
+        from core import git
+
+        mock_git.return_value.returncode = 0
+
+        git.rebase("origin/develop-working")
+
+        mock_git.assert_called_once_with(
+            ["git", "rebase", "origin/develop-working"],
+            capture_output=True,
+            text=True,
+        )
+
+    def test_rebase_raises_on_conflict(self, mock_git: MagicMock):
+        """Given rebase conflict, when rebasing, then GitError is raised."""
+        from core import git
+
+        mock_git.return_value.returncode = 1
+        mock_git.return_value.stderr = "CONFLICT (content): Merge conflict in file.py"
+
+        with pytest.raises(git.GitError):
+            git.rebase("origin/main")
+
+
+class TestRebaseAbort:
+    """Tests for rebase_abort function."""
+
+    def test_rebase_abort_calls_git_rebase_abort(self, mock_git: MagicMock):
+        """Given rebase in progress, when aborting, then git rebase --abort is called."""
+        from core import git
+
+        mock_git.return_value.returncode = 0
+
+        git.rebase_abort()
+
+        mock_git.assert_called_once_with(
+            ["git", "rebase", "--abort"],
+            capture_output=True,
+            text=True,
+        )
+
+    def test_rebase_abort_does_not_raise_on_no_rebase(self, mock_git: MagicMock):
+        """Given no rebase in progress, when aborting, then no error is raised (check=False)."""
+        from core import git
+
+        # Simulate "no rebase in progress" (non-zero exit but check=False)
+        mock_git.return_value.returncode = 128
+        mock_git.return_value.stderr = "fatal: No rebase in progress?"
+
+        # Should not raise because check=False
+        git.rebase_abort()

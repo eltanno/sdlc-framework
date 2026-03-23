@@ -13,12 +13,15 @@ This is a port of .claude/scripts/ralph/pr-flow.sh
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
 
 from core import git
 from core.config import get_repo_tool_type
+
+logger = logging.getLogger(__name__)
 
 
 def get_repo_module(config_path: str | Path = Path("config.yaml")) -> ModuleType:
@@ -114,13 +117,15 @@ def stage_and_commit(ticket_id: str, commit_message: str) -> str | None:
         raise PrFlowError(f"Failed to commit: {e}")
 
 
-def push_branch(branch: str, refspec: bool = False) -> None:
+def push_branch(branch: str, refspec: bool = False, force: bool = False) -> None:
     """Push branch to remote with upstream tracking.
 
     Args:
         branch: Branch name to push
         refspec: If True, push using HEAD:refs/heads/<branch> refspec.
                  Required when on detached HEAD (e.g. in worktrees).
+        force: If True, use --force-with-lease for safe force-push.
+               Needed after rebase when branch was already pushed.
 
     Raises:
         PrFlowError: If push fails
@@ -128,11 +133,18 @@ def push_branch(branch: str, refspec: bool = False) -> None:
     try:
         if refspec:
             # Push detached HEAD to a named remote branch via refspec
-            git._run_git_command(
-                ["push", "-u", "origin", f"HEAD:refs/heads/{branch}"]
-            )
+            args = ["push"]
+            if force:
+                args.append("--force-with-lease")
+            args.extend(["-u", "origin", f"HEAD:refs/heads/{branch}"])
+            git._run_git_command(args)
         else:
-            git.push(remote="origin", branch=branch, set_upstream=True)
+            if force:
+                # Force-push with lease for safety
+                args = ["push", "--force-with-lease", "-u", "origin", branch]
+                git._run_git_command(args)
+            else:
+                git.push(remote="origin", branch=branch, set_upstream=True)
     except git.GitError as e:
         raise PrFlowError(f"Failed to push: {e}")
 
@@ -253,25 +265,47 @@ def checkout_detached_default(default_branch: str) -> None:
 
 
 def sync_with_default(default_branch: str) -> None:
-    """Sync current branch with latest default branch to avoid merge conflicts.
+    """Sync current branch with latest default branch using rebase.
 
-    Fetches the latest default branch and merges it into the current branch.
-    This ensures the PR will be fast-forward mergeable.
+    Uses rebase instead of merge to produce a clean linear history
+    and handle simple conflicts (non-overlapping changes) automatically.
+    Fetches from origin first to get the latest remote state.
 
     Args:
         default_branch: Name of the default branch to sync with (required, no fallback)
 
     Raises:
-        PrFlowError: If fetch or merge fails (including conflicts)
+        PrFlowError: If fetch or rebase fails (including true conflicts)
     """
     try:
         git.fetch(remote="origin")
-        git.merge(f"origin/{default_branch}")
     except git.GitError as e:
-        raise PrFlowError(
-            f"Failed to sync with {default_branch}. "
-            f"Merge conflicts may need manual resolution: {e}"
-        )
+        raise PrFlowError(f"Failed to fetch origin: {e}")
+
+    # Check if rebase is needed (is origin/default_branch already an ancestor of HEAD?)
+    result = git._run_git_command(
+        ["merge-base", "--is-ancestor", f"origin/{default_branch}", "HEAD"],
+        check=False,
+    )
+    if result.returncode == 0:
+        # Already up to date, no rebase needed
+        return
+
+    # Attempt rebase
+    rebase_result = git._run_git_command(
+        ["rebase", f"origin/{default_branch}"],
+        check=False,
+    )
+
+    if rebase_result.returncode == 0:
+        return  # Rebase succeeded
+
+    # Rebase failed -- abort and raise
+    git._run_git_command(["rebase", "--abort"], check=False)
+    raise PrFlowError(
+        f"Failed to rebase onto {default_branch}. "
+        f"Merge conflicts need manual resolution: {rebase_result.stderr}"
+    )
 
 
 def find_existing_pr(branch: str) -> int | None:
@@ -392,12 +426,28 @@ def pr_flow(
     # Stage and commit changes
     commit_sha = stage_and_commit(ticket_id, commit_message)
 
-    # Sync with latest default branch to avoid merge conflicts on GitHub
-    # This ensures the PR will be fast-forward mergeable
-    sync_with_default(default_branch=default_branch)
-
-    # Push to remote (use refspec when on detached HEAD to avoid worktree constraints)
-    push_branch(current_branch, refspec=_detached)
+    # Sync and push with retry (handles race when another loop merges between our sync and push)
+    MAX_SYNC_RETRIES = 3
+    for sync_attempt in range(1, MAX_SYNC_RETRIES + 1):
+        try:
+            sync_with_default(default_branch=default_branch)
+            # After rebase on retry, branch may have been pushed already — force-push
+            push_branch(
+                current_branch,
+                refspec=_detached,
+                force=(sync_attempt > 1),
+            )
+            break  # Success
+        except PrFlowError:
+            if sync_attempt == MAX_SYNC_RETRIES:
+                raise  # Final attempt failed
+            # Another loop may have merged -- retry with fresh fetch
+            logger.warning(
+                "Sync attempt %d/%d failed for %s. Retrying after fresh fetch...",
+                sync_attempt,
+                MAX_SYNC_RETRIES,
+                ticket_id,
+            )
 
     # Check if PR already exists
     existing_pr = find_existing_pr(current_branch)
@@ -426,17 +476,32 @@ def pr_flow(
     # Merge unless --no-merge
     merged = False
     if not no_merge and pr_number:
-        merge_mr(pr_number)
-        merged = True
-
-        # Delete remote branch (if auto-delete isn't enabled on repo)
         try:
-            repo.delete_remote_branch(current_branch)
-        except Exception:
-            pass  # Non-fatal
+            merge_mr(pr_number)
+            merged = True
+        except MergeError:
+            # PR may not be mergeable because default branch advanced
+            # Try updating the PR branch and retrying once
+            try:
+                sync_with_default(default_branch=default_branch)
+                push_branch(current_branch, refspec=_detached, force=True)
+                merge_mr(pr_number)
+                merged = True
+            except (PrFlowError, MergeError):
+                raise MergeError(
+                    f"Failed to merge PR #{pr_number} even after branch update. "
+                    f"Manual resolution required."
+                )
 
-        # Checkout detached at default branch
-        checkout_detached_default(default_branch=default_branch)
+        if merged:
+            # Delete remote branch (if auto-delete isn't enabled on repo)
+            try:
+                repo.delete_remote_branch(current_branch)
+            except Exception:
+                pass  # Non-fatal
+
+            # Checkout detached at default branch
+            checkout_detached_default(default_branch=default_branch)
 
     return PrFlowResult(
         ticket_id=ticket_id,
